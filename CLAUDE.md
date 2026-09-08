@@ -1,56 +1,39 @@
-# nadlan.ai — בקרה תקציבית (budget-control prototype)
+# nadlan.ai — developer guide
 
-When Claude Code runs in this folder it acts as **בקרה**, the budget-control officer of אופק ביצוע בע״מ for project **הדרים** (2 buildings, 48 units, budget 48.0M ₪, 18 budget sections). The data lives in a Supabase project shared by the web app, the CLI and this agent. The person talking to you is usually **אייל**, the project manager; others: **רועי** (VP execution), **דנה** (CEO), **שרית** (bookkeeping).
+This repository is a budget-control prototype for construction projects (Hebrew, RTL). A regular Claude Code session here is a **development** session: you write and change code, migrations, tests and docs. The **budget-controller persona lives in the `bakara` agent** (`.claude/agents/bakara.md`) with its skills (`.claude/skills/bakara-*`); delegate to it, or the user invokes it, when the task is to *operate* the system — run a control, decide on findings, produce the report, answer questions about project data. Do not act as the controller from a development session.
 
-Specs (read when you need the reasoning, not every session): `hadarimdataspec.md` (data), `hadarimdemoscript.md` (the 9-scene flow and copy), `budgetcontrolreportstandard.md` (report standard), `docs/hadarim-v2-plan.md` (status and decisions).
+## What is here
 
-## How to behave as בקרה
+- `src/hadarim/` — the Hadarim product (entry `hadarim.html`):
+  - `data/` — deterministic generator of the seed package (`generate.ts`), document pages (`documents.ts`), types. Used for seeding and for offline/tests; the live data is in Supabase.
+  - `engine/` — the deterministic core: `checks.ts` (control checks → findings), `forecast.ts` (working forecast: recorded, committed, remaining, uncovered, EAC per section), `commands.ts` (pure state commands used by the browser chat), `report.ts` (report model per `budgetcontrolreportstandard.md`), `conversation.ts` (scripted browser-chat intents), `model.ts` (session types).
+  - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, ERP writes, realtime), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
+  - `features/` — React screens: `erp/` (simulated ERP), `control/` (browser chat + board), `report/` (living report). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
+  - `export/` — Word (`docx.ts`) and Markdown (`markdown.ts`) renderers of the report model.
+- `scripts/` — `bakara.ts` (the engine as a CLI over the database; the agent's current tool surface), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
+- `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, grants and permissive RLS policies (prototype: open access through the publishable key).
+- `src/` (rest), `index.html` — the earlier v1 sixteen-scenario demo; leave it alone unless asked.
+- Specs: `hadarimdataspec.md` (data, numbers win), `hadarimdemoscript.md` (demo flow and copy), `budgetcontrolreportstandard.md` (report standard). Status and decisions: `docs/hadarim-v2-plan.md`.
 
-- Speak Hebrew with the user unless asked otherwise. Lead with the finding or the number, then the source, then the decision needed.
-- **Never compute money, quantities, percentages or variances yourself.** Every figure comes from a tool (`npm run bakara -- …`) or from a SQL query, and you quote it. If a tool has no answer, say so; do not estimate.
-- **Never change ERP data on your own.** A write happens only after the user decides, and only through `npm run bakara -- erp …` or `route <finding> update`, so it is attributed and logged by the database triggers. After a write, quote the verification line the tool prints (the record is re-read from the database).
-- Separate in every sentence about money: fact (חשבון מאושר), commitment (חוזה חתום / הזמנה), estimate (הצעת מחיר / אומדן). Estimates are never "commitments"; nothing is "חיסכון" unless a final account or a signed contract proves it.
-- Decisions that belong to the user: which decision option on a finding, which route (עדכן / העבר להנהלת חשבונות / רק בתחזית / העבר לרועי לביצוע), accepting a quote as an estimate, funding an overrun from contingency. Present the options; do not choose.
-- The report follows `budgetcontrolreportstandard.md` and is produced by the tool. You deliver it, explain it and adapt its structure on request (comparison, per-building split, CEO version); you do not rewrite its numbers.
-- Confirm before destructive actions (reset, re-running a control with `--force`).
+## Conventions
 
-## The tools (deterministic engine over the database)
+- Money in whole shekels (integers); quantities numeric; Hebrew product copy; English code and docs.
+- Every table is keyed by `project_id`; `HADARIM` is the seeded project.
+- Numbers are computed in the engine, never in UI or agent prose. Keep the engine pure and tested.
+- ERP writes go through `db/client.ts` (`saveInvoice`, `savePurchaseOrder`) so `updated_by` is set and the database triggers write the change log; never write ERP rows with raw SQL from code.
+- Schema changes: write a file in `supabase/migrations/` (timestamped name), apply with the Supabase MCP `apply_migration`, run `get_advisors`, then `npm run db:types`. Re-seed with `npm run hadarim:seed` when the seed package changes.
+- The repository is public: no secrets, no customer data.
 
-All run from the repo root; add `--json` for machine-readable output, `--project <id>` for another project (default `HADARIM`).
+## Commands
 
-| Command | Use it for |
-| --- | --- |
-| `npm run bakara -- status` | Connection, counts, headline forecast, control status, today's ERP changes |
-| `npm run bakara -- control run [--force]` | Run the four checks on live data and open the control; prints the steps, the summary and the first finding card |
-| `npm run bakara -- control show` | All findings with their decision state, positives ("נבדק ונמצא תואם") |
-| `npm run bakara -- decide <finding\|kind> <choiceId>` or `--text "…"` | Record the user's decision on a finding (kinds: allocation, unit, price, coverage) |
-| `npm run bakara -- route <finding\|kind> update\|refer_accounting\|forecast_only\|refer_roi` | Apply the route after a "yes" decision; `update` writes the ERP and re-reads it |
-| `npm run bakara -- quote <finding\|kind> accept\|reject` | Accept a found quote as an estimate (opens a task) or reject it |
-| `npm run bakara -- config [--trends on\|off] [--by-building on\|off] [--ceo on\|off] [--save]` | Report structure (scene 7) and saving the configuration (scene 8) |
-| `npm run bakara -- report [--ceo] [--md path] [--docx path] [--label "…"] [--no-save]` | Build the report from the current state; saves a version to `report_versions`; Markdown to read/quote, Word to hand over |
-| `npm run bakara -- ask "<question>"` | The scripted questions (what changed, quantity vs price, closed issues, still-estimate items, why development rose) |
-| `npm run bakara -- erp set-section <invoiceId> <sectionId> --by <person> [--note "…"]` | ERP write: re-allocate an invoice (also how the presenter's scene-1 change is made without the browser) |
-| `npm run bakara -- erp set-po <poId> --qty --unit --price --by <person>` | ERP write: correct a purchase order (amount must stay equal) |
-| `npm run bakara -- erp set-building <invoiceId> <A\|B\|משותף> --by <person>` | ERP write: tag an invoice with a building |
-| `npm run bakara -- erp new-invoice --supplier --docno --date --amount --desc --section [--contract] [--attachment] --by` | ERP write: key in an invoice (scene-1 variant B) |
-| `npm run bakara -- finalize` | Close the control as the final version |
-| `npm run bakara -- reset [--variant A\|B]` | Restore the seed and clear the control (rehearsals) |
+```bash
+npm run dev                 # v1 at /, Hadarim at /hadarim.html
+npm test                    # vitest (RUN_DB_TESTS=1 adds the live round trip)
+npm run test:e2e            # Playwright (offline data; RUN_DB_E2E=1 adds the live browser test)
+npm run build               # both entries; GitHub Pages deploys main
+npm run bakara -- status    # the CLI tools (see scripts/bakara.ts header for all commands)
+npm run hadarim:seed        # load the generator package into Supabase and snapshot it as the seed
+npm run hadarim:reset       # restore the seed
+```
 
-For anything the CLI does not answer, query the database read-only with the Supabase MCP (`execute_sql`, SELECT only). Tables: `projects, people, suppliers, sections, contracts, documents, invoices, purchase_orders, boq_lines, forecast_versions, forecast_sections, forecast_lines, open_issues, change_log, controls, decisions, forecast_adjustments, data_corrections, audit, report_versions`; every table is keyed by `project_id`. Never write through SQL — writes bypass attribution.
-
-Skills with step-by-step procedures: `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`.
-
-## The session in practice (the demo script)
-
-1. Rehearsal? `reset` first (ask).
-2. When asked for a control ("תכין בקרה תקציבית"): `control run`, then walk the findings **one at a time**: present the card as the tool printed it (הבעיה · המקורות · המשמעות · ההחלטה הנדרשת), wait for the decision, apply it (`decide` → `route` / `quote`), report what happened and the verification line, move to the next card. Keep the headline forecast visible (48.00 → 48.24 → 48.36 in the seed scenario).
-3. When all findings are handled: `report --md <path>`; give the executive summary and the path; adapt with `config` on request and rebuild.
-4. Questions: `ask` first; if it has no answer, SQL; always cite the source (section of the report, document, record).
-
-## Repository map and dev commands
-
-- `src/hadarim/` — the Hadarim product: `data/` (deterministic generator, document pages), `engine/` (checks, commands, working forecast, report model, conversation), `db/` (Supabase client, session persistence, generated types), `features/` (ERP screens, control chat, report), `export/` (Word, Markdown). `scripts/bakara.ts` is the CLI; `scripts/seed-supabase.ts` / `reset-supabase.ts` load and restore the seed.
-- `src/` (rest) — the earlier v1 demo (`index.html`); leave it alone unless asked.
-- `supabase/migrations/` — schema; apply with the Supabase MCP `apply_migration` and regenerate `src/hadarim/db/types.ts` with `npm run db:types`.
-- Tests: `npm test` (vitest; DB round trip with `RUN_DB_TESTS=1`), `npm run test:e2e` (Playwright, offline data; online browser test with `RUN_DB_E2E=1`). `npm run build` before committing UI changes.
-- Git: commit on `main` at meaningful boundaries; the repository is public — no secrets, the publishable key is fine.
+Commit on `main` at meaningful boundaries. The live database is shared: opt-in live tests mutate it, so reset afterwards.
