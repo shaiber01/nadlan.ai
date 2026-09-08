@@ -15,7 +15,6 @@
  *   npm run bakara -- quote <finding|kind> accept|reject
  *   npm run bakara -- config [--trends on|off] [--by-building on|off] [--ceo on|off] [--save]
  *   npm run bakara -- report [--ceo] [--md path] [--docx path] [--label "..."] [--no-save]
- *   npm run bakara -- ask "<question in Hebrew>"
  *   npm run bakara -- finalize
  *   npm run bakara -- tool <name> ['{"json":"args"}']   # any tool of the MCP registry (src/hadarim/tools), e.g. tool get_forecast '{"sectionId":"03"}'
  *   npm run bakara -- tools                            # list the registry
@@ -31,7 +30,6 @@ import { loadState, nowStamp, saveReportVersion, saveState } from "../src/hadari
 import type { HFinding } from "../src/hadarim/engine/checks";
 import { sectionLabel } from "../src/hadarim/engine/checks";
 import { confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
-import { handleUserText } from "../src/hadarim/engine/conversation";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { ChatMessage, RouteId, V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -102,7 +100,6 @@ function renderMessage(m: ChatMessage, state: V2State): string[] {
       break;
     default:
       lines.push(m.textHe);
-      if (m.sourcesHe?.length) lines.push(`  מקורות: ${m.sourcesHe.join(" · ")}`);
       if (m.documentId) lines.push(`  מסמך: ${m.documentId}`);
       if (options) lines.push(`  אפשרויות: ${options}`);
   }
@@ -308,14 +305,8 @@ async function main() {
       say(`✓ גרסת דוח נשמרה במסד הנתונים (report_versions #${id})`);
     }
     result = { ok: true, tab, report, markdown: md, docxPath };
-  } else if (command === "ask") {
-    let state = await loadState(projectId);
-    const question = [sub, ...rest].filter(Boolean).join(" ");
-    if (!question) fail('ask "<שאלה>"');
-    state = await apply(state, (s) => handleUserText(s, question));
-    result = { ok: true, answer: state.control.messages.filter((m) => m.role === "system").map((m) => ({ textHe: m.textHe, sourcesHe: m.sourcesHe, documentId: m.documentId })) };
   } else {
-    fail("פקודות: status · reset · erp … · control run|show · decide · route · quote · config · report · ask · finalize");
+    fail("פקודות: status · reset · erp … · control run|show · decide · route · quote · config · report · finalize · tools · tool <name> [json]");
   }
 
   if (asJson) console.log(JSON.stringify(result, null, 2));

@@ -770,7 +770,7 @@ export function CeoPage({ report }: { report: ReportModel }) {
           <strong>סיכון עיקרי:</strong> {c.riskLineHe}
         </p>
       ) : null}
-      <p className="h2-report-ceo-note">אותם מספרים, אותם מקורות — מקושר לבקרה 09/2026 ({h.controlLabelHe}). אין כאן מספר שלא נמצא בדוח המלא.</p>
+      <p className="h2-report-ceo-note">אותם מספרים, אותם מקורות — מקושר לאותה בקרה ({h.controlLabelHe}). אין כאן מספר שלא נמצא בדוח המלא.</p>
       <ReportFooter />
     </article>
   );

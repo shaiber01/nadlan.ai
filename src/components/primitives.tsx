@@ -171,9 +171,9 @@ export function Field({ label, children, hint, error }: { label: string; childre
   );
 }
 
-export function Chip({ active, onClick, children, guide }: { active?: boolean; onClick?: () => void; children: ReactNode; guide?: string }) {
+export function Chip({ active, onClick, children, guide, "data-testid": testId }: { active?: boolean; onClick?: () => void; children: ReactNode; guide?: string; "data-testid"?: string }) {
   return (
-    <button type="button" className="chip" aria-pressed={active} onClick={onClick} data-guide={guide}>
+    <button type="button" className="chip" aria-pressed={active} onClick={onClick} data-guide={guide} data-testid={testId}>
       {children}
     </button>
   );

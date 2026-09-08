@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
-import { handleUserText } from "../src/hadarim/engine/conversation";
+import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -184,7 +184,7 @@ describe("Hadarim v2 engine — the report", () => {
 
   it("adds the comparison section, the building split and the CEO page on request", () => {
     const { final } = runScript();
-    let s = handleUserText(final, "תוסיפי השוואה לבקרה הקודמת ומגמות");
+    let s = setReportConfig(final, { includeTrends: true });
     expect(s.control.reportConfig.includeTrends).toBe(true);
     let r = buildReport(pkg, s);
     expect(r.trends.comparison![1]).toEqual(["תחזית כוללת", "48.00 מ׳", "48.36 מ׳", "+0.36 מ׳"]);
@@ -193,7 +193,7 @@ describe("Hadarim v2 engine — the report", () => {
     expect(row("ברזל — תחזית סעיף")[3]).toBe("+8%");
     expect(row("פיתוח — תחזית סעיף")[3]).toBe("+4%");
     expect(row("פיתוח — נרשם")[3]).toContain("180,000");
-    s = handleUserText(s, "תציגי את הטבלה לפי בניין");
+    s = setReportConfig(s, { splitByBuilding: true });
     r = buildReport(pkg, s);
     const rows = r.sections.byBuilding!;
     expect(rows.map((x) => x.building)).toEqual(["A", "B", "חניון", "משותף"]);
@@ -213,19 +213,17 @@ describe("Hadarim v2 engine — the report", () => {
     expect(tagged.sections.byBuilding!.find((x) => x.building === "A")!.recorded).toBe(rows.find((x) => x.building === "A")!.recorded + 180_000);
     expect(tagged.sections.byBuildingNoteHe).toContain("שויך לבניין A");
     expect(taggedState.erp.changeLog.at(-1)).toMatchObject({ recordId: "1147", field: "בניין", after: "A" });
-    s = handleUserText(s, "תכיני גרסה לדנה — עמוד אחד");
+    s = setReportConfig(s, { ceoVersion: true });
     expect(s.control.reportConfig.ceoVersion).toBe(true);
     r = buildReport(pkg, s);
     expect(r.ceo.keyTable).toHaveLength(4);
     expect(r.ceo.changes).toHaveLength(2);
-    // scene 7: the CEO-version message offers the exports and the hand-off; scene 8: the full save prompt
-    const ceoMessage = [...s.control.messages].reverse().find((m) => m.options?.some((o) => o.id === "send_dana"))!;
-    expect(ceoMessage.options!.map((o) => o.labelHe)).toEqual(["פתח את הדוח", "ייצוא PDF", "ייצוא Word", "שלח לדנה"]);
-    const savePrompt = lastSystem(s);
-    expect(savePrompt.textHe).toContain("מה יישמר");
-    expect(savePrompt.textHe).toContain("פילוח לפי בניין");
-    expect(savePrompt.textHe).toContain("מה לא יישמר: הנתונים והמסקנות");
-    expect(savePrompt.options!.map((o) => o.labelHe)).toEqual(["שמור", "לא עכשיו"]);
+    // scene 8: the save prompt says what a saved configuration keeps and what it never keeps
+    const savePrompt = savePromptHe(s.control.reportConfig);
+    expect(savePrompt).toContain("מה יישמר");
+    expect(savePrompt).toContain("פילוח לפי בניין");
+    expect(savePrompt).toContain("גרסה נפרדת למנכ״לית");
+    expect(savePrompt).toContain("מה לא יישמר: הנתונים והמסקנות");
     s = sendReport(s, "DANA");
     expect(lastSystem(s).kind).toBe("log");
     expect(lastSystem(s).textHe).toContain("נשלח לדנה");
@@ -235,31 +233,30 @@ describe("Hadarim v2 engine — the report", () => {
     expect(resetDemo().savedConfig).toBeNull();
   });
 
-  it("answers the scene-9 questions from the data", () => {
+  it("the data behind the scene-9 questions is in the report model (the agent answers from it)", () => {
     const { final } = runScript();
-    const ask = (s: V2State, q: string) => lastSystem(handleUserText(s, q)).textHe;
-    expect(ask(final, "מה השתנה בבקרה האחרונה לעומת הקודמת?")).toContain("360,000");
-    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toMatch(/^לא\./);
-    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("300 × 4,000");
-    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("300 טון בשתי הבקרות");
-    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("הפרש: 240,000 ₪");
-    expect(ask(final, "אילו נושאים מהבקרה הקודמת כבר נסגרו?")).toContain("נסגרו 2 מתוך 3");
-    const estimate = ask(final, "מה עדיין מבוסס על אומדן ולא על הזמנה?");
-    expect(estimate).toContain("8,277,400 ₪");
-    expect(estimate).toContain("ארבע חבילות שטרם נחתמו");
-    expect(estimate).toContain("6,700,000 ₪");
-    expect(estimate).toContain("יתרת ברזל 288 טון (1,382,400 ₪ — 12 טון כבר הוזמנו");
-    expect(estimate).toContain("קו ניקוז חוץ (120,000 ₪");
-    expect(estimate).toContain("הקצאות פנימיות של הנהלה ופיקוח (1,100,000 ₪) אינן רכש");
-    expect(ask(final, "למה פיתוח עלה ביותר מ-120 אלף?")).toContain("180,000");
-    expect(ask(final, "מה מזג האוויר?")).toContain("בדמו אפשר לשאול");
+    const r = buildReport(pkg, setReportConfig(final, { includeTrends: true }));
+    // what changed and why: 4a carries the typed changes, 4b the corrections
+    expect(r.changes.forecastTotal).toBe(360_000);
+    expect(r.changes.forecast.map((c) => c.typeHe)).toEqual(["שינוי מחיר", "פער כיסוי חוזי"]);
+    expect(r.changes.corrections.map((c) => c.recordHe)).toEqual(expect.arrayContaining(["חשבון 1147", "הזמנה 2291"]));
+    // price, not quantity: the steel remainder keeps its 300 t and moves from 4,000 to 4,800 per ton
+    const steel = r.working.sections.find((s) => s.sectionId === "03")!;
+    const remainder = steel.lines.filter((l) => l.kind === "uncovered" || l.basis === "po");
+    expect(remainder.reduce((a, l) => a + (l.qty ?? 0), 0)).toBe(300);
+    expect(remainder.every((l) => l.unitPrice === 4_800)).toBe(true);
+    // issues closed since the previous control, and what is still an estimate
+    expect(r.issues.closed).toHaveLength(2);
+    expect(r.appendices.uncoveredTotal).toBe(8_277_400);
+    expect(r.appendices.allocationTotal).toBe(1_100_000);
+    expect(r.trends.comparison!.find((row) => row[0].startsWith("פיתוח — נרשם"))![3]).toContain("180,000");
   });
 
-  it("treats free text during a finding as a decision", () => {
+  it("free text on a finding card is a decision", () => {
     let s = reviewFindings(revealAllSteps(startControl(updateInvoiceSection(initialState(), 1147, "02", "SARIT"), "בקרה")));
     const first = s.control.messages.filter((m) => m.kind === "finding").at(-1)!.findingId!;
     const kind = s.control.findings.find((f) => f.id === first)!.kind;
-    s = handleUserText(s, kind === "allocation" ? "כן, זה לפיתוח" : "צריך להזמין, תחפשי הצעה");
+    s = decide(s, first, null, kind === "allocation" ? "כן, זה לפיתוח" : "צריך להזמין, תחפשי הצעה");
     expect(s.control.decisions[first]).toBeDefined();
     expect(s.control.decisions[first].pending ?? s.control.decisions[first].status).toBeTruthy();
     const cfg = setReportConfig(s, { splitByBuilding: true });

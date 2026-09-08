@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Hadarim v2: the whole demo script end to end (hadarimdemoscript.md scenes 1–9) through the real UI,
- * plus persistence, reset, exports and the clean-data trap.
+ * Hadarim v2: the demo script end to end (hadarimdemoscript.md scenes 1–8) through the real UI, plus
+ * persistence, reset, exports and the clean-data trap. Scene 9 (free questions) belongs to the Claude
+ * agent, not to the web page — the panel points there.
  */
 
 async function fresh(page: Page) {
@@ -20,13 +21,8 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e/screenshots/hadarim-${name}.png`, fullPage: false });
 }
 
-async function say(page: Page, text: string) {
-  await page.getByTestId("chat-input").fill(text);
-  await page.getByTestId("chat-send").click();
-}
-
-async function lastMessage(page: Page) {
-  return page.getByTestId("chat-message").last();
+async function startControl(page: Page) {
+  await page.getByTestId("control-start").click();
 }
 
 async function option(page: Page, id: string) {
@@ -54,7 +50,7 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     expect(errors).toEqual([]);
   });
 
-  test("scenes 2–9: control, four decisions, living report, configuration, questions", async ({ page }) => {
+  test("scenes 2–8: control, four decisions, living report, configuration", async ({ page }) => {
     test.setTimeout(120_000);
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -71,7 +67,7 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await page.getByTestId("go-control").click();
     await expect(page.getByTestId("control-app")).toBeVisible();
     await expect(page.getByTestId("control-headline")).toContainText("48,000,000 ₪");
-    await say(page, "תכיני בקרה תקציבית להדרים");
+    await startControl(page);
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible();
     await expect(page.getByTestId("chat-message").filter({ hasText: "ששונתה היום" })).toBeVisible();
     await shot(page, "03-control-ready");
@@ -126,42 +122,31 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await expect(page.getByTestId("report-comparison")).toHaveCount(0);
     await shot(page, "09-report");
 
-    // scene 7: three live changes
-    await page.getByTestId("control-back-to-chat").click();
-    await say(page, "תוסיפי השוואה לבקרה הקודמת ומגמות");
-    await option(page, "open");
+    // scene 7: three live changes to the report's structure
+    await page.getByTestId("report-toggle-trends").click();
     await expect(page.getByTestId("report-comparison")).toContainText("48.36");
     await shot(page, "10-report-comparison");
-    await page.getByTestId("control-back-to-chat").click();
-    await say(page, "תציגי את הטבלה לפי בניין");
-    await option(page, "open");
+    await page.getByTestId("report-toggle-building").click();
     await expect(page.getByTestId("report-by-building")).toContainText("משותף");
     await shot(page, "11-report-by-building");
-    await page.getByTestId("control-back-to-chat").click();
     // scene 7, change 2: the "[שנה]" affordance tags invoice 1147 with a building and the split follows
-    await option(page, "open");
     await page.getByTestId("report-building-change-1147-A").click();
     await expect(page.getByTestId("report-by-building-note")).toContainText("שויך לבניין A");
-    await page.getByTestId("control-back-to-chat").click();
-    await say(page, "תכיני גרסה לדנה — עמוד אחד");
-    // scene 7, change 3: the message carries the exports and the hand-off; scene 8: the full save prompt
-    await expect(page.getByTestId("chat-option-send_dana").last()).toBeVisible();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "מה יישמר" }).last()).toBeVisible();
-    await page.getByTestId("chat-option-send_dana").last().click();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נשלח לדנה" }).last()).toBeVisible();
-    const chatDownload = page.waitForEvent("download");
-    await page.getByTestId("chat-option-export_docx").last().click();
-    expect((await chatDownload).suggestedFilename()).toMatch(/\.docx$/);
-    await expect(page.getByTestId("report-view")).toBeVisible();
+    // scene 7, change 3: the CEO version, its hand-off and the Word export
+    await page.getByTestId("report-toggle-ceo").click();
     await page.getByTestId("report-tab-ceo").click();
-    await expect(page.getByTestId("report-view")).toContainText("אותם מספרים");
+    await expect(page.getByTestId("report-ceo")).toBeVisible();
     await shot(page, "12-report-ceo");
+    await page.getByTestId("report-send-ceo").click();
     await page.getByTestId("report-tab-full").click();
     await expect(page.getByTestId("report-material-02")).toBeVisible();
     await expect(page.getByTestId("report-material-12")).toContainText("בסיס 0%");
 
-    // scene 8: save the configuration
+    // scene 8: save the configuration — the prompt says what is kept and what never is
     await page.getByTestId("report-save-config").click();
+    await expect(page.getByTestId("report-save-prompt")).toContainText("מה יישמר");
+    await expect(page.getByTestId("report-save-prompt")).toContainText("מה לא יישמר");
+    await page.getByTestId("report-save-confirm").click();
     await expect(page.getByTestId("report-view")).toContainText("תצורת בקרה — הדרים");
 
     // exports: Word is a real download; PDF goes through the browser print dialog
@@ -177,15 +162,12 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await page.getByTestId("report-export-pdf").click();
     expect(await page.evaluate(() => (window as unknown as { __printed: boolean }).__printed)).toBe(true);
 
-    // scene 9: questions
+    // back in the panel: the hand-off was logged, and free questions are routed to the agent
     await page.getByTestId("control-back-to-chat").click();
-    await say(page, "אז החריגה בברזל נובעת מזה שקנינו יותר?");
-    await expect(await lastMessage(page)).toContainText("300 × 4,000");
-    await say(page, "אילו נושאים מהבקרה הקודמת כבר נסגרו?");
-    await expect(await lastMessage(page)).toContainText("נסגרו 2 מתוך 3");
-    await say(page, "למה פיתוח עלה ביותר מ-120 אלף?");
-    await expect(await lastMessage(page)).toContainText("180,000");
-    await shot(page, "13-questions");
+    await expect(page.getByTestId("chat-message").filter({ hasText: "נשלח לדנה" }).last()).toBeVisible();
+    await expect(page.getByTestId("chat-agent-hint")).toContainText("claude --agent bakara");
+    await expect(page.getByTestId("chat-input")).toHaveCount(0);
+    await shot(page, "13-panel-after-report");
 
     // the ERP shows the corrected invoice and the audit trail
     await page.getByTestId("go-erp").click();
@@ -210,7 +192,7 @@ test.describe("Hadarim v2 — the scripted demo", () => {
   test("clean data: three findings, no allocation trap", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("go-control").click();
-    await say(page, "תכיני בקרה תקציבית להדרים");
+    await startControl(page);
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 3 ממצאים" })).toBeVisible();
     await expect(page.getByTestId("chat-message").filter({ hasText: "ששונתה היום" })).toHaveCount(0);
   });
@@ -219,7 +201,7 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await fresh(page);
     await page.getByTestId("skip-motion").uncheck();
     await page.getByTestId("go-control").click();
-    await say(page, "תכיני בקרה תקציבית להדרים");
+    await startControl(page);
     await page.getByTestId("steps-skip").click();
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 3 ממצאים" })).toBeVisible();
     await expect(page.getByTestId("chat-option-review").last()).toBeVisible();

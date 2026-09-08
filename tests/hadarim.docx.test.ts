@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, route, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
-import { handleUserText } from "../src/hadarim/engine/conversation";
+import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, route, startControl, updateInvoiceSection, setReportConfig } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
 import { exportReportDocx } from "../src/hadarim/export/docx";
@@ -28,8 +27,7 @@ function runScript(): V2State {
 describe("Hadarim v2 — Word export", () => {
   it("produces a real .docx for the full report of the scripted control", async () => {
     let s = runScript();
-    s = handleUserText(s, "תוסיפי השוואה לבקרה הקודמת ומגמות");
-    s = handleUserText(s, "תציגי את הטבלה לפי בניין");
+    s = setReportConfig(s, { includeTrends: true, splitByBuilding: true });
     const report = buildReport(pkg, s);
     expect(report.trends.comparison).not.toBeNull();
     expect(report.sections.byBuilding).not.toBeNull();
@@ -41,7 +39,7 @@ describe("Hadarim v2 — Word export", () => {
   });
 
   it("produces the one-page CEO version", async () => {
-    const s = handleUserText(runScript(), "תכיני גרסה לדנה — עמוד אחד");
+    const s = setReportConfig(runScript(), { ceoVersion: true });
     const blob = await exportReportDocx(buildReport(pkg, s), "ceo");
     expect(blob.size).toBeGreaterThan(2 * 1024);
   });

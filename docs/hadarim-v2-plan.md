@@ -113,7 +113,9 @@ Step 5 — done (2026-09-08/09): the tool surface became a general-purpose MCP s
 - Schema: `controls.notes`, `projects.physical_progress_pct` / `schedule`, `data_corrections.finding_id` nullable; types regenerated; re-seeded.
 - Verified: 90 vitest tests (new `tests/hadarim.tools.test.ts`: registry, operations, notes → report, permissions; opt-in MCP stdio round trip), the whole demo script through the tools on the live database (48.00 → 48.24 → 48.36, tasks OI-1..3 + TASK-1..3, report version saved, reset), MCP client smoke (39 tools, JSON schemas, errors as `isError`), security advisor clean.
 
-Next: (6) package `.claude/` + `mcp/` as a Claude Code plugin; a report viewer in the web app for saved `report_versions`; later: retire the browser chat (`conversation.ts` is the last scenario-scripted piece), Supabase Auth and real RLS, more projects.
+Step 6 — done (2026-09-09, user chose "retire the text box" over embedding an LLM in the browser): `engine/conversation.ts` (regex intents and five canned scene-9 answers) is deleted. The control panel keeps the engine's messages, the finding cards with their decision buttons and free-text decisions, and the progressive steps; the control starts from a button; a footer points free questions to the agent (`claude --agent bakara`). Report structure changes, the CEO hand-off ("שלח ל<מנכ״ל>", logged) and the configuration save (with the standard's "what is kept / never kept" prompt) live in the report pane. The CLI lost `ask`. Scene 9 of the demo script is the agent's, and the e2e suite covers scenes 1–8 through the UI.
+
+Next: (7) package `.claude/` + `mcp/` as a Claude Code plugin; a report viewer in the web app for saved `report_versions`; later: Supabase Auth and real RLS, more projects.
 
 ## 5. Build phases for the next session
 

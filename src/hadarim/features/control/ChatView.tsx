@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Button, Chip } from "../../../components/primitives";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import { confirmQuote, decide, pkg, revealAllSteps, reviewFindings, route, saveConfig, sendReport } from "../../engine/commands";
-import { handleUserText, suggestedQuestionsHe } from "../../engine/conversation";
+import { confirmQuote, decide, pkg, revealAllSteps, reviewFindings, route, saveConfig, sendReport, startControl } from "../../engine/commands";
 import type { ChatMessage, ChatOption } from "../../engine/model";
 import { FindingCard } from "./FindingCard";
 import { dateHe, timeHe } from "./fmt";
 
-const SCENE_7_HE = ["תוסיפי השוואה לבקרה הקודמת ומגמות", "תציגי את הטבלה לפי בניין", "תכיני גרסה לדנה — עמוד אחד"];
-const START_HE = "תכיני בקרה תקציבית להדרים";
-
-/** The control conversation: messages, finding cards, progressive steps and the composer. */
+/**
+ * The control panel: the engine's messages, finding cards with their decision buttons and free-text
+ * decisions, and the progressive steps. There is no free-text composer — free conversation with the
+ * controller happens in the Claude agent (`claude --agent bakara`); the report's structure is changed
+ * in the report pane.
+ */
 export function ChatView() {
   const state = useV2State();
   const ui = useUi();
-  const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const messages = state.control.messages;
@@ -29,7 +29,6 @@ export function ChatView() {
     const lastUser = visible.map((m) => m.role).lastIndexOf("user");
     return new Set(visible.filter((m, i) => i > lastUser && m.options?.length).map((m) => m.id));
   }, [visible]);
-  const activeOptionsId = useMemo(() => [...visible].reverse().find((m) => m.options?.length && activeOptionIds.has(m.id))?.id ?? null, [visible, activeOptionIds]);
   const doneCount = pendingSteps?.steps?.filter((st) => st.done).length ?? -1;
 
   useEffect(() => {
@@ -76,39 +75,7 @@ export function ChatView() {
     }
   };
 
-  const send = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    run((s) => handleUserText(s, trimmed));
-    setText("");
-  };
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    send(text);
-  };
-
-  const activeFinding = useMemo(() => {
-    const m = visible.find((x) => x.id === activeOptionsId);
-    return m?.kind === "finding" ? state.control.findings.find((f) => f.id === m.findingId) : undefined;
-  }, [visible, activeOptionsId, state.control.findings]);
-
-  const suggestions = useMemo(() => {
-    switch (state.control.status) {
-      case "idle":
-        return [START_HE];
-      case "running":
-        return [];
-      case "reviewing":
-        if (activeFinding?.kind === "coverage") return ["צריך להזמין. יש הצעה בתיקייה"];
-        if (activeFinding?.kind === "allocation") return ["כן, זה שייך לפיתוח"];
-        return [];
-      case "report":
-        return [...SCENE_7_HE.filter((_q, i) => !(i === 0 && state.control.reportConfig.includeTrends) && !(i === 1 && state.control.reportConfig.splitByBuilding) && !(i === 2 && state.control.reportConfig.ceoVersion)), ...suggestedQuestionsHe];
-    }
-  }, [state.control.status, state.control.reportConfig, activeFinding]);
-
-  const previous = pkg.forecasts.find((f) => f.controlDate === "2026-08-01")!;
+  const previous = pkg.forecasts.filter((f) => f.status === "final" && f.controlDate < state.control.controlDate).sort((a, b) => (a.controlDate < b.controlDate ? 1 : -1))[0];
 
   return (
     <div className="h2c-chat">
@@ -116,10 +83,12 @@ export function ChatView() {
         {visible.length === 0 ? (
           <div className="h2c-welcome" data-testid="chat-welcome">
             <div className="h2c-welcome-title">בקרה תקציבית · {pkg.project.nameHe}</div>
-            <div className="muted">
-              הבקרה הקודמת {dateHe(previous.controlDate)} · תחזית {(previous.totalEac / 1_000_000).toFixed(1)} מ׳ ₪ · תקציב {(pkg.project.budgetVersion.amount / 1_000_000).toFixed(1)} מ׳ ₪
-            </div>
-            <div className="muted small">בקשו בקרה חדשה בשיחה. הבדיקות רצות על הנתונים החיים במערכת המידע.</div>
+            {previous ? (
+              <div className="muted">
+                הבקרה הקודמת {dateHe(previous.controlDate)} · תחזית {(previous.totalEac / 1_000_000).toFixed(1)} מ׳ ₪ · תקציב {(pkg.project.budgetVersion.amount / 1_000_000).toFixed(1)} מ׳ ₪
+              </div>
+            ) : null}
+            <div className="muted small">הבדיקות רצות על הנתונים החיים במערכת המידע.</div>
           </div>
         ) : null}
         {visible.map((m) => (
@@ -128,21 +97,18 @@ export function ChatView() {
         <div ref={endRef} />
       </div>
       <div className="h2c-composer no-print">
-        {suggestions.length ? (
-          <div className="h2c-suggestions">
-            {suggestions.map((q) => (
-              <Chip key={q} onClick={() => send(q)} data-testid="chat-suggestion">
-                {q}
-              </Chip>
-            ))}
+        {state.control.status === "idle" ? (
+          <div className="h2c-start">
+            <Button variant="primary" onClick={() => run((s) => startControl(s, "בקרה תקציבית"))} data-testid="control-start">
+              הכיני בקרה תקציבית
+            </Button>
+            <span className="muted small">בקרה {dateHe(state.control.controlDate)} · פרויקט {pkg.project.nameHe}</span>
           </div>
-        ) : null}
-        <form className="h2c-input" onSubmit={submit}>
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={state.control.status === "running" ? "הבקרה רצה…" : "כתבו הודעה למערכת הבקרה…"} aria-label="הודעה" data-testid="chat-input" />
-          <Button type="submit" variant="primary" disabled={!text.trim()} data-testid="chat-send">
-            שלח
-          </Button>
-        </form>
+        ) : (
+          <div className="muted small h2c-agent-hint" data-testid="chat-agent-hint">
+            החלטות — בכפתורי הכרטיסים · מבנה הדוח — בלשונית הדוח · שאלות ושיחה חופשית — עם הסוכן ״בקרה״ ב-Claude Code (<code>claude --agent bakara</code>)
+          </div>
+        )}
         {error ? (
           <div className="h2c-error" role="alert" data-testid="chat-error">
             {error}
@@ -225,41 +191,6 @@ function Message({ message, active, onOption, onFreeText, onSkip }: { message: C
       return wrap(
         <div className="h2c-log">
           <span aria-hidden="true">📄</span> {message.textHe}
-        </div>,
-      );
-    case "answer":
-      return wrap(
-        <div className="h2c-bubble">
-          <p>{message.textHe}</p>
-          {message.tableRows?.length ? (
-            <table className="h2c-table">
-              <thead>
-                <tr>{message.tableRows[0].map((c, i) => <th key={i}>{c}</th>)}</tr>
-              </thead>
-              <tbody>
-                {message.tableRows.slice(1).map((row, r) => (
-                  <tr key={r}>{row.map((c, i) => <td key={i}>{c}</td>)}</tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-          {message.sourcesHe?.length || message.documentId ? (
-            <div className="h2c-answer-sources">
-              <span className="muted small">מקורות:</span>
-              {message.sourcesHe?.map((s, i) => (
-                <span key={i} className="h2c-source small">
-                  {s}
-                </span>
-              ))}
-              {message.documentId ? (
-                <button type="button" className="h2c-source is-link small" onClick={() => store.openDocument(message.documentId!)} data-testid="answer-open-document">
-                  פתח מסמך ↗
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          {options}
-          {time}
         </div>,
       );
     case "report":

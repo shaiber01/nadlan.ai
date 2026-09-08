@@ -96,15 +96,13 @@ export interface ChatOption {
 export interface ChatMessage {
   id: string;
   role: "user" | "system";
-  kind: "text" | "steps" | "finding" | "answer" | "report" | "log";
+  kind: "text" | "steps" | "finding" | "report" | "log";
   textHe: string;
   at: string;
   steps?: { textHe: string; done: boolean; spinner?: boolean }[];
   findingId?: string;
   options?: ChatOption[];
-  sourcesHe?: string[];
   documentId?: string;
-  tableRows?: string[][];
 }
 
 /** A note the controller adds to the control — feeds the report's risks, events, decisions and assumptions. */

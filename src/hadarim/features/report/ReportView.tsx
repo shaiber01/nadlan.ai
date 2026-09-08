@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Chip } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import { finalizeControl, pkg, saveConfig, setReportConfig } from "../../engine/commands";
+import { finalizeControl, pkg, saveConfig, savePromptHe, sendReport, setReportConfig } from "../../engine/commands";
 import { buildReport } from "../../engine/report";
 import { exportReportDocx } from "../../export/docx";
 import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
 import "./report.css";
-
-const DOCX_FILE = "בקרה_הדרים_2026-09.docx";
 
 /**
  * The living control report. Reads the store, builds the ReportModel and renders it — the full report
@@ -22,6 +20,9 @@ export function ReportView() {
   const tab: "full" | "ceo" = ui.control.reportTab === "ceo" && config.ceoVersion ? "ceo" : "full";
   const [busy, setBusy] = useState<"docx" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savePrompt, setSavePrompt] = useState(false);
+  const ceo = pkg.people.find((p) => /^מנכ/.test(p.roleHe));
+  const docxFile = `בקרה_${pkg.project.nameHe}_${state.control.controlDate.slice(0, 7)}${tab === "ceo" ? "_מנכל" : ""}.docx`;
 
   const setTab = (next: "full" | "ceo") => store.setUi((u) => ({ ...u, control: { ...u.control, reportTab: next } }));
 
@@ -47,7 +48,7 @@ export function ReportView() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = DOCX_FILE;
+      a.download = docxFile;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -100,7 +101,12 @@ export function ReportView() {
             <Button size="sm" onClick={exportDocx} busy={busy === "docx"} data-testid="report-export-docx">
               ייצוא Word
             </Button>
-            <Button size="sm" onClick={() => store.dispatch((s) => saveConfig(s, true))} data-testid="report-save-config" title={state.savedConfig ? `נשמר: ${state.savedConfig.savedAs}` : "שמירת מבנה הדוח לבקרות הבאות"}>
+            {config.ceoVersion && ceo ? (
+              <Button size="sm" onClick={() => store.dispatch((s) => sendReport(s, ceo.id))} data-testid="report-send-ceo" title="מסירה: אין תיבת דואר באב-טיפוס — המסירה נרשמת ביומן הבקרה">
+                שלח ל{ceo.nameHe}
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={() => setSavePrompt(true)} data-testid="report-save-config" title={state.savedConfig ? `נשמר: ${state.savedConfig.savedAs}` : "שמירת מבנה הדוח לבקרות הבאות"}>
               {state.savedConfig ? `נשמר: ${state.savedConfig.savedAs}` : "שמור תצורה"}
             </Button>
             <Button size="sm" variant="primary" onClick={() => store.dispatch(finalizeControl)} disabled={report.finalized} data-testid="report-finalize">
@@ -108,15 +114,42 @@ export function ReportView() {
             </Button>
           </div>
         </div>
+        {savePrompt ? (
+          <div className="h2-report-toolbar-row h2-report-save-prompt" role="dialog" aria-label="שמירת תצורה" data-testid="report-save-prompt">
+            <span className="small">{savePromptHe(config)}</span>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                store.dispatch((s) => saveConfig(s, true));
+                setSavePrompt(false);
+              }}
+              data-testid="report-save-confirm"
+            >
+              שמור
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                store.dispatch((s) => saveConfig(s, false));
+                setSavePrompt(false);
+              }}
+              data-testid="report-save-later"
+            >
+              לא עכשיו
+            </Button>
+          </div>
+        ) : null}
         <div className="h2-report-toolbar-row h2-report-chips">
           <span className="muted small">מבנה הדוח:</span>
-          <Chip active={config.includeTrends} onClick={() => toggle({ includeTrends: !config.includeTrends })}>
+          <Chip active={config.includeTrends} onClick={() => toggle({ includeTrends: !config.includeTrends })} data-testid="report-toggle-trends">
             השוואה ומגמות
           </Chip>
-          <Chip active={config.splitByBuilding} onClick={() => toggle({ splitByBuilding: !config.splitByBuilding })}>
+          <Chip active={config.splitByBuilding} onClick={() => toggle({ splitByBuilding: !config.splitByBuilding })} data-testid="report-toggle-building">
             פילוח לפי בניין
           </Chip>
-          <Chip active={config.ceoVersion} onClick={() => toggle({ ceoVersion: !config.ceoVersion })}>
+          <Chip active={config.ceoVersion} onClick={() => toggle({ ceoVersion: !config.ceoVersion })} data-testid="report-toggle-ceo">
             גרסה למנכ״לית
           </Chip>
           {tab === "full" ? (

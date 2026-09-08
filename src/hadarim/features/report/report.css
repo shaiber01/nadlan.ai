@@ -597,3 +597,14 @@ table.h2-report-key td:first-child {
   font-size: 13.5px;
   margin: 14px 0 6px;
 }
+
+/* the configuration-save prompt (standard: what is kept, what never is) */
+.h2-report-save-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-2, #f4f6f8);
+}

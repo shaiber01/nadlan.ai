@@ -57,8 +57,7 @@ test.describe("Hadarim online mode (shared database)", () => {
 
     // the control reads the database state: four findings, one on the record changed today
     await page.getByTestId("go-control").click();
-    await page.getByTestId("chat-input").fill("תכיני בקרה תקציבית להדרים");
-    await page.getByTestId("chat-send").click();
+    await page.getByTestId("control-start").click();
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible({ timeout: 15_000 });
 
     await page.getByTestId("reset-demo").click();

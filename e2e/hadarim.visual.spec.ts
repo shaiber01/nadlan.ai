@@ -17,9 +17,8 @@ async function fresh(page: Page) {
   await page.getByTestId("skip-motion").check();
 }
 
-async function say(page: Page, text: string) {
-  await page.getByTestId("chat-input").fill(text);
-  await page.getByTestId("chat-send").click();
+async function startControl(page: Page) {
+  await page.getByTestId("control-start").click();
 }
 
 async function option(page: Page, id: string) {
@@ -41,7 +40,7 @@ async function runWholeScript(page: Page) {
   await page.getByTestId("erp-invoice-section").selectOption("02");
   await page.getByTestId("erp-invoice-save").click();
   await page.getByTestId("go-control").click();
-  await say(page, "תכיני בקרה תקציבית להדרים");
+  await startControl(page);
   await option(page, "review");
   await option(page, "yes_target");
   await option(page, "update");
@@ -60,11 +59,11 @@ test.describe("Hadarim v2 — visual tour and ERP variants", () => {
     test.setTimeout(120_000);
     await fresh(page);
     await runWholeScript(page);
-    await say(page, "תוסיפי השוואה לבקרה הקודמת ומגמות");
-    await say(page, "תציגי את הטבלה לפי בניין");
-    await say(page, "תכיני גרסה לדנה — עמוד אחד");
     await option(page, "open");
     await expect(page.getByTestId("report-view")).toBeVisible();
+    await page.getByTestId("report-toggle-trends").click();
+    await page.getByTestId("report-toggle-building").click();
+    await page.getByTestId("report-toggle-ceo").click();
     await elementShot(page, "report-section-1", "exec-summary");
     await elementShot(page, "report-section-2", "status");
     await elementShot(page, "report-section-3", "sections-table");
@@ -109,7 +108,7 @@ test.describe("Hadarim v2 — visual tour and ERP variants", () => {
     // the script: "המערכת מקצה חשבון 1147" — variant B seeds the ERP without it
     await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", "1147");
     await page.getByTestId("go-control").click();
-    await say(page, "תכיני בקרה תקציבית להדרים");
+    await startControl(page);
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible();
     await option(page, "review");
     await expect(page.getByTestId("finding-card").first()).toContainText("נ.ת.ב.");

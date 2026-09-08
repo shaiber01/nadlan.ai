@@ -586,3 +586,19 @@
     padding: 0;
   }
 }
+
+/* no free-text composer: the control starts from a button; afterwards the footer routes free conversation to the agent */
+.h2c-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.h2c-agent-hint {
+  line-height: 1.5;
+}
+.h2c-agent-hint code {
+  font-size: 0.85em;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
