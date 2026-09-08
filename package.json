@@ -12,9 +12,13 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "hadarim:dump": "vite-node scripts/dump-hadarim.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "hadarim:seed": "vite-node scripts/seed-supabase.ts",
+    "hadarim:reset": "vite-node scripts/reset-supabase.ts",
+    "db:types": "supabase gen types typescript --project-id aevdlzncwkdosbzkgpgy --schema public > src/hadarim/db/types.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "docx": "^9.7.1",
     "fflate": "^0.8.2",
     "react": "^19.1.0",

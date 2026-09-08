@@ -88,6 +88,20 @@ A line-by-line re-read of the three specs against the built product found ten ga
 
 Left as data-driven deviations from the script's copy: three open issues (the standard's own §8 lists three) and 24 new invoices since the previous control (the data spec's volumes).
 
+## 4e. From demo to prototype: Supabase + a Claude agent (started 2026-09-08)
+
+Direction set by the user after the demo was complete: the ERP data moves to a shared Supabase Postgres project (`aevdlzncwkdosbzkgpgy`, same database for local and hosted), the mock ERP reads and writes it, and the control system becomes a Claude Code agent that runs from this folder, using the deterministic engine as tools (checks, working forecast, report, corrections) plus the Supabase MCP for SQL. The browser chat stays until the agent replaces it.
+
+Decisions (user, 2026-09-08): open access through the publishable key for now (RLS is enabled with one permissive policy per table, so tightening is a policy change); a "reset to seed" action; change log written by database triggers; everything keyed by `project_id` so more projects are rows.
+
+Step 1 — done:
+- `supabase/migrations/20260908210000_hadarim_schema.sql` (+ two follow-ups): reference tables (projects, people, suppliers, sections, documents, contracts), ERP tables (invoices, purchase_orders, boq_lines), forecast versions/sections/lines, open_issues, change_log with triggers on invoices and purchase_orders (`updated_by` / `update_note_he` columns carry the actor and note; seed inserts without an actor are not logged), control tables (controls, decisions, forecast_adjustments, data_corrections, audit, report_versions), a `seed` schema with `snapshot_project_seed()` and `reset_project()`, grants for the Data API (tables are no longer auto-exposed since 2026-04-28), FK indexes.
+- `scripts/seed-supabase.ts` (`npm run hadarim:seed`) loads the deterministic package and takes the seed snapshot; `scripts/reset-supabase.ts` (`npm run hadarim:reset`) restores it. `npm run db:types` regenerates `src/hadarim/db/types.ts`. Connection constants in `src/hadarim/db/config.ts` (publishable key is public by design; a secret key is never committed).
+- Verified against the project: 216 invoices (5 in review), recorded 20,070,000, section 07 = 2,280,000, 38 open POs, 118 BOQ lines, draft EAC 48,000,000, 5 change-log rows; a SQL edit of invoice 1147 produced the trigger row "סעיף תקציבי 07-פיתוח → 02-שלד by SARIT" and `reset_project` restored the seed. Security advisor clean.
+- Generator fix: `forceSum` now spreads the residual proportionally (one site-service invoice had gone negative); totals unchanged, one pinned trend value updated.
+
+Next steps: (2) ERP web app on Supabase; (3) engine CLI over database data; (4) the agent definition (`CLAUDE.md`, `.claude/agents/`, skills); (5) report viewer for saved versions; (6) plugin packaging.
+
 ## 5. Build phases for the next session
 
 1. Data package: generator + committed JSON + tests that assert every number in §2, the must-fire and must-not-fire sets, and the pre/post scene-1 states.

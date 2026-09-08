@@ -21,10 +21,17 @@ export function createRng(seed: number) {
 export type Rng = ReturnType<typeof createRng>;
 
 /** Adjust the last element so the array sums exactly to `target` (keeps the earlier elements untouched). */
-export function forceSum(values: number[], target: number): number[] {
+/**
+ * Scales a list of positive amounts so they sum exactly to `target`: the residual is spread
+ * proportionally (rounded to `step`) and the rounding remainder lands on the last item, so no
+ * single item absorbs the whole difference and none can turn negative.
+ */
+export function forceSum(values: number[], target: number, step = 10): number[] {
   const sum = values.reduce((a, b) => a + b, 0);
-  const out = [...values];
-  out[out.length - 1] += target - sum;
+  if (sum === 0 || values.length === 0) return [...values];
+  const out = values.map((v) => Math.round((v * target) / sum / step) * step);
+  const rounded = out.reduce((a, b) => a + b, 0);
+  out[out.length - 1] += target - rounded;
   return out;
 }
 

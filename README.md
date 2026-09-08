@@ -47,6 +47,18 @@ The script (nine scenes, ~10 minutes):
 
 The presenter strip switches screens, skips animation, picks the scene-1 variant and resets the demo (two-step). State persists in `localStorage` (`hadarim-v2`, `hadarim-v2-ui`). Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, working forecast, report model and conversation in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, docx) and `e2e/hadarim*.spec.ts` (the whole script through the UI, plus element screenshots in `e2e/screenshots/hadarim-v-*.png`).
 
+### Database (prototype)
+
+The Hadarim data also lives in a Supabase Postgres project shared by local and hosted runs (`src/hadarim/db/config.ts` holds the URL and the publishable key; the secret key is never committed). Schema and triggers are in `supabase/migrations/`; the change log is written by database triggers whenever an invoice or purchase order changes.
+
+```bash
+npm run hadarim:seed    # load the deterministic data package and snapshot it as the seed
+npm run hadarim:reset   # restore the seed and clear control sessions ("reset to seed")
+npm run db:types        # regenerate src/hadarim/db/types.ts after a migration
+```
+
+Access is open through the publishable key for now (a prototype decision); RLS is on with a permissive policy per table, so restricting access later is a policy change.
+
 ## Where to change things
 
 | What | Where |

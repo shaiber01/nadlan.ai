@@ -177,7 +177,7 @@ describe("Hadarim v2 engine — the report", () => {
     expect(r.appendices.uncovered.every((u) => u.source)).toBe(true);
     expect(r.executive.keyTable.find((k) => k.labelHe.startsWith("יתרה להשלמה"))!.valueHe).toBe("8,277,400 ₪");
     // 1.8: packages 6.7M + aluminium estimate (contract not yet signed) + steel 300 t × 4,000 + site-organisation extension
-    expect(r.trends.uncoveredSeries.map((p) => p.value)).toEqual([9_971_140, 8_277_400]);
+    expect(r.trends.uncoveredSeries.map((p) => p.value)).toEqual([9_976_030, 8_277_400]);
     expect(r.trends.uncoveredCommentaryHe).toContain("נחתם חוזה");
     expect(allIssues(final).length).toBe(5);
   });
