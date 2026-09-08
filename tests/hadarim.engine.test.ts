@@ -188,8 +188,11 @@ describe("Hadarim v2 engine — the report", () => {
     expect(s.control.reportConfig.includeTrends).toBe(true);
     let r = buildReport(pkg, s);
     expect(r.trends.comparison![1]).toEqual(["תחזית כוללת", "48.00 מ׳", "48.36 מ׳", "+0.36 מ׳"]);
-    expect(r.trends.comparison![2][3]).toBe("+8%");
-    expect(r.trends.comparison![3][3]).toContain("180,000");
+    // rows are derived from whatever changed: section forecasts that moved, then recorded amounts that moved by a transfer
+    const row = (prefix: string) => r.trends.comparison!.find((x) => x[0].startsWith(prefix))!;
+    expect(row("ברזל — תחזית סעיף")[3]).toBe("+8%");
+    expect(row("פיתוח — תחזית סעיף")[3]).toBe("+4%");
+    expect(row("פיתוח — נרשם")[3]).toContain("180,000");
     s = handleUserText(s, "תציגי את הטבלה לפי בניין");
     r = buildReport(pkg, s);
     const rows = r.sections.byBuilding!;

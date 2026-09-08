@@ -1,13 +1,15 @@
-import { CURRENT_CONTROL, EARLIER_CONTROL_TOTALS } from "../data/generate";
+import { CURRENT_CONTROL, EARLIER_CONTROL_TOTALS, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { SECTION_SHORT_HE } from "./checks";
+import { SECTION_SHORT_HE, boqPageFor, documentById, quoteFacts } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
-import { CHANGE_TYPE_HE, type V2State } from "./model";
+import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
 
 /**
  * Builds the control report model per `budgetcontrolreportstandard.md` (sections 0–11 and the CEO page)
- * from the live state. Every number is derived; the UI and the exporters only render this model.
+ * from the live state: the working forecast, the control's decisions, adjustments, corrections, tasks and
+ * the controller's notes (risks, events, decisions needed, assumptions). Every number is derived; the
+ * UI and the exporters only render this model. Nothing here is specific to one project.
  */
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
@@ -15,10 +17,14 @@ const mil = (v: number) => `${(v / 1_000_000).toFixed(2)} מ׳`;
 const num = (v: number) => v.toLocaleString("he-IL");
 const pct = (v: number, digits = 1) => `${v.toFixed(digits)}%`;
 const dateHe = (iso: string) => iso.slice(0, 10).split("-").reverse().map((p, i) => (i < 2 ? String(Number(p)) : p)).join(".");
+const monthHe = (ym: string) => (ym.length >= 7 ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : ym);
 const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
 const label = (id: SectionId) => `${id}-${SECTION_SHORT_HE[id]}`;
+const isolate = (s: string) => `⁨${s}⁩`;
 
 export const MATERIALITY = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
+/** Exposure assumed for an estimate based on a quote that may expire (stated as an assumption in the risk row). */
+const QUOTE_EXPIRY_EXPOSURE_PCT = 25;
 
 /** A clickable origin for a number: a document page (with an anchor), an ERP record, or an ERP screen. */
 export interface ReportSource {
@@ -145,7 +151,7 @@ export interface UncoveredRow {
 export interface ReportModel {
   header: ReportHeader;
   executive: { paragraphHe: string; keyTable: KeyRow[]; bulletsHe: string[]; decisionsHe: string[] };
-  status: { stageHe: string; physicalPct: number; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
+  status: { stageHe: string; physicalPct: number | null; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
   sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[] };
   changes: { forecast: ChangeRow[]; forecastTotal: number; corrections: CorrectionRow[] };
   material: MaterialSection[];
@@ -164,8 +170,16 @@ const BASIS_HE: Record<string, string> = { invoice: "חשבון מאושר", con
 
 function isMaterial(s: WorkingSection): boolean {
   const abs = Math.abs(s.variance);
-  const changed = s.change !== 0;
-  return changed || abs >= MATERIALITY.absoluteAlways || (abs >= MATERIALITY.absolute && abs >= (s.budget * MATERIALITY.pctOfSection) / 100);
+  return s.change !== 0 || abs >= MATERIALITY.absoluteAlways || (abs >= MATERIALITY.absolute && abs >= (s.budget * MATERIALITY.pctOfSection) / 100);
+}
+
+function personName(pkg: HadarimPackage, id: string | undefined | null): string {
+  return pkg.people.find((p) => p.id === id)?.nameHe ?? id ?? "—";
+}
+
+/** The person accountable for execution matters (VP execution if there is one, else the project manager). */
+function executionOwner(pkg: HadarimPackage, state: V2State): string {
+  return pkg.people.find((p) => p.roleHe.includes("ביצוע"))?.nameHe ?? personName(pkg, state.operatorId);
 }
 
 // ---------------------------------------------------------------------------
@@ -173,8 +187,8 @@ function isMaterial(s: WorkingSection): boolean {
 // ---------------------------------------------------------------------------
 
 function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): { rows: BuildingRow[]; noteHe: string; changeable: ReportModel["sections"]["byBuildingChangeable"] } {
-  const floorsA = pkg.project.buildings[0].floorsCast;
-  const floorsB = pkg.project.buildings[1].floorsCast;
+  const floorsA = pkg.project.buildings[0]?.floorsCast ?? 1;
+  const floorsB = pkg.project.buildings[1]?.floorsCast ?? 1;
   const shareA = floorsA / (floorsA + floorsB);
   const blank = (building: BuildingRow["building"]): BuildingRow => ({ building, budget: 0, recorded: 0, committed: 0, remainingCommitment: 0, uncovered: 0, eac: 0, variance: 0, variancePct: 0, basisPct: 0 });
   const rows: Record<string, BuildingRow> = { A: blank("A"), B: blank("B"), חניון: blank("חניון"), משותף: blank("משותף") };
@@ -194,7 +208,6 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
     for (const inv of invoices) byTag[inv.building ?? "משותף"] += inv.amount;
     if (section.split === "shared" || section.split === "parking") {
       const home = section.split === "parking" ? "חניון" : "משותף";
-      // an invoice explicitly tagged with a building is honoured even in a shared section (the "[שנה]" affordance)
       add("A", { budget: 0, recorded: byTag.A, committed: 0, remainingCommitment: 0, uncovered: 0 });
       add("B", { budget: 0, recorded: byTag.B, committed: 0, remainingCommitment: 0, uncovered: 0 });
       add(home, { budget: s.budget, recorded: s.recorded - byTag.A - byTag.B, committed: s.committed, remainingCommitment: s.remainingCommitment, uncovered: s.uncovered });
@@ -213,7 +226,6 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
     r.variancePct = r.budget ? (r.variance / r.budget) * 100 : 0;
     r.basisPct = r.eac ? Math.round(((r.recorded + r.remainingCommitment) / r.eac) * 100) : 100;
   }
-  // invoices corrected in this control that carry no building tag at source are called out explicitly and can be tagged
   const changeable: ReportModel["sections"]["byBuildingChangeable"] = [];
   for (const c of state.control.corrections.filter((x) => x.recordType === "invoice")) {
     const inv = state.erp.invoices.find((i) => String(i.id) === c.recordId);
@@ -221,12 +233,12 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
     if (!inv.building) untagged.push(`חשבון ${inv.id}`);
     changeable.push({ invoiceId: inv.id, labelHe: `חשבון ${inv.id}`, building: inv.building });
   }
-  const drainage = state.control.adjustments.find((a) => a.changeType === "coverage_gap");
+  const sharedEstimates = state.control.adjustments.filter((a) => pkg.sections.find((s) => s.id === a.sectionId)?.split === "shared");
   const tagged = changeable.filter((c) => c.building && c.building !== "משותף");
   const noteHe = [
     untagged.length ? `${[...new Set(untagged)].join(", ")} אינו מפולח לפי בניין במקור — שויך ל״משותף״.` : "",
-    tagged.length ? `${tagged.map((t) => `${t.labelHe} שויך לבניין ${t.building} לפי החלטת מנהל הפרויקט (נרשם ביומן השינויים).`).join(" ")}` : "",
-    drainage ? "קו הניקוז נכנס תחת ״משותף״." : "",
+    tagged.length ? tagged.map((t) => `${t.labelHe} שויך לבניין ${t.building} לפי החלטת מנהל הפרויקט (נרשם ביומן השינויים).`).join(" ") : "",
+    sharedEstimates.length ? `${sharedEstimates.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")} נכנס תחת ״משותף״.` : "",
     "הפילוח הפנימי של סעיפים לפי קומות שיוצקו ויח״ד הוא הערכה ומסומן ככזה; תחזית קודמת ושינוי אינם מפולחים.",
   ]
     .filter(Boolean)
@@ -238,15 +250,19 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
 // Material sections (standard §5): threshold crossed, >10 % of budget, or basis < 70 %
 // ---------------------------------------------------------------------------
 
-function sourceForLine(l: HForecastLine): ReportSource | undefined {
-  if (l.basis === "appendix") return { labelHe: "נספח א׳-2", documentId: "appendix_A2_steel_price_2026_07_15", anchor: "price" };
-  if (l.basis === "quote") return { labelHe: "הצעת י. כהן", documentId: "quote_ycohen_drainage", anchor: "line" };
+function sourceForLine(pkg: HadarimPackage, l: HForecastLine, state: V2State): ReportSource | undefined {
+  const adjustment = state.control.adjustments.find((a) => a.id === l.id || a.replacesLineId === l.id);
+  if (adjustment?.documentId) return { labelHe: adjustment.sourceRef.split(" — ")[0], documentId: adjustment.documentId, anchor: adjustment.basis === "appendix" ? "price" : "line" };
+  if (l.basis === "appendix") {
+    const contract = pkg.contracts.find((c) => c.sectionId === l.sectionId && c.priceAppendices?.length);
+    const appendix = contract ? priceAppendixAt(contract, state.control.controlDate) : null;
+    if (appendix) return { labelHe: appendix.titleHe, documentId: appendix.documentId, anchor: "price" };
+  }
   if (l.basis === "po") return { labelHe: l.sourceRef ?? "הזמנה", erp: { screen: "purchase_orders", sectionId: l.sectionId } };
   return { labelHe: l.sourceRef ?? "תקציב", erp: { screen: "budget", sectionId: l.sectionId } };
 }
 
 function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): MaterialSection[] {
-  const supplierHe = (id: string) => pkg.suppliers.find((x) => x.id === id)?.nameHe ?? id;
   const out: MaterialSection[] = [];
   for (const s of wf.sections) {
     if (s.sectionId === "17") continue;
@@ -258,89 +274,112 @@ function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2Sta
     ].filter(Boolean);
     if (!reasons.length) continue;
     const reasonHe = reasons.join(" · ");
-    if (s.sectionId === "03") out.push(steelSection(pkg, s, reasonHe));
-    else if (s.sectionId === "07") out.push(developmentSection(state, s, reasonHe));
-    else out.push(genericSection(pkg, wf, state, s, reasonHe, supplierHe));
+    const frameworkContract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.priceAppendices?.length);
+    const excludedLines = pkg.boq.filter((l) => l.sectionId === s.sectionId && l.coverage === "excluded");
+    const coverageAdjustments = state.control.adjustments.filter((a) => a.sectionId === s.sectionId && a.changeType === "coverage_gap");
+    if (frameworkContract) out.push(frameworkPriceSection(pkg, wf, state, s, reasonHe, frameworkContract));
+    else if (excludedLines.length || coverageAdjustments.length) out.push(coverageSection(pkg, state, s, reasonHe));
+    else out.push(genericSection(pkg, wf, state, s, reasonHe));
   }
   return out;
 }
 
-function steelSection(pkg: HadarimPackage, steel: WorkingSection, reasonHe: string): MaterialSection {
-  const uncoveredLine = steel.lines.find((l) => l.kind === "uncovered")!;
-  const poLine = steel.lines.find((l) => l.kind === "remaining_commitment" && l.basis === "po");
-  const remainderTons = (uncoveredLine.qty ?? 0) + (poLine?.qty ?? 0);
-  const orderedTons = poLine?.qty ?? 12;
-  const exposedTons = poLine ? (uncoveredLine.qty ?? 0) : Math.max(0, (uncoveredLine.qty ?? 0) - 12);
-  const boqTons = pkg.boq.filter((l) => l.sectionId === "03").reduce((a, l) => a + (l.unit === "טון" ? l.qty : 0), 0) || 750;
+/** A section supplied under a framework agreement with price appendices (quantity × unit price). */
+function frameworkPriceSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string, contract: NonNullable<ReturnType<typeof pkg.contracts.find>>): MaterialSection {
+  const supplier = pkg.suppliers.find((x) => x.id === contract.supplierId);
+  const appendices = [...(contract.priceAppendices ?? [])].sort((a, b) => a.validFrom.localeCompare(b.validFrom));
+  const current = priceAppendixAt(contract, state.control.controlDate) ?? appendices[appendices.length - 1];
+  const unit = current?.unit ?? "טון";
+  const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && i.dateReceived < wf.controlDate);
+  const deliveredQty = invoices.reduce((a, i) => a + (i.unit === unit && i.quantity ? i.quantity : 0), 0) || (appendices[0] ? s.recorded / appendices[0].pricePerTon : 0);
+  const boqQty = pkg.boq.filter((l) => l.sectionId === s.sectionId && l.unit === unit).reduce((a, l) => a + l.qty, 0);
+  const uncoveredLines = s.lines.filter((l) => l.kind === "uncovered" && l.amount > 0);
+  const poLines = s.lines.filter((l) => l.kind === "remaining_commitment" && l.basis === "po");
+  const remainderQty = [...uncoveredLines, ...poLines].reduce((a, l) => a + (l.qty ?? 0), 0);
+  const orderedQty = poLines.reduce((a, l) => a + (l.qty ?? 0), 0);
+  const exposedQty = uncoveredLines.reduce((a, l) => a + (l.qty ?? 0), 0);
+  const remainderPrice = uncoveredLines[0]?.unitPrice ?? current?.pricePerTon ?? 0;
+  const budgetUnitPrice = boqQty ? Math.round(s.budget / boqQty) : null;
+  const openPos = state.erp.purchaseOrders.filter((p) => p.contractId === contract.id && p.status === "פתוחה");
   return {
-    sectionId: "03",
-    titleHe: "03 — אספקת ברזל זיון",
+    sectionId: s.sectionId,
+    titleHe: `${s.sectionId} — ${pkg.sections.find((x) => x.id === s.sectionId)!.nameHe}`,
     reasonHe,
     paragraphsHe: [
-      `הסכם מסגרת ⁨03-F⁩ עם פלדות הצפון; מחיר לפי נספח. סופקו ${num(steel.recorded / 4000)} טון מתוך ${num(boqTons)} טון בכתב הכמויות (${num(Math.round((steel.recorded / 4000 / boqTons) * 100))}%).`,
-      `יתרה: ${num(remainderTons)} טון, מהם ${num(orderedTons)} טון בהזמנה 2291 (במחיר החדש) ו-${num(exposedTons)} טון ללא הזמנה.`,
-      `מחירי יחידה: תקציב 4,000 ₪/טון · נספח א׳ 4,000 ₪/טון · נספח א׳-2 (מ-15.7.2026) ${num(uncoveredLine.unitPrice ?? 4000)} ₪/טון.`,
-      "מה יכול עוד להשתנות: עדכון נספח רבעוני (הצמדה למדד תשומות הבנייה); כמויות בפועל לפי הקומות העליונות.",
+      `הסכם מסגרת ${isolate(contract.id)} עם ${supplier?.nameHe}; מחיר לפי נספח. סופקו ${num(Math.round(deliveredQty))} ${unit}${boqQty ? ` מתוך ${num(boqQty)} ${unit} בכתב הכמויות (${num(Math.round((deliveredQty / boqQty) * 100))}%)` : ""}.`,
+      `יתרה: ${num(remainderQty)} ${unit}${orderedQty ? `, מהם ${num(orderedQty)} ${unit} בהזמנות מאושרות (${poLines.map((l) => l.sourceRef).join(", ")})` : ""}${exposedQty ? ` ו-${num(exposedQty)} ${unit} ללא הזמנה` : ""}.`,
+      `מחירי יחידה: ${budgetUnitPrice ? `תקציב ${num(budgetUnitPrice)} ₪/${unit} · ` : ""}${appendices.map((a) => `${a.titleHe} (מ-${dateHe(a.validFrom)}) ${num(a.pricePerTon)} ₪/${unit}`).join(" · ")}.`,
+      `מה יכול עוד להשתנות: עדכון נספח נוסף (ההסכם מתעדכן בנספחי מחיר בכתב); כמויות בפועל מול כתב הכמויות.`,
     ],
     table: [
       ["רכיב", "נתון"],
-      ["תקציב", nis(steel.budget)],
-      ["עלות שנרשמה", `${nis(steel.recorded)} (${num(steel.recorded / 4000)} טון)`],
-      ["יתרה צפויה", `${num(remainderTons)} טון`],
-      ["מהם בהזמנה מאושרת", poLine ? `${num(orderedTons)} טון — ${nis(poLine.amount)}` : `${num(orderedTons)} טון (הזמנה 2291, בתוך היתרה)`],
-      ["מחיר יח׳ — תקציב", "4,000 ₪/טון"],
-      ["מחיר יח׳ — נספח בתוקף", `${num(uncoveredLine.unitPrice ?? 4000)} ₪/טון`],
-      ["יתרה לא מכוסה", `${nis(steel.uncovered)} (${BASIS_HE[uncoveredLine.basis]})`],
-      ["תחזית לגמר", nis(steel.eac)],
-      ["סטייה", signed(steel.variance)],
-      ["בסיס", `${num(steel.basisPct)}%`],
+      ["תקציב", nis(s.budget)],
+      ["עלות שנרשמה", `${nis(s.recorded)} (${num(Math.round(deliveredQty))} ${unit})`],
+      ["יתרה צפויה", `${num(remainderQty)} ${unit}`],
+      ["מהם בהזמנה מאושרת", orderedQty ? `${num(orderedQty)} ${unit} — ${nis(poLines.reduce((a, l) => a + l.amount, 0))}` : "—"],
+      ...(budgetUnitPrice ? [["מחיר יח׳ — תקציב", `${num(budgetUnitPrice)} ₪/${unit}`]] : []),
+      ["מחיר יח׳ — נספח בתוקף", current ? `${num(current.pricePerTon)} ₪/${unit}` : "—"],
+      ["יתרה לא מכוסה", `${nis(s.uncovered)}${uncoveredLines[0] ? ` (${BASIS_HE[uncoveredLines[0].basis]})` : ""}`],
+      ["תחזית לגמר", nis(s.eac)],
+      ["סטייה", signed(s.variance)],
+      ["בסיס", `${num(s.basisPct)}%`],
     ],
-    recommendationHe: exposedTons > 0 ? `לשקול הזמנה מרוכזת ל-${num(exposedTons)} הטון הנותרים כדי לקבע מחיר.` : "אין פעולה נדרשת.",
+    recommendationHe: exposedQty > 0 ? `לשקול הזמנה מרוכזת ל-${num(exposedQty)} ה${unit} הנותרים (${nis(Math.round(exposedQty * remainderPrice))}) כדי לקבע מחיר.` : "אין פעולה נדרשת.",
     sources: [
-      { labelHe: "הסכם מסגרת 03-F", recordRef: { type: "contract", id: "03-F" } },
-      { labelHe: "נספח א׳-2 — 4,800 ₪/טון", documentId: "appendix_A2_steel_price_2026_07_15", anchor: "price" },
-      { labelHe: "נספח א׳ — 4,000 ₪/טון", documentId: "appendix_A_steel_price_2025_11", anchor: "price" },
-      { labelHe: "הזמנה 2291", recordRef: { type: "po", id: "2291" } },
-      { labelHe: "חשבונות הסעיף במערכת המידע", erp: { screen: "invoices", sectionId: "03" } },
+      { labelHe: `הסכם מסגרת ${contract.id}`, recordRef: { type: "contract", id: contract.id } },
+      ...appendices.map((a) => ({ labelHe: `${a.titleHe} — ${num(a.pricePerTon)} ₪/${unit}`, documentId: a.documentId, anchor: "price" })),
+      ...openPos.map((p) => ({ labelHe: `הזמנה ${p.id}`, recordRef: { type: "po" as const, id: String(p.id) } })),
+      { labelHe: "חשבונות הסעיף במערכת המידע", erp: { screen: "invoices", sectionId: s.sectionId } },
     ],
   };
 }
 
-function developmentSection(state: V2State, dev: WorkingSection, reasonHe: string): MaterialSection {
-  const drainage = state.control.adjustments.find((a) => a.changeType === "coverage_gap");
-  const invoices = state.erp.invoices.filter((i) => i.sectionId === "07" && i.status !== "בבדיקה" && i.contractId === "07-01");
+/** A section with contract exclusions or coverage-gap adjustments: the "three documents" story. */
+function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection, reasonHe: string): MaterialSection {
+  const contract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.amount != null);
+  const supplier = contract ? pkg.suppliers.find((x) => x.id === contract.supplierId) : undefined;
+  const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && (!contract || i.contractId === contract.id));
+  const excluded = pkg.boq.filter((l) => l.sectionId === s.sectionId && l.coverage === "excluded");
+  const adjustments = state.control.adjustments.filter((a) => a.sectionId === s.sectionId && a.changeType === "coverage_gap");
+  const quoteValidity = adjustments.map((a) => quoteFacts(documentById(pkg, a.documentId))?.validUntil).find(Boolean);
+  const excludedHe = excluded.map((l) => {
+    const clause = contract?.exclusions.find((e) => e.clause === l.coverageRef);
+    const estimated = adjustments.find((a) => a.sourceRef.includes(l.id));
+    return `${l.descriptionHe.split(",")[0]} (${num(l.qty)} ${l.unit})${clause ? ` — מוחרג בסעיף ${clause.clause} לחוזה` : ""}; ${estimated ? `הוסף לתחזית כאומדן לפי ${estimated.basisHe} (טרם הוזמן)` : "ללא חוזה וללא אומדן"}`;
+  });
   return {
-    sectionId: "07",
-    titleHe: "07 — פיתוח ותשתיות חוץ",
+    sectionId: s.sectionId,
+    titleHe: `${s.sectionId} — ${pkg.sections.find((x) => x.id === s.sectionId)!.nameHe}`,
     reasonHe,
     paragraphsHe: [
-      `חוזה 07-01 (נ.ת.ב. תשתיות ופיתוח) 3,200,000 ₪; נרשמו ${nis(dev.recorded)} (${num(invoices.length)} חשבונות חלקיים); יתרת חוזה ${nis(dev.remainingCommitment)}.`,
-      `כתב הכמויות גרסה 4 כולל קו ניקוז חוץ Ø400 (80 מ׳) המוחרג בסעיף 3.4 לחוזה; ${drainage ? "הוסף לתחזית כאומדן לפי הצעת י. כהן (טרם הוזמן)." : "אין לו חוזה ואין לו אומדן."}`,
-      "שלושה מסמכים שכל אחד נכון בפני עצמו; רק ההצלבה חושפת את הפער.",
-      "מה יכול עוד להשתנות: אגרות חיבור לתאגיד (מחוץ לחוזה); תוקף ההצעה; כמויות פיתוח שלב ב׳.",
+      contract ? `חוזה ${contract.id} (${supplier?.nameHe}) ${nis(contract.amount ?? 0)}; נרשמו ${nis(s.recorded)} (${num(invoices.length)} חשבונות חלקיים); יתרת חוזה ${nis(s.remainingCommitment)}.` : `ללא חוזה ראשי; נרשמו ${nis(s.recorded)}.`,
+      `כתב הכמויות גרסה ${pkg.project.boqVersion.number}: ${excludedHe.join("; ")}.`,
+      "המסמכים נכונים כל אחד בפני עצמו; רק ההצלבה בין כתב הכמויות, החוזה והתחזית חושפת את הפער.",
+      `מה יכול עוד להשתנות: ${quoteValidity ? `תוקף ההצעה (${dateHe(quoteValidity)}); ` : ""}אגרות והתחברויות מחוץ לחוזה; כמויות בפועל.`,
     ],
     table: [
       ["רכיב", "נתון"],
-      ["תקציב", nis(dev.budget)],
-      ["עלות שנרשמה", nis(dev.recorded)],
-      ["יתרת חוזה 07-01", nis(dev.remainingCommitment)],
-      ["יתרה לא מכוסה", `${nis(dev.uncovered)}${dev.uncovered ? " (הצעת מחיר — אומדן)" : ""}`],
-      ["תחזית לגמר", nis(dev.eac)],
-      ["סטייה", signed(dev.variance)],
-      ["בסיס", `${num(dev.basisPct)}%`],
+      ["תקציב", nis(s.budget)],
+      ["עלות שנרשמה", nis(s.recorded)],
+      [contract ? `יתרת חוזה ${contract.id}` : "יתרת התחייבות", nis(s.remainingCommitment)],
+      ["יתרה לא מכוסה", `${nis(s.uncovered)}${adjustments.length ? " (הצעת מחיר — אומדן)" : ""}`],
+      ["תחזית לגמר", nis(s.eac)],
+      ["סטייה", signed(s.variance)],
+      ["בסיס", `${num(s.basisPct)}%`],
     ],
-    recommendationHe: drainage ? "להסדיר הזמנה לקו הניקוז לפני פקיעת ההצעה (19.9.2026)." : "לתמחר את קו הניקוז המוחרג לפני סגירת התחזית.",
+    recommendationHe: adjustments.length ? `להסדיר הזמנה ל${adjustments.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")}${quoteValidity ? ` לפני פקיעת ההצעה (${dateHe(quoteValidity)})` : ""}.` : "לתמחר את השורות המוחרגות לפני סגירת התחזית.",
     sources: [
-      { labelHe: "חוזה 07-01 — סעיף 3.4", documentId: "contract_07_01_excerpt", anchor: "exclusion" },
-      { labelHe: "כתב כמויות גרסה 4 — פרק 57", documentId: "boq_v4_ch57", anchor: "line" },
-      { labelHe: "הצעת י. כהן", documentId: "quote_ycohen_drainage", anchor: "line" },
-      { labelHe: "חשבון 1147", recordRef: { type: "invoice", id: "1147" } },
-      { labelHe: "חשבונות הסעיף במערכת המידע", erp: { screen: "invoices", sectionId: "07" } },
+      ...(contract ? [{ labelHe: `חוזה ${contract.id}${excluded[0]?.coverageRef ? ` — סעיף ${excluded[0].coverageRef}` : ""}`, documentId: contract.documentId, anchor: "exclusion", recordRef: { type: "contract" as const, id: contract.id } }] : []),
+      ...excluded.map((l) => boqPageFor(pkg, l.id)).filter(Boolean).map((d) => ({ labelHe: d!.titleHe, documentId: d!.id, anchor: "line" })),
+      ...adjustments.filter((a) => a.documentId).map((a) => ({ labelHe: a.basisHe.split(",")[0], documentId: a.documentId!, anchor: "line" })),
+      ...state.control.corrections.filter((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)).map((c) => ({ labelHe: `חשבון ${c.recordId}`, recordRef: { type: "invoice" as const, id: c.recordId } })),
+      { labelHe: "חשבונות הסעיף במערכת המידע", erp: { screen: "invoices", sectionId: s.sectionId } },
     ],
   };
 }
 
-function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string, supplierHe: (id: string) => string): MaterialSection {
+function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string): MaterialSection {
+  const supplierHe = (id: string) => pkg.suppliers.find((x) => x.id === id)?.nameHe ?? id;
   const section = pkg.sections.find((x) => x.id === s.sectionId)!;
   const contracts = pkg.contracts.filter((c) => c.sectionId === s.sectionId);
   const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && i.dateReceived < wf.controlDate);
@@ -353,9 +392,7 @@ function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State
   const allocationOnly = uncoveredLines.length > 0 && uncoveredLines.every((l) => l.basis === "allocation");
   const paragraphs: string[] = [];
   if (contracts.length) {
-    paragraphs.push(
-      `${contracts.map((c) => `חוזה ${c.id} — ${supplierHe(c.supplierId)}${c.amount != null ? `, ${nis(c.amount)}` : ""}, נחתם ${dateHe(c.signedAt)}${c.closed ? `; נסגר ${dateHe(c.closed.at)} בחשבון סופי ${nis(c.closed.finalAccount)}` : ""}`).join(" · ")}. נרשמו ${nis(s.recorded)} (${num(invoices.length)} חשבונות)${s.remainingCommitment ? `; יתרת התחייבות ${nis(s.remainingCommitment)}` : ""}.`,
-    );
+    paragraphs.push(`${contracts.map((c) => `חוזה ${c.id} — ${supplierHe(c.supplierId)}${c.amount != null ? `, ${nis(c.amount)}` : ""}, נחתם ${dateHe(c.signedAt)}${c.closed ? `; נסגר ${dateHe(c.closed.at)} בחשבון סופי ${nis(c.closed.finalAccount)}` : ""}`).join(" · ")}. נרשמו ${nis(s.recorded)} (${num(invoices.length)} חשבונות)${s.remainingCommitment ? `; יתרת התחייבות ${nis(s.remainingCommitment)}` : ""}.`);
   } else if (openPos.length) {
     paragraphs.push(`${num(openPos.length)} הזמנות פתוחות (${[...new Set(openPos.map((p) => supplierHe(p.supplierId)))].slice(0, 4).join(", ")}${openPos.length > 4 ? " ועוד" : ""}) בסך ${nis(openPos.reduce((a, p) => a + p.amount, 0))}; נרשמו ${nis(s.recorded)} (${num(invoices.length)} חשבונות); יתרת התחייבות ${nis(s.remainingCommitment)}.`);
   } else if (allocationOnly) {
@@ -367,7 +404,8 @@ function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State
     paragraphs.push(`כתב הכמויות (גרסה ${pkg.project.boqVersion.number}): ${num(boq.length)} שורות בפרק ${chapters.join(", ")} — ${[count("covered") ? `${num(count("covered"))} מכוסות בחוזה` : "", count("excluded") ? `${num(count("excluded"))} מוחרגות` : "", count("not_contracted") ? `${num(count("not_contracted"))} טרם נחתם להן חוזה` : ""].filter(Boolean).join(", ")}.`);
   }
   paragraphs.push(uncoveredLines.length ? `יתרה להשלמה לא מכוסה: ${nis(s.uncovered)} — בסיס: ${bases}. מחירי יחידה: ${contracts.length ? "לפי החוזה" : "לפי התקציב (טרם נבדקו מול הצעות)"}.` : `כל היתרה מכוסה בהתחייבות (בסיס ${num(s.basisPct)}%).`);
-  paragraphs.push(`מה יכול עוד להשתנות: ${contracts.length ? "פקודות שינוי וכמויות בפועל מול התכנון; החוזה אינו צמוד למדד." : allocationOnly ? "משך הפרויקט — כל חודש נוסף מוסיף כ-210,000 ₪." : openPos.length ? "משך הפרויקט (הזמנות המסגרת מכסות 15 חודשים)." : "תוצאות המכרז מול האומדן; מועד החתימה."}`);
+  const monthly = allocationOnly && uncoveredLines[0]?.qty ? Math.round(uncoveredLines[0].amount / uncoveredLines[0].qty) : null;
+  paragraphs.push(`מה יכול עוד להשתנות: ${contracts.length ? "פקודות שינוי וכמויות בפועל מול התכנון; החוזה אינו צמוד למדד." : allocationOnly ? `משך הפרויקט — כל חודש נוסף מוסיף ${monthly ? `כ-${nis(monthly)}` : "הקצאה חודשית"}.` : openPos.length ? "משך הפרויקט (הזמנות המסגרת מכסות תקופה מוגדרת)." : "תוצאות המכרז מול האומדן; מועד החתימה."}`);
   return {
     sectionId: s.sectionId,
     titleHe: `${s.sectionId} — ${section.nameHe}`,
@@ -394,24 +432,76 @@ function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State
 }
 
 // ---------------------------------------------------------------------------
+// Risks and events: controller notes plus what the data itself implies
+// ---------------------------------------------------------------------------
+
+function noteRisk(pkg: HadarimPackage, n: ControlNote): RiskRow {
+  return { topicHe: n.textHe.split(/[.;:]/)[0].slice(0, 60), sectionHe: n.sectionId ? label(n.sectionId) : "—", descriptionHe: n.textHe, exposureHe: n.exposureHe ?? "—", likelihoodHe: n.likelihoodHe ?? "—", triggerHe: n.triggerHe ?? "—", ownerHe: personName(pkg, n.ownerId ?? n.byId) };
+}
+
+function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, openIssues: IssueRow[]): RiskRow[] {
+  const out: RiskRow[] = [];
+  // estimates that rest on a quote with an expiry date
+  for (const a of state.control.adjustments) {
+    const facts = quoteFacts(documentById(pkg, a.documentId));
+    if (a.basis !== "quote" || !facts?.validUntil) continue;
+    const exposure = Math.round((a.amount * QUOTE_EXPIRY_EXPOSURE_PCT) / 100);
+    const task = state.control.tasks.find((t) => t.findingId && t.findingId === a.findingId);
+    out.push({ topicHe: `תוקף הצעת המחיר — ${a.descriptionHe.split(" — ")[0]}`, sectionHe: label(a.sectionId), descriptionHe: `האומדן מבוסס על הצעה בתוקף עד ${dateHe(facts.validUntil)}; ללא הזמנה עד אז — תמחור מחדש`, exposureHe: `0 – ${nis(exposure)} (הנחה: עד ${QUOTE_EXPIRY_EXPOSURE_PCT}% מהאומדן)`, likelihoodHe: "בינונית", triggerHe: `הזמנה עד ${dateHe(facts.validUntil)}`, ownerHe: personName(pkg, task?.ownerId ?? state.operatorId) });
+  }
+  // remainders priced by an appendix that can move again
+  for (const s of wf.sections) {
+    const contract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.priceAppendices?.length);
+    if (!contract) continue;
+    const exposedQty = s.lines.filter((l) => l.kind === "uncovered" && (l.basis === "appendix" || l.basis === "estimate") && l.qty).reduce((a, l) => a + (l.qty ?? 0), 0);
+    if (!exposedQty) continue;
+    const unit = priceAppendixAt(contract, state.control.controlDate)?.unit ?? "טון";
+    out.push({ topicHe: `עדכון נוסף במחיר ${SECTION_SHORT_HE[s.sectionId]}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * 100)} לכל 100 ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
+  }
+  // issues open for more than two controls with a stated impact
+  for (const i of openIssues.filter((x) => x.stale && x.impactHe !== "—")) {
+    out.push({ topicHe: i.titleHe, sectionHe: i.sectionHe, descriptionHe: `פתוח מ-${i.openedHe}; ${i.impactHe}`, exposureHe: "לא כומת", likelihoodHe: "בינונית", triggerHe: "סגירת הנושא", ownerHe: i.ownerHe });
+  }
+  return out;
+}
+
+function periodEvents(pkg: HadarimPackage, state: V2State, from: string, to: string): string[] {
+  const events: string[] = [];
+  for (const c of state.erp.changeLog) {
+    const day = c.at.slice(0, 10);
+    if (day <= from || day > to || c.recordType === "invoice") continue;
+    if (!["סטטוס", "נספחים", "יצירה"].includes(c.field)) continue;
+    const what = c.recordType === "contract" ? `חוזה ${c.recordId}` : `הזמנה ${c.recordId}`;
+    events.push(`${what}: ${c.field === "סטטוס" ? c.after : `${c.field} — ${c.after}`} (${dateHe(c.at)})`);
+  }
+  for (const c of pkg.contracts) for (const a of c.priceAppendices ?? []) if (a.validFrom > from && a.validFrom <= to) events.push(`${a.titleHe} (${pkg.suppliers.find((s) => s.id === c.supplierId)?.nameHe}) בתוקף מ-${dateHe(a.validFrom)}`);
+  for (const n of state.control.notes.filter((x) => x.kind === "event")) events.push(n.textHe);
+  return events;
+}
+
+// ---------------------------------------------------------------------------
 // The report
 // ---------------------------------------------------------------------------
 
 export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const wf = workingForecast(pkg, state.erp, state.control.adjustments, state.control.controlDate);
   const config = state.control.reportConfig;
+  const controlDate = state.control.controlDate;
   const previous = pkg.forecasts.find((f) => f.controlDate === wf.previousControlDate)!;
   const variance = wf.totalEac - wf.totalBudget;
   const change = wf.totalEac - wf.previousTotalEac;
   const uncovered: UncoveredBreakdown = uncoveredByBasis(wf);
-  const contingency = wf.sections.find((s) => s.sectionId === "17")!;
-  const physicalPct = 38;
+  const contingency = wf.sections.find((s) => s.sectionId === "17");
+  const contingencyBudget = contingency?.budget ?? 0;
+  const contingencyLeft = contingency?.eac ?? 0;
+  const physicalPct = pkg.project.physicalProgressPct ?? null;
   const expensePct = (wf.totalRecorded / wf.totalEac) * 100;
   const commitmentPct = ((wf.totalRecorded + wf.totalRemainingCommitment) / wf.totalEac) * 100;
+  const notes = state.control.notes;
 
   const forecastChanges: ChangeRow[] = state.control.adjustments.map((a) => ({ sectionHe: label(a.sectionId), typeHe: CHANGE_TYPE_HE[a.changeType], descriptionHe: a.descriptionHe, basisHe: a.basisHe, amount: a.amount, documentId: a.documentId }));
   const forecastTotal = forecastChanges.reduce((a, c) => a + c.amount, 0);
-  const corrections: CorrectionRow[] = state.control.corrections.map((c) => ({ recordHe: `${c.recordType === "invoice" ? "חשבון" : "הזמנה"} ${c.recordId}`, whatHe: c.fieldHe, beforeHe: c.beforeHe, afterHe: c.afterHe, approvedByHe: pkg.people.find((p) => p.id === c.approvedById)?.nameHe ?? c.approvedById, crossSectionHe: c.crossSectionHe, statusHe: c.status === "applied" ? "בוצע במקור" : "ממתין לביצוע" }));
+  const corrections: CorrectionRow[] = state.control.corrections.map((c) => ({ recordHe: `${c.recordType === "invoice" ? "חשבון" : "הזמנה"} ${c.recordId}`, whatHe: c.fieldHe, beforeHe: c.beforeHe, afterHe: c.afterHe, approvedByHe: personName(pkg, c.approvedById), crossSectionHe: c.crossSectionHe, statusHe: c.status === "applied" ? "בוצע במקור" : "ממתין לביצוע" }));
 
   const rows: SectionRow[] = wf.sections.map((s) => ({
     sectionId: s.sectionId,
@@ -437,34 +527,23 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const split = config.splitByBuilding ? buildingSplit(pkg, wf, state) : null;
 
   const issues = allIssues(state);
-  const personHe = (id: string) => pkg.people.find((p) => p.id === id)?.nameHe ?? id;
-  // number of controls (including this one) at which the issue has been open
-  const controlsSince = (opened: string) => [...new Set([...pkg.project.controlDates, CURRENT_CONTROL])].filter((d) => d >= opened).length;
-  const toRow = (t: (typeof issues)[number]): IssueRow => ({ id: t.id, titleHe: t.titleHe, sectionHe: t.sectionId ? label(t.sectionId) : "—", ownerHe: personHe(t.ownerId), dueHe: t.dueDate ? dateHe(t.dueDate) : "—", openedHe: dateHe(t.openedInControl), statusHe: t.status === "closed" ? "נסגר" : t.status === "pending_execution" ? "ממתין לביצוע" : "פתוח", impactHe: t.impactIfIgnoredHe ?? "—", stale: t.status !== "closed" && controlsSince(t.openedInControl) > 2, closedHe: t.closedAt ? dateHe(t.closedAt) : undefined });
+  const controlsSince = (opened: string) => [...new Set([...pkg.project.controlDates, controlDate])].filter((d) => d >= opened).length;
+  const toRow = (t: (typeof issues)[number]): IssueRow => ({ id: t.id, titleHe: t.titleHe, sectionHe: t.sectionId ? label(t.sectionId) : "—", ownerHe: personName(pkg, t.ownerId), dueHe: t.dueDate ? dateHe(t.dueDate) : "—", openedHe: dateHe(t.openedInControl), statusHe: t.status === "closed" ? "נסגר" : t.status === "pending_execution" ? "ממתין לביצוע" : "פתוח", impactHe: t.impactIfIgnoredHe ?? "—", stale: t.status !== "closed" && controlsSince(t.openedInControl) > 2, closedHe: t.closedAt ? dateHe(t.closedAt) : undefined });
   const openIssues = issues.filter((t) => t.status !== "closed").map(toRow);
   const closedIssues = issues.filter((t) => t.status === "closed").map(toRow);
 
-  const steel = wf.sections.find((s) => s.sectionId === "03")!;
-  const steelUncovered = steel.lines.find((l) => l.kind === "uncovered")!;
-  const steelPo = steel.lines.find((l) => l.kind === "remaining_commitment" && l.basis === "po");
-  const exposedTons = steelPo ? (steelUncovered.qty ?? 0) : Math.max(0, (steelUncovered.qty ?? 0) - 12);
-  const drainage = state.control.adjustments.find((a) => a.changeType === "coverage_gap");
-  const risks: RiskRow[] = [
-    ...(drainage ? [{ topicHe: "תוקף הצעת הניקוז", sectionHe: "07-פיתוח", descriptionHe: "האומדן מבוסס על הצעה בתוקף 30 יום; ללא הזמנה עד 19.9 — תמחור מחדש", exposureHe: "0 – 30,000 ₪", likelihoodHe: "בינונית", triggerHe: "הזמנה עד 19.9.2026", ownerHe: "אייל" }] : []),
-    { topicHe: "עדכון נוסף במחיר ברזל", sectionHe: "03-ברזל", descriptionHe: `${num(exposedTons)} טון חשופים לשינוי מחיר (יתרה ללא הזמנה); הנספח צמוד למדד תשומות הבנייה רבעונית`, exposureHe: `${nis(exposedTons * 100)} לכל 100 ₪/טון`, likelihoodHe: "בינונית", triggerHe: "עדכון נספח ברבעון הבא", ownerHe: "רועי" },
-    { topicHe: "חיבור ביוב עירוני", sectionHe: "07-פיתוח", descriptionHe: "אישור התאגיד פתוח מ-07/2026; ללא אישור — עיכוב בחיבור ואגרות לא מתוקצבות", exposureHe: "לו״ז; אגרות לפי תעריף התאגיד", likelihoodHe: "בינונית", triggerHe: "קבלת האישור", ownerHe: "אייל" },
-  ];
-
+  const risks: RiskRow[] = [...notes.filter((n) => n.kind === "risk").map((n) => noteRisk(pkg, n)), ...derivedRisks(pkg, wf, state, openIssues)];
   const material = materialSections(pkg, wf, state);
+  const events = periodEvents(pkg, state, previous.controlDate, controlDate);
 
   // trends
-  const eacSeries = [...Object.entries(EARLIER_CONTROL_TOTALS).map(([d, v]) => ({ labelHe: dateHe(d), value: v })), { labelHe: dateHe(previous.controlDate), value: previous.totalEac }, { labelHe: dateHe(CURRENT_CONTROL), value: wf.totalEac }];
+  const eacSeries = [...Object.entries(EARLIER_CONTROL_TOTALS).map(([d, v]) => ({ labelHe: dateHe(d), value: v })), { labelHe: dateHe(previous.controlDate), value: previous.totalEac }, { labelHe: dateHe(controlDate), value: wf.totalEac }];
   const firstOverrun = eacSeries.filter((p) => p.value > wf.totalBudget).length === 1 && wf.totalEac > wf.totalBudget;
   const priceDriven = state.control.adjustments.some((a) => a.changeType === "price") && !state.control.adjustments.some((a) => a.changeType === "quantity");
   const prevUncovered = uncoveredAt(previous);
   const uncoveredSeries = [
     { labelHe: dateHe(previous.controlDate), value: prevUncovered },
-    { labelHe: dateHe(CURRENT_CONTROL), value: uncovered.total },
+    { labelHe: dateHe(controlDate), value: uncovered.total },
   ];
   const uncoveredDeltas = wf.sections
     .filter((s) => s.sectionId !== "17")
@@ -477,23 +556,32 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     .filter((d) => d.delta !== 0);
   const uncoveredCommentaryHe = `יתרה לא מכוסה: ${nis(prevUncovered)} → ${nis(uncovered.total)} (${signed(uncovered.total - prevUncovered)}). צריכה לרדת מבקרה לבקרה ככל שאומדנים הופכים להזמנות.${uncoveredDeltas.length ? ` הפעם: ${uncoveredDeltas.map((d) => `${label(d.s.sectionId)} ${signed(d.delta)}${d.becameCommitted ? " (נחתם חוזה)" : ""}`).join(" · ")}.` : ""}`;
 
-  const dev = wf.sections.find((s) => s.sectionId === "07")!;
-  const prevDev = previous.sections!.find((s) => s.sectionId === "07")!;
-  const prevSteel = previous.sections!.find((s) => s.sectionId === "03")!;
   const comparison: string[][] | null = config.includeTrends
     ? [
-        ["", `בקרה ${dateHe(previous.controlDate)}`, `בקרה ${dateHe(CURRENT_CONTROL)}`, "שינוי"],
+        ["", `בקרה ${dateHe(previous.controlDate)}`, `בקרה ${dateHe(controlDate)}`, "שינוי"],
         ["תחזית כוללת", mil(previous.totalEac), mil(wf.totalEac), `${change >= 0 ? "+" : "−"}${mil(Math.abs(change))}`],
-        ["ברזל — תחזית סעיף", mil(prevSteel.eac), mil(steel.eac), `${steel.change >= 0 ? "+" : "−"}${pct((Math.abs(steel.change) / prevSteel.eac) * 100, 0)}`],
-        ["פיתוח — נרשם", mil(prevDev.recorded), mil(dev.recorded), `${dev.recorded - prevDev.recorded >= 0 ? "+" : "−"}${nis(Math.abs(dev.recorded - prevDev.recorded))}${state.control.corrections.some((c) => c.afterHe.startsWith("07")) ? " (העברה)" : ""}`],
+        ...wf.sections
+          .filter((s) => s.change !== 0 && s.sectionId !== "17")
+          .map((s) => [`${SECTION_SHORT_HE[s.sectionId]} — תחזית סעיף`, mil(s.previousEac), mil(s.eac), `${s.change >= 0 ? "+" : "−"}${pct((Math.abs(s.change) / s.previousEac) * 100, 0)}`]),
+        ...wf.sections
+          .filter((s) => state.control.corrections.some((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)))
+          .map((s) => {
+            const prevRecorded = previous.sections!.find((p) => p.sectionId === s.sectionId)!.recorded;
+            return [`${SECTION_SHORT_HE[s.sectionId]} — נרשם`, mil(prevRecorded), mil(s.recorded), `${s.recorded - prevRecorded >= 0 ? "+" : "−"}${nis(Math.abs(s.recorded - prevRecorded))} (העברה)`];
+          }),
         ["יתרה לא מכוסה (אומדנים)", mil(prevUncovered), mil(uncovered.total), `${uncovered.total - prevUncovered >= 0 ? "+" : "−"}${mil(Math.abs(uncovered.total - prevUncovered))}`],
         ["נושאים פתוחים", String(previous.openIssues.length), String(openIssues.length), String(openIssues.length - previous.openIssues.length)],
       ]
     : null;
 
   // executive summary
-  const packageLines = uncovered.lines.filter((l) => l.basis === "estimate" && ["12", "13", "15", "16"].includes(l.sectionId));
-  const uncoveredGroupsHe = [packageLines.length ? `${packageLines.length === 4 ? "ארבע" : num(packageLines.length)} חבילות שטרם נחתמו` : "", uncovered.lines.some((l) => l.sectionId === "03") ? "יתרת ברזל" : "", uncovered.lines.some((l) => l.basis === "quote") ? "קו ניקוז" : "", uncovered.lines.some((l) => l.sectionId === "01") ? "הארכת ארגון אתר" : ""].filter(Boolean).join(", ");
+  const uncontracted = uncovered.lines.filter((l) => l.basis === "estimate" && !pkg.sections.find((s) => s.id === l.sectionId)?.contractIds.length);
+  const uncoveredGroupsHe = [
+    uncontracted.length ? `${uncontracted.length === 4 ? "ארבע" : num(uncontracted.length)} חבילות שטרם נחתמו` : "",
+    ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${SECTION_SHORT_HE[l.sectionId]}`),
+    ...uncovered.lines.filter((l) => l.basis === "quote").map((l) => l.descriptionHe.split(" — ")[0]),
+    ...uncovered.lines.filter((l) => l.basis === "estimate" && !uncontracted.includes(l)).map((l) => l.descriptionHe.split(" — ")[0]),
+  ].filter(Boolean);
   const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${corrections.length === 2 ? "שני" : corrections.length} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
   const keyTable: KeyRow[] = [
     { labelHe: "תקציב מעודכן", valueHe: nis(wf.totalBudget), pctHe: "" },
@@ -501,42 +589,55 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     { labelHe: "סטייה מתקציב", valueHe: signed(variance), pctHe: pct((variance / wf.totalBudget) * 100, 2) },
     { labelHe: "שינוי מבקרה קודמת", valueHe: signed(change), pctHe: pct((change / wf.previousTotalEac) * 100, 2) },
     { labelHe: "נרשם עד מועד החתך", valueHe: nis(wf.totalRecorded), pctHe: `${pct(expensePct, 0)} הוצאה` },
-    { labelHe: "ביצוע פיזי", valueHe: `~${physicalPct}%`, pctHe: "מדידה מהאתר" },
-    { labelHe: "בלתי צפוי — יתרה", valueHe: nis(contingency.eac), pctHe: `${pct((contingency.eac / contingency.budget) * 100, 0)} מהמקור` },
+    { labelHe: "ביצוע פיזי", valueHe: physicalPct != null ? `~${physicalPct}%` : "לא נמדד", pctHe: physicalPct != null ? "מדידה מהאתר" : "אין דוח התקדמות" },
+    { labelHe: "בלתי צפוי — יתרה", valueHe: nis(contingencyLeft), pctHe: contingencyBudget ? `${pct((contingencyLeft / contingencyBudget) * 100, 0)} מהמקור` : "—" },
     { labelHe: "יתרה להשלמה לא מכוסה (אומדנים)", valueHe: nis(uncovered.total), pctHe: `${pct((uncovered.total / wf.totalEac) * 100, 0)} מהתחזית` },
   ];
   const bulletsHe = [
     ...forecastChanges.map((c) => `${c.sectionHe}: ${c.descriptionHe} — ${signed(c.amount)} (${c.basisHe})`),
-    `${nis(uncovered.total)} בתחזית עדיין מבוססים על אומדן ולא על הזמנה (${uncoveredGroupsHe}).`,
+    `${nis(uncovered.total)} בתחזית עדיין מבוססים על אומדן ולא על הזמנה${uncoveredGroupsHe.length ? ` (${uncoveredGroupsHe.join(", ")})` : ""}.`,
     ...(openIssues.some((i) => i.stale) ? [`נושא פתוח יותר משתי בקרות: ${openIssues.filter((i) => i.stale).map((i) => i.titleHe).join("; ")}.`] : []),
+    ...notes.filter((n) => n.kind === "note").map((n) => n.textHe),
   ].slice(0, 5);
-  const decisionsHe = variance > 0 ? [`האם לממן את ${nis(variance)} מהבלתי צפוי (יתרה ${nis(contingency.eac)}) או להציג כחריגה — החלטת דנה עד הבקרה הבאה.`] : [];
+  const ceoName = pkg.people.find((p) => /^מנכ/.test(p.roleHe))?.nameHe ?? "ההנהלה";
+  const decisionsHe = [
+    ...(variance > 0 && contingency ? [`האם לממן את ${nis(variance)} מהבלתי צפוי (יתרה ${nis(contingencyLeft)}) או להציג כחריגה — החלטת ${ceoName} עד הבקרה הבאה.`] : variance > 0 ? [`כיצד לממן את החריגה של ${nis(variance)} — החלטת ${ceoName}.`] : []),
+    ...notes.filter((n) => n.kind === "decision").map((n) => n.textHe),
+  ];
 
   const ceoIssues = openIssues.filter((i) => i.stale || i.dueHe !== "—");
-  const toUncoveredRow = (l: HForecastLine): UncoveredRow => ({ descriptionHe: l.descriptionHe, sectionHe: label(l.sectionId), basisHe: BASIS_HE[l.basis] ?? l.basis, amount: l.amount, source: sourceForLine(l) });
+  const toUncoveredRow = (l: HForecastLine): UncoveredRow => ({ descriptionHe: l.descriptionHe, sectionHe: label(l.sectionId), basisHe: BASIS_HE[l.basis] ?? l.basis, amount: l.amount, source: sourceForLine(pkg, l, state) });
   const uncoveredRows = uncovered.lines.map(toUncoveredRow);
   const allocationRows = uncovered.allocations.map(toUncoveredRow);
 
+  const frameworkContracts = pkg.contracts.filter((c) => c.priceAppendices?.length);
+  const fixedContracts = pkg.contracts.filter((c) => !c.priceAppendices?.length && c.amount != null);
+  const schedule = pkg.project.schedule ?? {};
+  const scheduleHe = `סיום חוזי: ${schedule.contractEnd ? monthHe(schedule.contractEnd) : "—"} · צפוי: ${schedule.expectedEnd ? monthHe(schedule.expectedEnd) : "—"}${schedule.noteHe ? ` · ${schedule.noteHe}` : schedule.contractEnd && schedule.expectedEnd && schedule.contractEnd !== schedule.expectedEnd ? " · לפער משמעות תקציבית שיש לבחון" : ""}`;
+  const approver = personName(pkg, state.operatorId);
+  const approverRole = pkg.people.find((p) => p.id === state.operatorId)?.roleHe ?? "";
+  const distribution = pkg.people.filter((p) => p.id !== state.operatorId && !p.roleHe.includes("חשבונות")).map((p) => `${p.nameHe} (${p.roleHe})`).join(", ");
+
   return {
     header: {
-      projectHe: `${pkg.project.nameHe} — 2 בניינים, ${pkg.project.units} יח״ד, חניון משותף`,
+      projectHe: `${pkg.project.nameHe} — ${pkg.project.buildings.length} בניינים, ${pkg.project.units} יח״ד`,
       companyHe: pkg.project.companyHe,
-      cutoffHe: `נתונים עד ${dateHe(CURRENT_CONTROL)} (חשבונות שהתקבלו עד 31.8.2026)`,
-      controlLabelHe: `בקרה 09/2026, ${state.control.finalized ? "גרסה סופית" : "טיוטה"}`,
-      previousControlHe: `בקרה קודמת: ${dateHe(previous.controlDate)} (סופית)`,
+      cutoffHe: `נתונים עד ${dateHe(controlDate)} (חשבונות שהתקבלו לפני מועד החתך)`,
+      controlLabelHe: `בקרה ${monthHe(controlDate)}, ${state.control.finalized ? "גרסה סופית" : "טיוטה"}`,
+      previousControlHe: `בקרה קודמת: ${dateHe(previous.controlDate)} (${previous.status === "final" ? "סופית" : "טיוטה"})`,
       budgetVersionHe: `תקציב: גרסה ${pkg.project.budgetVersion.number}, אושר ${dateHe(pkg.project.budgetVersion.approvedAt)}`,
       boqVersionHe: `כתב כמויות: גרסה ${pkg.project.boqVersion.number} (${dateHe(pkg.project.boqVersion.date)})`,
       preparedByHe: "מכין: מערכת הבקרה",
-      approvedByHe: "מאשר: אייל, מנהל פרויקט",
-      distributionHe: "תפוצה: רועי (סמנכ״ל ביצוע), דנה (מנכ״לית)",
-      sourcesHe: `מקורות: מערכת המידע (משיכה ${dateHe(state.clock)} ${state.clock.slice(11, 16)}) · תיקיית הפרויקט (${dateHe(state.clock)}) · דוח התקדמות מהאתר (${dateHe("2026-08-31")})`,
+      approvedByHe: `מאשר: ${approver}${approverRole ? `, ${approverRole}` : ""}`,
+      distributionHe: `תפוצה: ${distribution}`,
+      sourcesHe: `מקורות: מערכת המידע (משיכה ${dateHe(state.clock)} ${state.clock.slice(11, 16)}) · תיקיית הפרויקט (${num(pkg.documents.length)} מסמכים) · ${physicalPct != null ? "דוח התקדמות מהאתר (מדידת ביצוע פיזי)" : "ללא דוח התקדמות מהאתר"}`,
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
-    status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe: "סיום חוזי: 02/2027 · צפוי: 02/2027 · ללא משמעות תקציבית ידועה מעבר להארכת ארגון אתר שכבר בתחזית", eventsHe: ["נחתם חוזה אלומיניום 11-01 (25.8)", "נסגר שינוי מס׳ 2 בחוזה השלד (18.8)", "נספח מחיר ברזל א׳-2 בתוקף מ-15.7"] },
+    status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },
     sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [] },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
-    contingency: { original: contingency.budget, used: contingency.budget - contingency.eac, remaining: contingency.eac, pendingChangeOrdersHe: "אין פקודות שינוי ממתינות לאישור", claimsHe: "אין דרישות/תביעות קבלנים פתוחות", decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת" },
+    contingency: { original: contingencyBudget, used: contingencyBudget - contingencyLeft, remaining: contingencyLeft, pendingChangeOrdersHe: "אין פקודות שינוי ממתינות לאישור", claimsHe: "אין דרישות/תביעות קבלנים פתוחות", decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת" },
     risks,
     issues: { open: openIssues, closed: closedIssues },
     verified: state.control.positives.map((p) => ({ titleHe: p.titleHe, textHe: p.textHe })),
@@ -552,11 +653,16 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
         "סטייה — תחזית לגמר פחות תקציב מעודכן; חיובית = חריגה",
         `סף מהותיות — ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל ${MATERIALITY.budgetSharePct}% מהתקציב או כשהבסיס שלו מתחת ל-${MATERIALITY.softBasisPct}% התחייבות`,
       ],
-      assumptionsHe: ["הצמדה: חוזי המשנה בפרויקט אינם צמודים למדד; הסכם מסגרת הברזל מתעדכן בנספחי מחיר בכתב, ונספח א׳-2 כולל הצמדה רבעונית למדד תשומות הבנייה", "לו״ז: סיום 02/2027; ארגון אתר מתוקצב ל-16 חודשים", "מחירים: יתרת הברזל לפי נספח א׳-2; חבילות 12, 13, 15, 16 לפי אומדן פנימי"],
-      sourcesHe: [`מערכת המידע — ${state.erp.invoices.length} חשבונות, ${state.erp.purchaseOrders.length} הזמנות, ${pkg.contracts.length} חוזים`, `כתב כמויות גרסה ${pkg.project.boqVersion.number}`, `תחזית ${dateHe(previous.controlDate)} (סופית)`, "תיקיית הפרויקט: נספח א׳-2, הצעת י. כהן, חוזה 07-01"],
+      assumptionsHe: [
+        `הצמדה: ${fixedContracts.length} חוזי משנה בסכום קבוע ללא הצמדה למדד${frameworkContracts.length ? `; ${frameworkContracts.map((c) => `הסכם המסגרת ${isolate(c.id)} מתעדכן בנספחי מחיר בכתב (${(c.priceAppendices ?? []).map((a) => a.titleHe).join(", ")})`).join("; ")}` : ""}`,
+        `לו״ז: ${scheduleHe}`,
+        `מחירים: ${[...new Set(uncovered.lines.map((l) => `${label(l.sectionId)} לפי ${BASIS_HE[l.basis]}`))].join("; ") || "כל היתרות מכוסות בהתחייבות"}`,
+        ...notes.filter((n) => n.kind === "assumption").map((n) => n.textHe),
+      ],
+      sourcesHe: [`מערכת המידע — ${state.erp.invoices.length} חשבונות, ${state.erp.purchaseOrders.length} הזמנות, ${pkg.contracts.length} חוזים`, `כתב כמויות גרסה ${pkg.project.boqVersion.number}`, `תחזית ${dateHe(previous.controlDate)} (${previous.status === "final" ? "סופית" : "טיוטה"})`, `תיקיית הפרויקט: ${pkg.documents.map((d) => d.titleHe.split(" — ")[0]).join(", ")}`],
       correctionLog: corrections,
       inReview: wf.invoicesInReview,
-      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= CURRENT_CONTROL).map((c) => `${dateHe(c.at)} — ${c.recordType === "invoice" ? "חשבון" : c.recordType === "po" ? "הזמנה" : "חוזה"} ${c.recordId}: ${c.before === "—" ? `${c.field}: ${c.after}` : `${c.field} ${c.before} ← ${c.after}`} (${pkg.people.find((p) => p.id === c.byId)?.nameHe})`),
+      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= controlDate).map((c) => `${dateHe(c.at)} — ${c.recordType === "invoice" ? "חשבון" : c.recordType === "po" ? "הזמנה" : "חוזה"} ${c.recordId}: ${c.before === "—" ? `${c.field}: ${c.after}` : `${c.field} ${c.before} ← ${c.after}`} (${personName(pkg, c.byId)})`),
       uncovered: uncoveredRows,
       uncoveredTotal: uncovered.total,
       allocations: allocationRows,
@@ -567,3 +673,5 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     finalized: state.control.finalized,
   };
 }
+
+export { CURRENT_CONTROL };

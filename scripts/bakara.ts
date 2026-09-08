@@ -17,7 +17,11 @@
  *   npm run bakara -- report [--ceo] [--md path] [--docx path] [--label "..."] [--no-save]
  *   npm run bakara -- ask "<question in Hebrew>"
  *   npm run bakara -- finalize
+ *   npm run bakara -- tool <name> ['{"json":"args"}']   # any tool of the MCP registry (src/hadarim/tools), e.g. tool get_forecast '{"sectionId":"03"}'
+ *   npm run bakara -- tools                            # list the registry
  *   Global: --project HADARIM  --json  --by <personId>
+ *
+ * The agent uses the same registry through the MCP server (mcp/bakara-server.ts); this CLI is the shell wrapper.
  */
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -33,6 +37,7 @@ import type { ChatMessage, RouteId, V2State } from "../src/hadarim/engine/model"
 import { buildReport } from "../src/hadarim/engine/report";
 import { exportReportDocx } from "../src/hadarim/export/docx";
 import { reportToMarkdown } from "../src/hadarim/export/markdown";
+import { callTool, tools } from "../src/hadarim/tools";
 import type { BuildingTag, PersonId, SectionId } from "../src/hadarim/data/types";
 
 const { values: opts, positionals } = parseArgs({
@@ -156,7 +161,15 @@ async function main() {
   const [command, sub, ...rest] = positionals;
   let result: unknown = null;
 
-  if (command === "reset") {
+  if (command === "tools") {
+    for (const t of tools) say(`${t.name.padEnd(28)} ${t.kind.padEnd(11)} ${t.title}`);
+    result = tools.map((t) => ({ name: t.name, kind: t.kind, title: t.title, args: Object.keys(t.input) }));
+  } else if (command === "tool") {
+    if (!sub) fail(`tool <name> ['{json}'] · כלים: ${tools.map((t) => t.name).join(", ")}`);
+    const args = rest[0] ? (JSON.parse(rest[0]) as Record<string, unknown>) : {};
+    result = await callTool(sub, { projectId, ...args });
+    say(JSON.stringify(result, null, 2));
+  } else if (command === "reset") {
     await resetProject(projectId);
     const variant = ((opts.variant as string | undefined) ?? "A").toUpperCase();
     if (variant === "B") await deleteInvoice(1147, projectId);

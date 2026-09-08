@@ -1,47 +1,41 @@
 ---
 name: bakara-control
-description: Run a budget control for project הדרים and walk its findings with the user — the scene 2–6 flow. Use when the user asks for a control ("תכין בקרה", "מה השתנה", "מה דורש טיפול") or wants to continue deciding on open findings.
+description: Run a budget control for a project and walk its findings with the user, one card at a time, applying their decisions through the bakara tools. Use when the user asks for a control ("תכין בקרה", "מה השתנה", "מה דורש טיפול"), wants to continue deciding on open findings, or wants a single record checked.
 ---
 
 # Running a control and deciding on findings
 
-All commands run from the repository root. Numbers come only from the tool output.
+Numbers and wording come only from tool results. The tools are the `mcp__bakara__*` tools; every one takes `projectId` (default הדרים) and, where relevant, `controlDate`.
 
-## 1. Check the state
-```bash
-npm run bakara -- status
-```
-Note the control status. `idle` → run a new control. `running`/`reviewing` → continue with `control show`. `report` → the control is done; offer the report (`/bakara-report`). If the user wants to start over, confirm first, then `control run --force`.
+## 1. Where are we
+`get_project` → `control.status`:
+- `idle` → a new control: go to step 2.
+- `running` / `reviewing` → `get_control`; continue from `openFindings[0]` (step 3).
+- `report` → the control is done; offer `/bakara-report`.
+- The user wants to start over → say it discards this control's decisions, get a yes, then `run_control` with `force: true`.
+
+To check one record without opening a control ("is invoice 1147 allocated right?", "is order 2291 sane?"): `run_check` with `kind` and `invoiceId` / `poId` / `sectionId`. Relay the findings the same way as cards, but nothing is recorded.
 
 ## 2. Run the checks
-```bash
-npm run bakara -- control run
-```
-The output has three parts: the data-gathering steps, the summary line ("נמצאו N ממצאים … אחד מהם ברשומה ששונתה היום"), and the first finding card. Relay the steps briefly, the summary verbatim, then the card.
+`run_control` with `operatorId` = the person asking (their id from `get_project.people`). The result has `stepsHe` (data gathered — relay in one or two lines), `summaryHe` (relay verbatim: "נמצאו N ממצאים…"), `findings` and `headline`.
 
 ## 3. Present one card at a time
-A card has four blocks — keep that order and wording:
-- **הבעיה** — one sentence.
-- **המקורות** — each source with its document/record reference (the user may ask to open one).
-- **המשמעות** — effect on forecast, commitments, remainders; the "השפעה על התחזית" line.
-- **ההחלטה הנדרשת** — the question and the option ids in brackets; say that free text is allowed when the card says so.
+For the first open finding (`findings` in order, or `get_control.openFindings[0]`), four blocks in this order and wording:
+- **הבעיה** — `problemHe`.
+- **המקורות** — each `sources[].labelHe`; a source with `documentId` can be opened with `get_document` if the user asks to see it.
+- **המשמעות** — `meaningHe`, then `impact.labelHe` as "השפעה על התחזית"; `detailsTable` rows when present; `notesHe`.
+- **ההחלטה הנדרשת** — `decision.questionHe` and the options as `[id] label`; say free text is allowed when `decision.freeText` is true.
 
-Stop and wait for the user's decision. Do not recommend an option unless asked; if asked, reason from the sources on the card.
+Stop and wait for the decision. Do not recommend an option unless asked; if asked, reason only from the card's sources.
 
 ## 4. Apply the decision
-```bash
-npm run bakara -- decide <finding|kind> <choiceId>
-npm run bakara -- decide <finding|kind> --text "…"            # free text (allocation, coverage)
-npm run bakara -- route <finding|kind> update|refer_accounting|forecast_only|refer_roi
-npm run bakara -- quote <finding|kind> accept|reject          # after a quote was found
-```
-Kinds: `allocation` (שיוך), `unit` (יחידת מידה), `price` (מחיר יתרה), `coverage` (כיסוי חוזי).
-- After a "כן" on allocation or unit, the tool asks for a route — present the route options and wait.
-- `route … update` writes the ERP record and re-reads it; quote the line "נקרא מחדש ממסד הנתונים — …" as the verification, and the "תיעוד" line.
-- `refer_*` routes open a task for the owner and leave the finding "ממתין לביצוע"; say so.
-- Each step prints the headline forecast (`תחזית לגמר …`); repeat it when it changes.
+- `decide_finding` with `findingId` and `choiceId` (or `freeTextHe`). Relay `messagesHe` verbatim — the engine may ask a follow-up:
+  - a **route question** (allocation / unit after "כן") → present the route options, wait, then `route_finding`: `update` writes the ERP record (permission-checked, attributed to the control's operator) and re-reads it — quote `verifiedHe`; `refer_accounting` / `refer_roi` open a pending task for the owner and leave the finding "ממתין לביצוע"; `forecast_only` corrects the forecast but not the ERP (say the gap will return next control).
+  - a **quote found** (coverage after "צריך להזמין") → present the quote line and validity, wait, then `confirm_quote` with `accept`. Accepting adds an estimate (not a commitment) and opens a task to order before the quote expires.
+- After each tool: quote `headline.textHe` when it changed, then present `nextOpenFinding`.
+- Finding kinds: `allocation` (שיוך חשבון לסעיף), `unit` (יחידת מידה בהזמנה), `price` (מחיר יתרה מול נספח), `coverage` (שורה בכתב הכמויות ללא חוזה ואומדן).
 
-The tool prints the next card automatically; present it and continue until it says "כל N הממצאים טופלו. הדוח מוכן."
+Continue until `controlStatus` is `report` ("כל N הממצאים טופלו").
 
 ## 5. Hand over
-Offer the report (`/bakara-report`). If the user asks a question mid-way, use `/bakara-qa` and then return to the open card (`control show` lists what is still open).
+Offer the report (`/bakara-report`). Mid-way questions: `/bakara-qa`, then return to the open card (`get_control.openFindings`).

@@ -54,13 +54,15 @@ export function workingForecast(pkg: HadarimPackage, erp: ErpState, adjustments:
           if (portion && qty != null && price != null) {
             // the part already on an approved order becomes a commitment line; the rest stays uncovered at the new price
             const restQty = qty - portion.qty;
-            return { ...l, qty: restQty, unitPrice: price, amount: restQty * price, basis: adj.basis, sourceRef: adj.sourceRef, descriptionHe: `יתרת ברזל זיון ללא הזמנה — ${num(restQty)} ${adj.unit ?? l.unit ?? ""} × ${num(price)} ₪ (${adj.sourceRef.split(" — ")[0]})` };
+            return { ...l, qty: restQty, unitPrice: price, amount: restQty * price, basis: adj.basis, sourceRef: adj.sourceRef, descriptionHe: `${l.descriptionHe.split(" — ")[0]} ללא הזמנה — ${num(restQty)} ${adj.unit ?? l.unit ?? ""} × ${num(price)} ₪ (${adj.sourceRef.split(" — ")[0]})` };
           }
           return { ...l, amount: l.amount + adj.amount, unitPrice: price, basis: adj.basis, sourceRef: adj.sourceRef, descriptionHe: adj.descriptionHe };
         });
         if (portion) {
           const price = adj.unitPrice ?? 0;
-          lines.push({ id: `${adj.id}-po`, sectionId: s.sectionId, descriptionHe: `הזמנה ${portion.poId} — ${num(portion.qty)} ${adj.unit ?? ""} × ${num(price)} ₪`, qty: portion.qty, unit: adj.unit ?? null, unitPrice: price, amount: portion.amount, basis: "po", sourceRef: `הזמנה ${portion.poId}`, kind: "remaining_commitment" });
+          const ids = portion.poIds?.length ? portion.poIds : [portion.poId];
+          const label = `${ids.length > 1 ? "הזמנות" : "הזמנה"} ${ids.join(", ")}`;
+          lines.push({ id: `${adj.id}-po`, sectionId: s.sectionId, descriptionHe: `${label} — ${num(portion.qty)} ${adj.unit ?? ""} × ${num(price)} ₪`, qty: portion.qty, unit: adj.unit ?? null, unitPrice: price, amount: portion.amount, basis: "po", sourceRef: label, kind: "remaining_commitment" });
           remainingCommitment += portion.amount;
           committed += portion.amount;
         }

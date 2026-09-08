@@ -71,6 +71,8 @@ async function main() {
       control_dates: pkg.project.controlDates,
       current_control_date: pkg.project.currentControlDate,
       buildings: pkg.project.buildings.map((b) => ({ id: b.id, floors: b.floors, floors_cast: b.floorsCast, units_per_floor: b.unitsPerFloor })),
+      physical_progress_pct: pkg.project.physicalProgressPct ?? null,
+      schedule: pkg.project.schedule ?? {},
     },
   ]);
   await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation })));

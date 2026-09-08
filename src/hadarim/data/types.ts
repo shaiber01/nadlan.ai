@@ -19,6 +19,9 @@ export interface HProject {
   controlDates: string[];
   currentControlDate: string;
   statusHe: string;
+  /** Measured on site (not derived from spend); null/undefined = not measured. */
+  physicalProgressPct?: number | null;
+  schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
 }
 
 export interface HPerson {
@@ -47,7 +50,9 @@ export interface HPriceAppendix {
   id: string;
   titleHe: string;
   validFrom: string;
+  /** Price per unit of `unit` (default טון). */
   pricePerTon: number;
+  unit?: string;
   documentId: string;
 }
 
@@ -216,6 +221,21 @@ export interface HDocument {
   footerHe: string;
   /** Anchor ids for highlighting a specific block from a finding source. */
   anchors: Record<string, number>;
+  /**
+   * Structured facts extracted from the document (what an OCR/extraction step would produce), e.g. for a
+   * quote: qty, unit, unitPrice, amount, validUntil, boqLineId; for a price appendix: pricePerTon, validFrom.
+   */
+  facts?: Record<string, unknown>;
+}
+
+/** Normalised quote/order facts used by the checks; derived from `HDocument.facts`. */
+export interface QuoteFacts {
+  qty: number | null;
+  unit: string | null;
+  unitPrice: number | null;
+  amount: number | null;
+  validUntil: string | null;
+  boqLineId: string | null;
 }
 
 export interface HadarimPackage {

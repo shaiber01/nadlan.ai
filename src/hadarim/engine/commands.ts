@@ -1,7 +1,6 @@
-import { documentFacts } from "../data/documents";
-import { CURRENT_CONTROL, DEMO_DAY, generateHadarimPackage, openIssuesAtAugust } from "../data/generate";
+import { CURRENT_CONTROL, DEMO_DAY, generateHadarimPackage, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HInvoice, HadarimPackage, PersonId, SectionId } from "../data/types";
-import { CHECK_STEPS_HE, runChecks, sectionLabel, type HFinding } from "./checks";
+import { CHECK_STEPS_HE, SECTION_SHORT_HE, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
 import { workingForecast } from "./forecast";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
 
@@ -60,7 +59,8 @@ export function initialState(variant: Scene1Variant = "A"): V2State {
     clock: `${DEMO_DAY}T09:00`,
     operatorId: "EYAL",
     erp: { invoices, purchaseOrders: pkg.purchaseOrders, changeLog },
-    control: emptySession(CURRENT_CONTROL),
+    // issues carried from the previous control live in the session's task list (the database holds them in the same table)
+    control: { ...emptySession(CURRENT_CONTROL), tasks: carriedIssues(pkg, CURRENT_CONTROL) },
     savedConfig: null,
     audit: [],
     counters: {},
@@ -166,8 +166,8 @@ export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?:
 export function controlSteps(state: V2State): { textHe: string; done: boolean; spinner?: boolean }[] {
   const invoices = state.erp.invoices.filter((i) => i.status !== "בבדיקה");
   const recorded = invoices.reduce((a, i) => a + i.amount, 0);
-  const previous = pkg.forecasts.find((f) => f.controlDate === "2026-08-01")!;
-  const newSince = invoices.filter((i) => i.dateReceived >= "2026-08-01").length;
+  const previous = pkg.forecasts.filter((f) => f.status === "final" && f.controlDate < state.control.controlDate).sort((a, b) => (a.controlDate < b.controlDate ? 1 : -1))[0];
+  const newSince = invoices.filter((i) => i.dateReceived >= previous.controlDate).length;
   return [
     { textHe: `תקציב מאושר — ${(pkg.project.budgetVersion.amount / 1_000_000).toFixed(1)} מ׳ ₪ (גרסה ${pkg.project.budgetVersion.number}, אושרה ${dateHe(pkg.project.budgetVersion.approvedAt)})`, done: true },
     { textHe: `בקרה קודמת — ${dateHe(previous.controlDate)}, תחזית ${(previous.totalEac / 1_000_000).toFixed(1)} מ׳ ₪`, done: true },
@@ -186,7 +186,7 @@ export function startControl(state: V2State, requestTextHe: string): V2State {
   const result = runChecks(pkg, s.erp, draft, s.control.controlDate);
   const liveChanged = result.findings.filter((f) => s.erp.changeLog.some((c) => c.recordId === f.record.id && c.at.startsWith(s.clock.slice(0, 10))));
   s = { ...s, control: { ...s.control, status: "running", requestedAt: s.clock, findings: result.findings, positives: result.positives, checkedHe: result.checkedHe, stepsRevealed: 0 } };
-  s = push(s, { role: "system", kind: "steps", textHe: "מכין בקרה תקציבית להדרים", steps: controlSteps(s).map((st) => ({ ...st, done: false })) });
+  s = push(s, { role: "system", kind: "steps", textHe: `מכין בקרה תקציבית ל${pkg.project.nameHe}`, steps: controlSteps(s).map((st) => ({ ...st, done: false })) });
   const summary = `סיימתי. נמצאו ${num(result.findings.length)} ממצאים שדורשים החלטה שלך לפני שאסגור את התחזית.${liveChanged.length ? ` ${liveChanged.length === 1 ? "אחד מהם ברשומה ששונתה היום." : `${num(liveChanged.length)} מהם ברשומות ששונו היום.`}` : ""}`;
   s = push(s, { role: "system", kind: "text", textHe: summary, options: [{ id: "review", labelHe: "נעבור על הממצאים", action: { type: "review_findings" } }] });
   return tick(s, 1);
@@ -285,71 +285,109 @@ function decideAllocation(state: V2State, f: HFinding, choiceId: string | null, 
   return s;
 }
 
+/** The person who executes order corrections on site (VP execution if there is one, else the operator). */
+function executionOwnerId(state: V2State): PersonId {
+  return pkg.people.find((p) => p.roleHe.includes("ביצוע"))?.id ?? state.operatorId;
+}
+
+function personName(id: PersonId | undefined): string {
+  return pkg.people.find((p) => p.id === id)?.nameHe ?? id ?? "";
+}
+
 function decideUnit(state: V2State, f: HFinding, choiceId: string | null): V2State {
   const po = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
+  const proposed = proposedOrderCorrection(pkg, po);
   if (choiceId === "open_quote") {
-    return push(state, { role: "system", kind: "text", textHe: "פותח את ההצעה המצורפת.", documentId: po.attachmentId ?? undefined, options: [{ id: "doc", labelHe: "פתח PDF", action: { type: "open_document", documentId: po.attachmentId ?? "" } }, { id: "yes", labelHe: "כן, 12 טון", action: { type: "decide", findingId: f.id, choiceId: "yes_tons" } }] });
+    if (!proposed.documentId) {
+      let s = setDecision(state, f.id, { status: "referred", ownerId: state.operatorId, auditHe: "אין הצעה מצורפת — לבדוק מול הספק" });
+      s = push(s, { role: "system", kind: "text", textHe: `להזמנה ${po.id} אין הצעה מצורפת. הממצא נשאר פתוח עד לבירור מול הספק; בתחזית הכמות אינה נספרת פעמיים.` });
+      return nextFinding(s);
+    }
+    return push(state, { role: "system", kind: "text", textHe: "פותח את ההצעה המצורפת.", documentId: proposed.documentId, options: [{ id: "doc", labelHe: "פתח PDF", action: { type: "open_document", documentId: proposed.documentId } }, { id: "yes", labelHe: `כן, ${num(proposed.qty)} ${proposed.unit}`, action: { type: "decide", findingId: f.id, choiceId: "yes_tons" } }] });
   }
-  const facts = documentFacts.quote_pladot_12t;
+  const executor = executionOwnerId(state);
   let s = setDecision(state, f.id, { pending: { kind: "route" } });
   s = push(s, {
     role: "system",
     kind: "text",
-    textHe: `לתקן בהזמנה ${po.id}: כמות ${facts.qtyTon} · יחידה טון · מחיר יח׳ ${num(facts.pricePerTon)} ₪ (הסכום ${nis(po.amount)} נשאר)?`,
+    textHe: `לתקן בהזמנה ${po.id}: כמות ${num(proposed.qty)} · יחידה ${proposed.unit} · מחיר יח׳ ${num(proposed.unitPrice)} ₪ (הסכום ${nis(po.amount)} נשאר)?`,
     options: [
       { id: "update", labelHe: "עדכן", action: { type: "route", findingId: f.id, routeId: "update" } },
-      { id: "refer_roi", labelHe: "העבר לרועי לביצוע", action: { type: "route", findingId: f.id, routeId: "refer_roi" } },
+      { id: "refer_roi", labelHe: `העבר ל${personName(executor)} לביצוע`, action: { type: "route", findingId: f.id, routeId: "refer_roi" } },
     ],
   });
   return s;
 }
 
+/** Quantity an open order really covers: the attached quote's quantity when there is one, else the order's field. */
+function orderQuantity(po: V2State["erp"]["purchaseOrders"][number]): number {
+  return quoteFacts(documentById(pkg, po.attachmentId))?.qty ?? po.qty;
+}
+
 function decidePrice(state: V2State, f: HFinding, choiceId: string | null): V2State {
   const draft = pkg.forecasts.find((x) => x.controlDate === state.control.controlDate)!;
   const line = draft.sections!.flatMap((sec) => sec.lines).find((l) => l.id === f.record.id)!;
-  const contract = pkg.contracts.find((c) => c.id === "03-F")!;
-  const appendix = contract.priceAppendices!.find((a) => a.validFrom <= state.control.controlDate && a.pricePerTon > (line.unitPrice ?? 0))!;
+  const contract = contractWithAppendices(pkg, f.sectionId)!;
+  const appendix = priceAppendixAt(contract, state.control.controlDate)!;
+  const unit = appendixUnit(appendix);
+  const short = SECTION_SHORT_HE[f.sectionId];
+  const qty = line.qty ?? 0;
   if (choiceId === "partial") {
     let s = setDecision(state, f.id, { status: "referred", ownerId: state.operatorId, auditHe: "נדרש פירוט הכמות במחיר הישן" });
-    s = push(s, { role: "system", kind: "text", textHe: `כדי לחשב, אני צריכה לדעת כמה טון מכוסים בהזמנות במחיר הישן. בבדיקה שלי לא נמצאה הזמנה פתוחה כזו (הזמנה 2240 סופקה במלואה ונרשמה). אפשר לכתוב את הכמות, או לאשר שהמחיר החדש חל על כל ${num(line.qty ?? 0)} הטון.`, options: [{ id: "all", labelHe: `כן, על כל ${num(line.qty ?? 0)} הטון`, action: { type: "decide", findingId: f.id, choiceId: "all" } }] });
+    s = push(s, { role: "system", kind: "text", textHe: `כדי לחשב, אני צריכה לדעת כמה ${unit} מכוסים בהזמנות במחיר הישן. ${[f.checkHe, ...(f.notesHe ?? [])].filter(Boolean).join(" ")} אפשר לכתוב את הכמות, או לאשר שהמחיר החדש חל על כל ${num(qty)} ה${unit}.`, options: [{ id: "all", labelHe: `כן, על כל ${num(qty)} ה${unit}`, action: { type: "decide", findingId: f.id, choiceId: "all" } }] });
     return s;
   }
-  const qty = line.qty ?? 0;
   const newAmount = qty * appendix.pricePerTon;
   const impact = newAmount - line.amount;
-  const po2291 = state.erp.purchaseOrders.find((p) => p.id === 2291);
+  // open orders on the framework agreement are already commitments: that part of the remainder is not an estimate any more
+  const openOrders = state.erp.purchaseOrders.filter((p) => p.contractId === contract.id && p.status === "פתוחה");
+  const orderedQty = openOrders.reduce((a, p) => a + orderQuantity(p), 0);
+  const committedPortion = openOrders.length ? { poId: openOrders[0].id, poIds: openOrders.map((p) => p.id), qty: orderedQty, amount: openOrders.reduce((a, p) => a + p.amount, 0) } : undefined;
   const adjustment: ForecastAdjustment = {
     id: `ADJ-${f.id}`,
-    sectionId: "03",
+    sectionId: f.sectionId,
     changeType: "price",
-    descriptionHe: `יתרת ברזל זיון — ${num(qty)} טון × ${num(appendix.pricePerTon)} ₪ (נספח ${appendix.id})`,
+    descriptionHe: `${line.descriptionHe.split(" — ")[0]} — ${num(qty)} ${unit} × ${num(appendix.pricePerTon)} ₪ (נספח ${appendix.id})`,
     basisHe: `נספח מחיר ${appendix.id} בתוקף מ-${dateHe(appendix.validFrom)}`,
     basis: "appendix",
-    sourceRef: `נספח ${appendix.id} — ${num(appendix.pricePerTon)} ₪/טון`,
+    sourceRef: `נספח ${appendix.id} — ${num(appendix.pricePerTon)} ₪/${unit}`,
     documentId: appendix.documentId,
     amount: impact,
     findingId: f.id,
     qty,
-    unit: "טון",
+    unit,
     unitPrice: appendix.pricePerTon,
     replacesLineId: line.id,
-    committedPortion: po2291 ? { poId: 2291, qty: documentFacts.quote_pladot_12t.qtyTon, amount: po2291.amount } : undefined,
+    committedPortion,
   };
   let s: V2State = { ...state, control: { ...state.control, adjustments: [...state.control.adjustments.filter((a) => a.id !== adjustment.id), adjustment] } };
-  s = setDecision(s, f.id, { status: "handled", resolvedAt: s.clock, auditHe: `אושר: המחיר ${num(appendix.pricePerTon)} ₪/טון חל על כל ${num(qty)} הטון · תוספת ${nis(impact)}` });
+  s = setDecision(s, f.id, { status: "handled", resolvedAt: s.clock, auditHe: `אושר: המחיר ${num(appendix.pricePerTon)} ₪/${unit} חל על כל ${num(qty)} ה${unit} · תוספת ${nis(impact)}` });
   const wf = workingForecast(pkg, s.erp, s.control.adjustments, s.control.controlDate);
-  const steelRec = wf.sections.find((x) => x.sectionId === "03")!.recorded;
-  s = push(s, { role: "system", kind: "text", textHe: `תחזית סעיף ברזל: ${nis(steelRec)} + ${nis(newAmount)} = ${nis(steelRec + newAmount)} · תוספת ${nis(impact)} · חריגה של ${Math.round(((steelRec + newAmount - 3_000_000) / 3_000_000) * 100)}% מתקציב הסעיף. הזמנת 12 הטון כלולה בתוך ${num(qty)} הטון.` });
+  const section = wf.sections.find((x) => x.sectionId === f.sectionId)!;
+  const rec = section.recorded;
+  s = push(s, { role: "system", kind: "text", textHe: `תחזית סעיף ${short}: ${nis(rec)} + ${nis(newAmount)} = ${nis(rec + newAmount)} · תוספת ${nis(impact)} · חריגה של ${Math.round(((rec + newAmount - section.budget) / section.budget) * 100)}% מתקציב הסעיף.${committedPortion ? ` הזמנת ${num(committedPortion.qty)} ה${unit} כלולה בתוך ${num(qty)} ה${unit}.` : ""}` });
   s = push(s, { role: "system", kind: "log", textHe: `תחזית בכותרת: ${mil(wf.previousTotalEac)} → ${mil(wf.totalEac)}` });
-  s = audit(s, s.operatorId, `תחזית ברזל: מחיר יתרה ${num(line.unitPrice ?? 0)} → ${num(appendix.pricePerTon)} ₪/טון · +${nis(impact)} · מקור נספח ${appendix.id}`, { type: "forecast", id: line.id });
+  s = audit(s, s.operatorId, `תחזית ${short}: מחיר יתרה ${num(line.unitPrice ?? 0)} → ${num(appendix.pricePerTon)} ₪/${unit} · +${nis(impact)} · מקור נספח ${appendix.id}`, { type: "forecast", id: line.id });
   return nextFinding(tick(s));
+}
+
+/** Short name of a BOQ line for prose (up to the first comma). */
+function boqItem(f: HFinding): string {
+  const boq = pkg.boq.find((l) => l.id === f.record.id);
+  return boq ? boq.descriptionHe.split(",")[0] : f.titleHe.split(" — ")[0];
+}
+
+function supplierNameOf(doc: { supplierId: string | null; titleHe: string } | undefined): string {
+  return (doc?.supplierId && pkg.suppliers.find((s) => s.id === doc.supplierId)?.nameHe) || doc?.titleHe.split(" — ")[1] || "הספק";
 }
 
 function decideCoverage(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
   const boq = pkg.boq.find((l) => l.id === f.record.id)!;
+  const item = boqItem(f);
   if (choiceId === "other_contract") {
-    let s = setDecision(state, f.id, { status: "referred", ownerId: state.operatorId, auditHe: "נטען כיסוי בחוזה אחר — לא נמצא חוזה תואם" });
-    s = push(s, { role: "system", kind: "text", textHe: `בדקתי את 11 החוזים: אף אחד מהם אינו כולל ״${boq.descriptionHe.split(",")[0]}״. הממצא נשאר פתוח עד שיצורף חוזה או הזמנה. בדוח יופיע כפער כיסוי לא מוערך.` });
+    const covering = pkg.contracts.filter((c) => c.inclusionsHe.some((t) => item.split(" ").filter((w) => w.length >= 4).some((w) => t.includes(w))));
+    let s = setDecision(state, f.id, { status: "referred", ownerId: state.operatorId, auditHe: covering.length ? `נטען כיסוי בחוזה אחר — לבדוק מול ${covering.map((c) => c.id).join(", ")}` : "נטען כיסוי בחוזה אחר — לא נמצא חוזה תואם" });
+    s = push(s, { role: "system", kind: "text", textHe: covering.length ? `בדקתי את ${num(pkg.contracts.length)} החוזים: ${covering.map((c) => `חוזה ${c.id}`).join(", ")} מזכיר תכולה דומה — נדרש אישור שהעבודה כלולה בו. עד אז הממצא נשאר פתוח.` : `בדקתי את ${num(pkg.contracts.length)} החוזים: אף אחד מהם אינו כולל ״${item}״. הממצא נשאר פתוח עד שיצורף חוזה או הזמנה. בדוח יופיע כפער כיסוי לא מוערך.` });
     return nextFinding(s);
   }
   if (choiceId === "self") {
@@ -358,18 +396,32 @@ function decideCoverage(state: V2State, f: HFinding, choiceId: string | null, fr
     return nextFinding(s);
   }
   const wantsOrder = choiceId === "order" || (!!freeTextHe && /להזמין|הזמנה|הצעה/.test(freeTextHe));
-  if (!wantsOrder) return push(state, { role: "system", kind: "text", textHe: "לא הבנתי את ההחלטה. אפשר לבחור באחד הכפתורים או לכתוב מה לעשות עם קו הניקוז." });
-  const facts = documentFacts.quote_ycohen_drainage;
+  if (!wantsOrder) return push(state, { role: "system", kind: "text", textHe: `לא הבנתי את ההחלטה. אפשר לבחור באחד הכפתורים או לכתוב מה לעשות עם ${item}.` });
   const searched = !!freeTextHe && /תיקיי|הצעה/.test(freeTextHe);
-  let s = push(state, { role: "system", kind: "steps", textHe: "מחפש בתיקיית הפרויקט", steps: [{ textHe: `מחפש בתיקיית הפרויקט: ״ניקוז״ · ״Ø400״ · ״80 מ׳״`, done: true }, { textHe: `נמצא: הצעת מחיר — י. כהן תשתיות — ${dateHe(pkg.documents.find((d) => d.id === "quote_ycohen_drainage")!.date)}`, done: true }] });
-  s = setDecision(s, f.id, { pending: { kind: "quote", documentId: "quote_ycohen_drainage", amount: facts.amount, validUntil: facts.validUntil, descriptionHe: `קו ניקוז Ø400 · ${num(facts.qty)} ${facts.unit} × ${num(facts.unitPrice)} ₪/מ׳` } });
+  const terms = [...new Set([item.split(" ").filter((w) => w.length >= 4)[0] ?? item, ...(boq.descriptionHe.match(/Ø\S+/g) ?? []), `${num(boq.qty)} ${boq.unit}`])];
+  const doc = findQuoteFor(pkg, boq);
+  const facts = quoteFacts(doc);
+  if (!doc || !facts || facts.amount == null) {
+    const [s1, taskId] = nextId(state, "TASK");
+    let s = push(s1, { role: "system", kind: "steps", textHe: "מחפש בתיקיית הפרויקט", steps: [{ textHe: `מחפש בתיקיית הפרויקט: ${terms.map((t) => `״${t}״`).join(" · ")}`, done: true }, { textHe: "לא נמצאה הצעת מחיר תואמת", done: true }] });
+    const task: ControlTask = { id: taskId, titleHe: `הצעת מחיר — ${item}`, sectionId: f.sectionId, ownerId: s.operatorId, dueDate: null, openedInControl: s.control.controlDate, status: "open", closedAt: null, findingId: f.id, impactIfIgnoredHe: "העבודה נשארת ללא אומדן בתחזית" };
+    s = { ...s, control: { ...s.control, tasks: [...s.control.tasks, task] } };
+    s = setDecision(s, f.id, { status: "referred", ownerId: s.operatorId, auditHe: "נדרשת הצעת מחיר — לא נמצאה בתיקיית הפרויקט" });
+    s = push(s, { role: "system", kind: "text", textHe: `לא נמצאה הצעת מחיר ל${item} בתיקיית הפרויקט. נפתח נושא לטיפול: ״${task.titleHe}״ · אחראי: ${personName(s.operatorId)}. עד אז הפער יופיע בדוח כפער כיסוי לא מוערך.` });
+    return nextFinding(s);
+  }
+  const unitHe = facts.unit ?? boq.unit;
+  const descriptionHe = facts.qty != null && facts.unitPrice != null ? `${item} · ${num(facts.qty)} ${unitHe} × ${num(facts.unitPrice)} ₪/${unitHe}` : `${item} · ${nis(facts.amount)}`;
+  const scopeMatches = facts.qty == null || (facts.qty === boq.qty && (!facts.unit || facts.unit === boq.unit));
+  let s = push(state, { role: "system", kind: "steps", textHe: "מחפש בתיקיית הפרויקט", steps: [{ textHe: `מחפש בתיקיית הפרויקט: ${terms.map((t) => `״${t}״`).join(" · ")}`, done: true }, { textHe: `נמצא: ${doc.titleHe} — ${dateHe(doc.date)}`, done: true }] });
+  s = setDecision(s, f.id, { pending: { kind: "quote", documentId: doc.id, amount: facts.amount, validUntil: facts.validUntil ?? "", descriptionHe } });
   s = push(s, {
     role: "system",
     kind: "text",
-    textHe: `הצעה: קו ניקוז Ø400 · ${num(facts.qty)} ${facts.unit} × ${num(facts.unitPrice)} ₪/מ׳ = ${nis(facts.amount)} · כולל חפירה, מצע ומילוי · תוקף 30 יום. ההיקף תואם לכתב הכמויות (${num(boq.qty)} ${boq.unit}).${searched ? "" : " (ההצעה אותרה בתיקיית הפרויקט.)"}`,
-    documentId: "quote_ycohen_drainage",
+    textHe: `הצעה: ${descriptionHe} = ${nis(facts.amount)}${facts.validUntil ? ` · בתוקף עד ${dateHe(facts.validUntil)}` : ""}. ${scopeMatches ? `ההיקף תואם לכתב הכמויות (${num(boq.qty)} ${boq.unit}).` : `שימו לב: ההיקף בהצעה (${num(facts.qty ?? 0)} ${unitHe}) שונה מכתב הכמויות (${num(boq.qty)} ${boq.unit}).`}${searched ? "" : " (ההצעה אותרה בתיקיית הפרויקט.)"}`,
+    documentId: doc.id,
     options: [
-      { id: "doc", labelHe: "פתח PDF", action: { type: "open_document", documentId: "quote_ycohen_drainage" } },
+      { id: "doc", labelHe: "פתח PDF", action: { type: "open_document", documentId: doc.id } },
       { id: "accept", labelHe: "כן, הוסף לתחזית כאומדן", action: { type: "confirm_quote", findingId: f.id, accept: true } },
       { id: "reject", labelHe: "לא — היקף שונה", action: { type: "confirm_quote", findingId: f.id, accept: false } },
     ],
@@ -388,16 +440,34 @@ export function confirmQuote(state: V2State, findingId: string, accept: boolean)
     s = push(s, { role: "system", kind: "text", textHe: "נרשם. ההצעה לא נכנסת לתחזית. הממצא נשאר פתוח עם משימה: לקבל הצעה מעודכנת להיקף הנכון." });
     return nextFinding(s);
   }
-  const facts = documentFacts.quote_ycohen_drainage;
-  const adjustment: ForecastAdjustment = { id: `ADJ-${findingId}`, sectionId: f.sectionId, changeType: "coverage_gap", descriptionHe: `קו ניקוז חוץ Ø400 — ${num(facts.qty)} מ׳ (אומדן לפי הצעת י. כהן, טרם הוזמן)`, basisHe: `הצעת מחיר י. כהן תשתיות ${dateHe("2026-08-20")}, בתוקף עד ${dateHe(facts.validUntil)}`, basis: "quote", sourceRef: `הצעת י. כהן 2026-311 · ${f.record.id}`, documentId: quote.documentId, amount: quote.amount, findingId, qty: facts.qty, unit: facts.unit, unitPrice: facts.unitPrice };
+  const doc = documentById(pkg, quote.documentId);
+  const facts = quoteFacts(doc);
+  const supplierHe = supplierNameOf(doc);
+  const item = boqItem(f);
+  const validUntil = quote.validUntil || null;
+  const adjustment: ForecastAdjustment = {
+    id: `ADJ-${findingId}`,
+    sectionId: f.sectionId,
+    changeType: "coverage_gap",
+    descriptionHe: `${item} — ${facts?.qty != null ? `${num(facts.qty)} ${facts.unit ?? ""}`.trim() : nis(quote.amount)} (אומדן לפי הצעת ${supplierHe}, טרם הוזמן)`,
+    basisHe: `הצעת מחיר ${supplierHe}${doc ? ` ${dateHe(doc.date)}` : ""}${validUntil ? `, בתוקף עד ${dateHe(validUntil)}` : ""}`,
+    basis: "quote",
+    sourceRef: `הצעת ${supplierHe} ${quote.documentId} · ${f.record.id}`,
+    documentId: quote.documentId,
+    amount: quote.amount,
+    findingId,
+    ...(facts?.qty != null ? { qty: facts.qty } : {}),
+    ...(facts?.unit ? { unit: facts.unit } : {}),
+    ...(facts?.unitPrice != null ? { unitPrice: facts.unitPrice } : {}),
+  };
   const [s2, taskId] = nextId(s, "TASK");
-  const task: ControlTask = { id: taskId, titleHe: "הסדרת הזמנה — קו ניקוז חוץ", sectionId: f.sectionId, ownerId: s.operatorId, dueDate: quote.validUntil, openedInControl: s.control.controlDate, status: "open", closedAt: null, findingId, impactIfIgnoredHe: "פקיעת ההצעה ותמחור מחדש; עיכוב בחיבור לתשתית העירונית" };
+  const task: ControlTask = { id: taskId, titleHe: `הסדרת הזמנה — ${item}`, sectionId: f.sectionId, ownerId: s.operatorId, dueDate: validUntil, openedInControl: s.control.controlDate, status: "open", closedAt: null, findingId, impactIfIgnoredHe: validUntil ? "פקיעת ההצעה ותמחור מחדש" : "העבודה נשארת אומדן ללא הזמנה" };
   s = { ...s2, control: { ...s2.control, adjustments: [...s2.control.adjustments.filter((a) => a.id !== adjustment.id), adjustment], tasks: [...s2.control.tasks, task] } };
-  s = setDecision(s, findingId, { pending: undefined, status: "handled", resolvedAt: s.clock, auditHe: `נוסף לתחזית כאומדן ${nis(quote.amount)} לפי הצעת י. כהן; משימת הזמנה ל${pkg.people.find((p) => p.id === s.operatorId)?.nameHe} עד ${dateHe(quote.validUntil)}` });
+  s = setDecision(s, findingId, { pending: undefined, status: "handled", resolvedAt: s.clock, auditHe: `נוסף לתחזית כאומדן ${nis(quote.amount)} לפי הצעת ${supplierHe}; משימת הזמנה ל${personName(s.operatorId)}${validUntil ? ` עד ${dateHe(validUntil)}` : ""}` });
   const wf = workingForecast(pkg, s.erp, s.control.adjustments, s.control.controlDate);
-  s = push(s, { role: "system", kind: "text", textHe: `נוסף לתחזית: ${nis(quote.amount)} · אומדן · טרם הוזמן. לא מוצג כהתחייבות. נפתח נושא לטיפול: ״הסדרת הזמנה — קו ניקוז חוץ״ · אחראי: ${pkg.people.find((p) => p.id === s.operatorId)?.nameHe} · יעד: לפני פקיעת ההצעה (${dateHe(quote.validUntil)}).` });
+  s = push(s, { role: "system", kind: "text", textHe: `נוסף לתחזית: ${nis(quote.amount)} · אומדן · טרם הוזמן. לא מוצג כהתחייבות. נפתח נושא לטיפול: ״${task.titleHe}״ · אחראי: ${personName(s.operatorId)}${validUntil ? ` · יעד: לפני פקיעת ההצעה (${dateHe(validUntil)})` : ""}.` });
   s = push(s, { role: "system", kind: "log", textHe: `תחזית בכותרת: ${mil(wf.totalEac)}` });
-  s = audit(s, s.operatorId, `תחזית פיתוח: נוסף אומדן ${nis(quote.amount)} לקו ניקוז חוץ לפי הצעת י. כהן`, { type: "forecast", id: f.record.id });
+  s = audit(s, s.operatorId, `תחזית ${SECTION_SHORT_HE[f.sectionId]}: נוסף אומדן ${nis(quote.amount)} ל${item} לפי הצעת ${supplierHe}`, { type: "forecast", id: f.record.id });
   return nextFinding(tick(s));
 }
 
@@ -405,7 +475,9 @@ export function confirmQuote(state: V2State, findingId: string, accept: boolean)
 export function route(state: V2State, findingId: string, routeId: RouteId): V2State {
   const f = finding(state, findingId);
   const operator = pkg.people.find((p) => p.id === state.operatorId)!;
-  let s = push(state, { role: "user", kind: "text", textHe: { update: "עדכן", refer_accounting: "העבר להנהלת חשבונות", forecast_only: "רק בתחזית", refer_roi: "העבר לרועי לביצוע" }[routeId] });
+  const executor = executionOwnerId(state);
+  const accountant = pkg.people.find((p) => p.roleHe.includes("חשבונות") || p.canWriteAllocation)?.id ?? state.operatorId;
+  let s = push(state, { role: "user", kind: "text", textHe: { update: "עדכן", refer_accounting: "העבר להנהלת חשבונות", forecast_only: "רק בתחזית", refer_roi: `העבר ל${personName(executor)} לביצוע` }[routeId] });
   if (f.kind === "allocation") {
     const invoice = s.erp.invoices.find((i) => i.id === Number(f.record.id))!;
     const contract = pkg.contracts.find((c) => c.id === invoice.contractId)!;
@@ -422,16 +494,16 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
       const correction: DataCorrection = { id: corrId, recordType: "invoice", recordId: String(invoice.id), fieldHe: "סעיף תקציבי", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: `${sectionLabel(invoice.sectionId)} −${nis(invoice.amount)} · ${after} +${nis(invoice.amount)}`, findingId, at: s.clock, status: "applied" };
       s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, correction] } };
       s = setDecision(s, findingId, { pending: undefined, status: "handled", routeId, resolvedAt: s.clock, auditHe: `חשבון ${invoice.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe} · ${dateHe(s.clock)} ${s.clock.slice(11, 16)}`, verifiedHe: verified ? `חשבון ${invoice.id} נקרא מחדש — סעיף = ${after}` : "האימות נכשל" });
-      s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, מורשה לשינוי שיוך בפרויקט הדרים`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: חשבון ${invoice.id} נקרא מחדש — סעיף = ${after}`, done: true }] });
+      s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, מורשה לשינוי שיוך בפרויקט ${pkg.project.nameHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: חשבון ${invoice.id} נקרא מחדש — סעיף = ${after}`, done: true }] });
       s = push(s, { role: "system", kind: "log", textHe: `תיעוד: חשבון ${invoice.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe} · ${dateHe(s.clock)} ${s.clock.slice(11, 16)}` });
       s = audit(s, s.operatorId, `חשבון ${invoice.id}: שיוך ${before} → ${after} (ממצא ${f.id}); אימות בקריאה חוזרת`, { type: "invoice", id: String(invoice.id) });
       return nextFinding(tick(s));
     }
     if (routeId === "refer_accounting") {
       const [s2, taskId] = nextId(s, "TASK");
-      s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון שיוך חשבון ${invoice.id} (${before} → ${after})`, sectionId: contract.sectionId, ownerId: "SARIT", dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }] } };
-      s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: "SARIT", auditHe: `הועבר לשרית לביצוע: ${before} → ${after}` });
-      s = push(s, { role: "system", kind: "text", textHe: `נשלח לשרית. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע. בדוח: החשבון יוצג ב-${after} עם הערה שהתיקון במקור ממתין.` });
+      s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון שיוך חשבון ${invoice.id} (${before} → ${after})`, sectionId: contract.sectionId, ownerId: accountant, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }] } };
+      s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: accountant, auditHe: `הועבר ל${personName(accountant)} לביצוע: ${before} → ${after}` });
+      s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(accountant)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע. בדוח: החשבון יוצג ב-${after} עם הערה שהתיקון במקור ממתין.` });
       return nextFinding(s);
     }
     // forecast_only
@@ -443,22 +515,25 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
   }
   if (f.kind === "unit") {
     const po = s.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
-    const facts = documentFacts.quote_pladot_12t;
+    const proposed = proposedOrderCorrection(pkg, po);
     const before = `${num(po.qty)} ${po.unit} × ${po.unitPrice}`;
-    const after = `${facts.qtyTon} טון × ${num(facts.pricePerTon)} ₪`;
+    const after = `${num(proposed.qty)} ${proposed.unit} × ${num(proposed.unitPrice)} ₪`;
     if (routeId === "update") {
-      s = updatePurchaseOrder(s, po.id, { qty: facts.qtyTon, unit: "טון", unitPrice: facts.pricePerTon }, s.operatorId, `אישור ממצא ${f.id}`);
+      s = updatePurchaseOrder(s, po.id, { qty: proposed.qty, unit: proposed.unit, unitPrice: proposed.unitPrice }, s.operatorId, `אישור ממצא ${f.id}`);
       const [s2, corrId] = nextId(s, "COR");
       s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: "po", recordId: String(po.id), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: "ללא השפעה בין סעיפים", findingId, at: s.clock, status: "applied" }] } };
       s = setDecision(s, findingId, { pending: undefined, status: "handled", routeId, resolvedAt: s.clock, auditHe: `הזמנה ${po.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe}`, verifiedHe: `הזמנה ${po.id} נקראה מחדש — ${after}` });
-      s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, מורשה לתיקון הזמנות בפרויקט הדרים`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: הזמנה ${po.id} נקראה מחדש — ${after}; הסכום ${nis(po.amount)} ללא שינוי`, done: true }] });
+      s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, מורשה לתיקון הזמנות בפרויקט ${pkg.project.nameHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: הזמנה ${po.id} נקראה מחדש — ${after}; הסכום ${nis(po.amount)} ללא שינוי`, done: true }] });
       s = audit(s, s.operatorId, `הזמנה ${po.id}: ${before} → ${after} (ממצא ${f.id})`, { type: "po", id: String(po.id) });
       return nextFinding(tick(s));
     }
+    // the order is part of a remainder the forecast already carries (same section, same unit): it must not be counted twice
+    const draft = pkg.forecasts.find((x) => x.controlDate === s.control.controlDate);
+    const remainder = draft?.sections?.find((x) => x.sectionId === po.sectionId)?.lines.find((l) => l.kind === "uncovered" && l.qty != null && (l.unit ?? proposed.unit) === proposed.unit);
     const [s2, taskId] = nextId(s, "TASK");
-    s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון כמות ויחידה בהזמנה ${po.id}`, sectionId: po.sectionId, ownerId: "ROI", dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }], corrections: [...s2.control.corrections, { id: `COR-${po.id}`, recordType: "po", recordId: String(po.id), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: "ללא השפעה בין סעיפים — ממתין לביצוע", findingId, at: s.clock, status: "pending_execution" }] } };
-    s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: "ROI", auditHe: `הועבר לרועי לביצוע: ${before} → ${after}` });
-    s = push(s, { role: "system", kind: "text", textHe: `נשלח לרועי. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע. לתחזית: הזמנה ${po.id} היא חלק מיתרת הברזל (300 טון) שכבר בתחזית — לא נספרת פעמיים.` });
+    s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון כמות ויחידה בהזמנה ${po.id}`, sectionId: po.sectionId, ownerId: executor, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }], corrections: [...s2.control.corrections, { id: `COR-${po.id}`, recordType: "po", recordId: String(po.id), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: "ללא השפעה בין סעיפים — ממתין לביצוע", findingId, at: s.clock, status: "pending_execution" }] } };
+    s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: executor, auditHe: `הועבר ל${personName(executor)} לביצוע: ${before} → ${after}` });
+    s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(executor)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע.${remainder ? ` לתחזית: הזמנה ${po.id} היא חלק מיתרת ה${SECTION_SHORT_HE[po.sectionId]} (${num(remainder.qty ?? 0)} ${proposed.unit}) שכבר בתחזית — לא נספרת פעמיים.` : ""}` });
     return nextFinding(s);
   }
   return s;
@@ -488,7 +563,7 @@ function nextFinding(state: V2State): V2State {
 /** The scene-8 prompt: what a saved configuration keeps (structure) and what it never keeps (data). */
 export function savePromptHe(config: V2State["control"]["reportConfig"]): string {
   const kept = ["מבנה הסעיפים לפי התקן", config.includeTrends ? "השוואה לבקרה קודמת ומגמות" : "", config.splitByBuilding ? "פילוח לפי בניין" : "", `סיכום מנהלים עד ${config.execSummaryMaxLines} שורות`, "טבלת אחריות (נושאים לטיפול)", "הפרדה בין תיקוני נתונים לשינויי תחזית", config.ceoVersion ? "גרסה נפרדת למנכ״לית" : ""].filter(Boolean);
-  return `לשמור את התצורה הזו לבקרות הבאות של הדרים? מה יישמר: ${kept.join(" · ")}. מה לא יישמר: הנתונים והמסקנות — יחושבו מחדש בכל בקרה.`;
+  return `לשמור את התצורה הזו לבקרות הבאות של ${pkg.project.nameHe}? מה יישמר: ${kept.join(" · ")}. מה לא יישמר: הנתונים והמסקנות — יחושבו מחדש בכל בקרה.`;
 }
 
 export function setReportConfig(state: V2State, patch: Partial<V2State["control"]["reportConfig"]>, userTextHe?: string, systemTextHe?: string, extraOptions: ChatOption[] = []): V2State {
@@ -517,16 +592,17 @@ export function sendReport(state: V2State, toId: PersonId): V2State {
   const to = pkg.people.find((p) => p.id === toId)!;
   const version = state.control.reportConfig.ceoVersion && toId === "DANA" ? "הגרסה למנכ״לית" : "הדוח המלא";
   // a button action, not a chat turn: the exports on the same message stay available afterwards
-  const s = push(state, { role: "system", kind: "log", textHe: `נשלח ל${to.nameHe} (${to.roleHe}): ${version} של בקרה 09/2026, ${state.control.finalized ? "גרסה סופית" : "טיוטה"} · קישור לאותה גרסת בקרה · ${dateHe(state.clock)} ${state.clock.slice(11, 16)}` });
+  const month = `${state.control.controlDate.slice(5, 7)}/${state.control.controlDate.slice(0, 4)}`;
+  const s = push(state, { role: "system", kind: "log", textHe: `נשלח ל${to.nameHe} (${to.roleHe}): ${version} של בקרה ${month}, ${state.control.finalized ? "גרסה סופית" : "טיוטה"} · קישור לאותה גרסת בקרה · ${dateHe(state.clock)} ${state.clock.slice(11, 16)}` });
   return tick(audit(s, s.operatorId, `הדוח נשלח ל${to.nameHe} (${version})`));
 }
 
 export function saveConfig(state: V2State, save: boolean): V2State {
   let s = push(state, { role: "user", kind: "text", textHe: save ? "שמור" : "לא עכשיו" });
   if (!save) return push(s, { role: "system", kind: "text", textHe: "בסדר. התצורה לא נשמרה; הבקרה הבאה תתחיל מהמבנה הבסיסי." });
-  const saved = { ...s.control.reportConfig, savedAs: "תצורת בקרה — הדרים" };
+  const saved = { ...s.control.reportConfig, savedAs: `תצורת בקרה — ${pkg.project.nameHe}` };
   s = { ...s, savedConfig: saved, control: { ...s.control, reportConfig: saved } };
-  return push(s, { role: "system", kind: "text", textHe: "נשמר: ״תצורת בקרה — הדרים״. לא הוגדרה משימה מחזורית." });
+  return push(s, { role: "system", kind: "text", textHe: `נשמר: ״${saved.savedAs}״. לא הוגדרה משימה מחזורית.` });
 }
 
 export function finalizeControl(state: V2State): V2State {
@@ -540,10 +616,9 @@ export function resetDemo(variant: Scene1Variant = "A"): V2State {
   return initialState(variant);
 }
 
-/** Open issues carried into this control (from the 1.8 control) plus tasks created during it. */
+/** Every issue of the control: those carried from earlier controls and the tasks opened during this one. */
 export function allIssues(state: V2State): ControlTask[] {
-  const carried: ControlTask[] = openIssuesAtAugust.map((o) => ({ ...o }));
-  return [...carried, ...state.control.tasks];
+  return state.control.tasks;
 }
 
 export type { ChatOption };

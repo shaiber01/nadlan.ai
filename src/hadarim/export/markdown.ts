@@ -38,7 +38,7 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
   }
 
   const s = report.status;
-  out.push("## 2. תמונת מצב הפרויקט", "", s.stageHe, "", `ביצוע פיזי ~${s.physicalPct}% · הוצאה ${s.expensePct.toFixed(0)}% · התחייבות ${s.commitmentPct.toFixed(0)}%`, "", s.scheduleHe, "", ...s.eventsHe.map((e) => `- ${e}`), "");
+  out.push("## 2. תמונת מצב הפרויקט", "", s.stageHe, "", `ביצוע פיזי ${s.physicalPct != null ? `~${s.physicalPct}%` : "לא נמדד"} · הוצאה ${s.expensePct.toFixed(0)}% · התחייבות ${s.commitmentPct.toFixed(0)}%`, "", s.scheduleHe, "", ...s.eventsHe.map((e) => `- ${e}`), "");
 
   out.push("## 3. טבלת הסעיפים", "");
   const rows = report.sections.rows.map((r) => [r.sectionId, r.isContingency ? `${r.nameHe} (שורה נפרדת)` : r.highlighted ? `**${r.nameHe}**` : r.nameHe, nis(r.budget), r.changes ? signed(r.changes) : "—", nis(r.updatedBudget), nis(r.recorded), nis(r.committed), nis(r.remainingCommitment), nis(r.uncovered), nis(r.eac), signed(r.variance), pct(r.variancePct), nis(r.previousEac), signed(r.change), `${r.basisPct}%`]);

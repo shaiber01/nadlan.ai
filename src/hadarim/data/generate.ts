@@ -1,4 +1,4 @@
-import { hadarimDocuments } from "./documents";
+import { documentFacts, hadarimDocuments } from "./documents";
 import { addMonths, createRng, forceSum, lastDayOfMonth, monthKey } from "./rng";
 import type {
   BuildingTag,
@@ -50,6 +50,8 @@ export const project: HProject = {
   boqVersion: { number: 4, date: "2026-08-12" },
   controlDates: [...CONTROL_DATES],
   currentControlDate: CURRENT_CONTROL,
+  physicalProgressPct: 38,
+  schedule: { contractEnd: "2027-02", expectedEnd: "2027-02", noteHe: "ללא משמעות תקציבית ידועה מעבר להארכת ארגון אתר שכבר בתחזית" },
   statusHe: "בניין A: קומה 7 מתוך 8 יצוקה · בניין B: קומה 5 · תחילת בנייה בקומות התחתונות של A · שרוולי אינסטלציה וחשמל תת-קרקעיים · פיתוח שלב א׳ (עפר, קירות תומכים, תשתיות ראשיות) ברובו הושלם",
 };
 
@@ -670,5 +672,9 @@ export function generateHadarimPackage(): HadarimPackage {
     buildForecast("2026-08-01", invoices, purchaseOrders, "final", openIssuesAtAugust),
     buildForecast(CURRENT_CONTROL, invoices, purchaseOrders, "draft", openIssuesAtAugust),
   ];
-  return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents: hadarimDocuments };
+  const documents = hadarimDocuments.map((d) => {
+    const facts = (documentFacts as Record<string, Record<string, unknown> | undefined>)[d.id];
+    return facts ? { ...d, facts } : d;
+  });
+  return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents };
 }

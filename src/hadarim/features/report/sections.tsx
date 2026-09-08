@@ -256,7 +256,7 @@ export function StatusSection({ report }: { report: ReportModel }) {
     <Section n="2" titleHe="תמונת מצב הפרויקט">
       <p className="h2-report-lead">{s.stageHe}</p>
       <div className="h2-report-meters" data-testid="report-meters">
-        <Meter labelHe="ביצוע פיזי" valueHe={`~${num(s.physicalPct)}%`} value={s.physicalPct} />
+        <Meter labelHe="ביצוע פיזי" valueHe={s.physicalPct != null ? `~${num(s.physicalPct)}%` : "לא נמדד"} value={s.physicalPct ?? 0} />
         <Meter labelHe="הוצאה (נרשם / תחזית)" valueHe={pct(s.expensePct, 0)} value={s.expensePct} />
         <Meter labelHe="התחייבות (נרשם + יתרת התחייבות / תחזית)" valueHe={pct(s.commitmentPct, 0)} value={s.commitmentPct} />
       </div>

@@ -61,19 +61,20 @@ Access is open through the publishable key for now (a prototype decision); RLS i
 
 ### The agent ("בקרה")
 
-Running `claude` in this folder makes Claude the project's budget controller: `CLAUDE.md` defines the role and rules, `.claude/agents/bakara.md` the agent, and the skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset` the procedures. The agent never computes numbers itself; it drives the deterministic engine over the database through the CLI:
+The budget controller is a Claude Code agent defined in this repository, not the default session: `.claude/agents/bakara.md` holds the role and rules, the skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset` the procedures, and the `bakara` MCP server in `.mcp.json` the tools. A plain `claude` session here is a development session (see `CLAUDE.md`).
 
 ```bash
-npm run bakara -- status
-npm run bakara -- erp set-section 1147 02 --by SARIT --note "תיקון שיוך"   # the scene-1 change
-npm run bakara -- control run                                             # findings on live data
-npm run bakara -- decide allocation yes_target && npm run bakara -- route allocation update
-npm run bakara -- report --md /tmp/report.md --docx /tmp/report.docx     # per the report standard
-npm run bakara -- ask "מה השתנה בבקרה האחרונה לעומת הקודמת?"
-npm run bakara -- reset                                                   # back to the seed
+claude --agent bakara        # a whole session as the controller (approve the .mcp.json servers on first use)
+# or, in a normal session: "use the bakara agent to run the control for הדרים"
 ```
 
-Every command reads the current state from Supabase and writes back what it changed; ERP writes are attributed and logged by the database triggers, and the verification line after a write is a genuine re-read.
+The tools (`src/hadarim/tools/index.ts`, served by `mcp/bakara-server.ts`) are general-purpose over any project in the database — reads (`get_project`, `get_forecast`, `get_section`, `query_invoices`, `query_change_log`, `search_documents`, …), checks (`run_check`, `run_control`), decisions on findings (`decide_finding`, `route_finding`, `confirm_quote`), attributed writes (`reallocate_invoice`, `correct_purchase_order`, `create_invoice`, `add_forecast_adjustment`, `open_task`, `add_control_note`, `set_project_status`) and the report (`set_report_config`, `build_report`, `finalize_control`). The agent never computes numbers itself; every figure it quotes comes from a tool result, every write is attributed to the person who decided, logged by the database triggers and re-read as verification. The same registry is available from a shell:
+
+```bash
+npm run bakara -- tools                                     # list the tools
+npm run bakara -- tool get_forecast '{"sectionId":"03"}'    # call one
+npm run bakara -- control run                               # the demo-script commands still work
+```
 
 ## Where to change things
 

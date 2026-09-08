@@ -159,7 +159,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     ...(e.decisionsHe.length ? bullets(e.decisionsHe) : [p("אין החלטות נדרשות בבקרה זו.")]),
     h("2. תמונת מצב הפרויקט", 1),
     p(s.stageHe),
-    table(["ביצוע פיזי", "הוצאה (נרשם / תחזית)", "התחייבות"], [[`~${s.physicalPct}%`, `${s.expensePct.toFixed(0)}%`, `${s.commitmentPct.toFixed(0)}%`]]),
+    table(["ביצוע פיזי", "הוצאה (נרשם / תחזית)", "התחייבות"], [[s.physicalPct != null ? `~${s.physicalPct}%` : "לא נמדד", `${s.expensePct.toFixed(0)}%`, `${s.commitmentPct.toFixed(0)}%`]]),
     label("לו״ז", s.scheduleHe),
     h("אירועים מהותיים בתקופה", 3),
     ...bullets(s.eventsHe),

@@ -1,7 +1,7 @@
 import type { HFinding, HPositive } from "../engine/checks";
 import { sectionLabel } from "../engine/checks";
 import { initialState, pkg, setPackage } from "../engine/commands";
-import type { AuditEntry, ControlSession, ControlTask, DataCorrection, FindingDecision, ForecastAdjustment, ReportConfig, V2State } from "../engine/model";
+import type { AuditEntry, ControlNote, ControlSession, ControlTask, DataCorrection, FindingDecision, ForecastAdjustment, ReportConfig, V2State } from "../engine/model";
 import { db, fromStamp, loadErp, loadPackage, readInvoice, saveInvoice, savePurchaseOrder, toStamp } from "./client";
 import { DEFAULT_PROJECT_ID } from "./config";
 import type { Json, Tables } from "./types";
@@ -45,12 +45,14 @@ export async function loadState(projectId = DEFAULT_PROJECT_ID, controlDate?: st
     rows(supabase.from("decisions").select("*").eq("project_id", projectId).eq("control_date", date), "decisions"),
     rows(supabase.from("forecast_adjustments").select("*").eq("project_id", projectId).eq("control_date", date).order("created_at"), "forecast_adjustments"),
     rows(supabase.from("data_corrections").select("*").eq("project_id", projectId).eq("control_date", date).order("at"), "data_corrections"),
-    rows(supabase.from("open_issues").select("*").eq("project_id", projectId).not("finding_id", "is", null), "open_issues"),
+    // every issue of the project: carried from earlier controls (no finding) and opened in this one
+    rows(supabase.from("open_issues").select("*").eq("project_id", projectId).order("opened_in_control").order("id"), "open_issues"),
     rows(supabase.from("audit").select("*").eq("project_id", projectId).order("at").order("id"), "audit"),
   ]);
 
   const control: ControlSession = {
     controlDate: date,
+    notes: (c.notes as unknown as ControlNote[]) ?? [],
     status: c.status as ControlSession["status"],
     requestedAt: c.requested_at ? toStamp(c.requested_at) : null,
     findings: c.findings as unknown as HFinding[],
@@ -93,7 +95,7 @@ export async function loadState(projectId = DEFAULT_PROJECT_ID, controlDate?: st
       }),
     ),
     corrections: corrections.map(
-      (x): DataCorrection => ({ id: x.id, recordType: x.record_type as DataCorrection["recordType"], recordId: x.record_id, fieldHe: x.field_he, beforeHe: x.before_he, afterHe: x.after_he, approvedById: x.approved_by_id as DataCorrection["approvedById"], crossSectionHe: x.cross_section_he, findingId: x.finding_id, at: toStamp(x.at), status: x.status as DataCorrection["status"] }),
+      (x): DataCorrection => ({ id: x.id, recordType: x.record_type as DataCorrection["recordType"], recordId: x.record_id, fieldHe: x.field_he, beforeHe: x.before_he, afterHe: x.after_he, approvedById: x.approved_by_id as DataCorrection["approvedById"], crossSectionHe: x.cross_section_he, ...(x.finding_id ? { findingId: x.finding_id } : {}), at: toStamp(x.at), status: x.status as DataCorrection["status"] }),
     ),
     tasks: issues.map(
       (t): ControlTask => ({ id: t.id, titleHe: t.title_he, sectionId: t.section_id as ControlTask["sectionId"], ownerId: t.owner_id as ControlTask["ownerId"], dueDate: t.due_date, openedInControl: t.opened_in_control, status: t.status as ControlTask["status"], closedAt: t.closed_at, ...(t.impact_if_ignored_he ? { impactIfIgnoredHe: t.impact_if_ignored_he } : {}), ...(t.finding_id ? { findingId: t.finding_id } : {}) }),
@@ -168,6 +170,7 @@ export async function saveState(prev: V2State, next: V2State, projectId = DEFAUL
       finalized: s.finalized,
       operator_id: next.operatorId,
       report_config: s.reportConfig as unknown as Json,
+      notes: s.notes as unknown as Json,
       findings: s.findings as unknown as Json,
       positives: s.positives as unknown as Json,
       checked_he: s.checkedHe,
@@ -179,7 +182,9 @@ export async function saveState(prev: V2State, next: V2State, projectId = DEFAUL
   if (decisionRows.length) check(await supabase.from("decisions").upsert(decisionRows), "decisions");
   const adjustmentRows = s.adjustments.map((a) => ({ project_id: projectId, control_date: s.controlDate, id: a.id, section_id: a.sectionId, change_type: a.changeType, description_he: a.descriptionHe, basis_he: a.basisHe, basis: a.basis, source_ref: a.sourceRef, document_id: a.documentId ?? null, amount: a.amount, finding_id: a.findingId ?? null, qty: a.qty ?? null, unit: a.unit ?? null, unit_price: a.unitPrice ?? null, replaces_line_id: a.replacesLineId ?? null, committed_portion: (a.committedPortion ?? null) as unknown as Json }));
   if (adjustmentRows.length) check(await supabase.from("forecast_adjustments").upsert(adjustmentRows), "forecast_adjustments");
-  const correctionRows = s.corrections.map((x) => ({ project_id: projectId, control_date: s.controlDate, id: x.id, record_type: x.recordType, record_id: x.recordId, field_he: x.fieldHe, before_he: x.beforeHe, after_he: x.afterHe, approved_by_id: x.approvedById, cross_section_he: x.crossSectionHe, finding_id: x.findingId, at: fromStamp(x.at), status: x.status }));
+  const removedAdjustments = prev.control.adjustments.filter((a) => !s.adjustments.some((b) => b.id === a.id)).map((a) => a.id);
+  if (removedAdjustments.length) check(await supabase.from("forecast_adjustments").delete().eq("project_id", projectId).eq("control_date", s.controlDate).in("id", removedAdjustments), "forecast_adjustments (delete)");
+  const correctionRows = s.corrections.map((x) => ({ project_id: projectId, control_date: s.controlDate, id: x.id, record_type: x.recordType, record_id: x.recordId, field_he: x.fieldHe, before_he: x.beforeHe, after_he: x.afterHe, approved_by_id: x.approvedById, cross_section_he: x.crossSectionHe, finding_id: x.findingId ?? null, at: fromStamp(x.at), status: x.status }));
   if (correctionRows.length) check(await supabase.from("data_corrections").upsert(correctionRows), "data_corrections");
   const taskRows = s.tasks.map((t) => ({ project_id: projectId, id: t.id, title_he: t.titleHe, section_id: t.sectionId, owner_id: t.ownerId, due_date: t.dueDate, opened_in_control: t.openedInControl, status: t.status, closed_at: t.closedAt, impact_if_ignored_he: t.impactIfIgnoredHe ?? null, finding_id: t.findingId ?? null }));
   if (taskRows.length) check(await supabase.from("open_issues").upsert(taskRows), "open_issues");

@@ -55,7 +55,8 @@ export interface ForecastAdjustment {
   unitPrice?: number;
   /** Replaces an existing draft forecast line (by id) or adds a new uncovered line. */
   replacesLineId?: string;
-  committedPortion?: { poId: number; qty: number; amount: number };
+  /** The part of a replaced remainder that approved orders already cover (becomes a commitment line). */
+  committedPortion?: { poId: number; poIds?: number[]; qty: number; amount: number };
 }
 
 export interface DataCorrection {
@@ -67,7 +68,8 @@ export interface DataCorrection {
   afterHe: string;
   approvedById: PersonId;
   crossSectionHe: string;
-  findingId: string;
+  /** Absent for an instructed correction made outside a control finding. */
+  findingId?: string;
   at: string;
   status: "applied" | "pending_execution";
 }
@@ -105,8 +107,23 @@ export interface ChatMessage {
   tableRows?: string[][];
 }
 
+/** A note the controller adds to the control — feeds the report's risks, events, decisions and assumptions. */
+export interface ControlNote {
+  id: string;
+  kind: "risk" | "event" | "decision" | "assumption" | "note";
+  textHe: string;
+  sectionId?: SectionId;
+  exposureHe?: string;
+  likelihoodHe?: string;
+  triggerHe?: string;
+  ownerId?: PersonId;
+  at: string;
+  byId: PersonId;
+}
+
 export interface ControlSession {
   controlDate: string;
+  notes: ControlNote[];
   status: "idle" | "running" | "reviewing" | "report";
   requestedAt: string | null;
   findings: HFinding[];
@@ -154,5 +171,5 @@ export interface V2State {
 export const DEFAULT_REPORT_CONFIG: ReportConfig = { includeTrends: false, splitByBuilding: false, ceoVersion: false, execSummaryMaxLines: 5, savedAs: null };
 
 export function emptySession(controlDate: string): ControlSession {
-  return { controlDate, status: "idle", requestedAt: null, findings: [], positives: [], checkedHe: [], decisions: {}, adjustments: [], corrections: [], tasks: [], messages: [], reportConfig: { ...DEFAULT_REPORT_CONFIG }, finalized: false, stepsRevealed: 0 };
+  return { controlDate, notes: [], status: "idle", requestedAt: null, findings: [], positives: [], checkedHe: [], decisions: {}, adjustments: [], corrections: [], tasks: [], messages: [], reportConfig: { ...DEFAULT_REPORT_CONFIG }, finalized: false, stepsRevealed: 0 };
 }

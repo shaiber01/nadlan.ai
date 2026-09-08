@@ -1,30 +1,26 @@
 ---
 name: bakara-erp
-description: Write to the simulated ERP (Supabase) on the user's instruction — re-allocate an invoice, correct a purchase order, tag a building, key in a new invoice — with attribution and the trigger-written change log. Use for scene 1 without the browser and for any correction the user approves.
+description: Apply an instructed data change outside a finding card — re-allocate an invoice, correct a purchase order, tag a building, key in an invoice, or change the forecast with a stated basis — through the bakara write tools, attributed and logged. Use when the user tells you to change data or the forecast.
 ---
 
-# ERP writes — only on the user's decision
+# Writes — only on the user's decision
 
-Every write is attributed (`--by <person id>`: EYAL, ROI, DANA, SARIT) and logged by the database triggers. Before writing, restate what will change and who decides; after writing, quote the change-log rows the tool prints.
+Before writing, restate what will change and who decides (`byId` = their person id from `get_project.people`). After writing, quote the tool's `changeLog` rows (written by the database triggers) and its `verifiedHe` line (the record re-read from the database).
 
-```bash
-# re-allocate an invoice to another budget section (the scene-1 change: 1147 from 07 to 02 by שרית)
-npm run bakara -- erp set-section 1147 02 --by SARIT --note "תיקון שיוך"
+## ERP records
+- `reallocate_invoice` — invoice to another section. Permission-checked (only people who may write allocations; do not work around a refusal). `asCorrection: true` (default) when this is the controller's correction of a wrong allocation — it appears in report §4ב; `asCorrection: false` when the user is doing plain data entry as the ERP's user (e.g. a bookkeeper keying a change) — change log only.
+- `correct_purchase_order` — `qty` / `unit` / `unitPrice`; the amount must stay qty × unit price (the tool refuses otherwise). Same `asCorrection` rule.
+- `set_invoice_building` — `A` / `B` / `משותף` / `null` for the per-building split.
+- `create_invoice` — a new supplier invoice (approved, retention per contract, cumulative computed); returns the assigned number.
 
-# correct a purchase order; qty × unit price must still equal the order amount
-npm run bakara -- erp set-po 2291 --qty 12 --unit טון --price 4800 --by EYAL
+A correction that came out of a control finding goes through `route_finding` (in `/bakara-control`), not through these, so decision, correction and verification are recorded together.
 
-# tag an invoice with a building for the per-building split
-npm run bakara -- erp set-building 1147 A --by EYAL
+## The forecast
+- `add_forecast_adjustment` — a typed change per the standard (`changeType`: price, quantity, scope, coverage_gap, basis, indexation, schedule, claim, contingency), with `basis` (contract / po / quote / appendix / estimate), `basisHe` in words, `sourceRef` (document or record), `amount` (positive = increase), optional `qty` × `unitPrice`, `documentId`, and `replacesLineId` to re-price an existing draft line instead of adding one. The result shows the section's new forecast.
+- `remove_forecast_adjustment` — by id, when the user withdraws a change (confirm first).
+An estimate stays an estimate until an order or contract exists; say so.
 
-# key in a new invoice (variant B of scene 1: after `reset --variant B`, the number 1147 is assigned)
-npm run bakara -- erp new-invoice --supplier SUP-NTB --docno 2026-087 --date 2026-08-31 --amount 180000 \
-  --desc "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳" --section 02 --contract 07-01 --attachment inv_1147_ntb_partial7 --by SARIT
-```
-
-Rules:
-- Permission: only people with `can_write_allocation` may re-allocate (the tool refuses otherwise and says who is not allowed). Do not work around it.
-- A correction that came out of a control finding goes through `route <finding> update` (in `/bakara-control`), not through `erp …`, so the decision, correction and verification are recorded together.
+## Rules
 - Never write with SQL. Never delete records.
-- Section ids are two digits ("01"–"18"); building tags are `A`, `B`, `משותף`.
-- After a write, `npm run bakara -- status` shows "שינויים היום במערכת המידע"; a control run afterwards will see the change ("ברשומה ששונתה היום").
+- Section ids are two digits ("01"–"18"); people and suppliers by their ids (`list_people`, `list_suppliers`).
+- A write is visible to the web app immediately and to the next `run_control` ("ברשומה ששונתה היום").

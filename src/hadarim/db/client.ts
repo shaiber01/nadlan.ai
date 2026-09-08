@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { BuildingTag, ForecastBasis, HBoqLine, HChangeLogEntry, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPerson, HProject, HPurchaseOrder, HSection, HSupplier, HadarimPackage, PersonId, SectionId } from "../data/types";
 import type { ErpState } from "../engine/model";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
-import type { Database, Tables, TablesInsert } from "./types";
+import type { Database, Json, Tables, TablesInsert } from "./types";
 
 /**
  * Supabase access for the Hadarim prototype: loads a project as the engine's `HadarimPackage`,
@@ -154,6 +154,11 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     controlDates: p.control_dates,
     currentControlDate: p.current_control_date ?? p.control_dates[p.control_dates.length - 1],
     statusHe: p.status_he ?? "",
+    physicalProgressPct: p.physical_progress_pct == null ? null : Number(p.physical_progress_pct),
+    schedule: (() => {
+      const s = (p.schedule ?? {}) as { contract_end?: string; expected_end?: string; note_he?: string };
+      return { ...(s.contract_end ? { contractEnd: s.contract_end } : {}), ...(s.expected_end ? { expectedEnd: s.expected_end } : {}), ...(s.note_he ? { noteHe: s.note_he } : {}) };
+    })(),
   };
   const contractsOut: HContract[] = contracts.map((c) => ({
     id: c.id,
@@ -177,7 +182,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, budget: Number(s.budget), split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
-  const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number> }));
+  const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}) }));
   const boqOut: HBoqLine[] = boq.map((l) => ({ id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) }));
   const issuesOut = issues.map(rowToOpenIssue);
   const forecasts: HForecastVersion[] = versions.map((v) => ({
@@ -288,6 +293,45 @@ export async function deleteInvoice(id: number, projectId = DEFAULT_PROJECT_ID, 
 export async function resetProject(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<void> {
   const { error } = await supabase.rpc("reset_project", { p_project_id: projectId });
   if (error) throw new Error(`reset_project: ${error.message}`);
+}
+
+export interface ProjectSummary {
+  id: string;
+  nameHe: string;
+  companyHe: string;
+  statusHe: string;
+  controlDates: string[];
+  currentControlDate: string | null;
+}
+
+/** Every project in the database (the prototype is multi-project by `project_id`). */
+export async function listProjects(supabase: Db = db()): Promise<ProjectSummary[]> {
+  const rows = await all(supabase.from("projects").select("id, name_he, company_he, status_he, control_dates, current_control_date").order("id"), "projects");
+  return rows.map((r) => ({ id: r.id, nameHe: r.name_he, companyHe: r.company_he, statusHe: r.status_he ?? "", controlDates: r.control_dates, currentControlDate: r.current_control_date }));
+}
+
+export interface ProjectStatusPatch {
+  statusHe?: string;
+  /** Measured physical progress in percent; null = not measured. */
+  physicalProgressPct?: number | null;
+  schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
+}
+
+/** Updates the project's status fields (stage text, measured physical progress, schedule); the schedule is merged. */
+export async function updateProject(projectId: string, patch: ProjectStatusPatch, supabase: Db = db()): Promise<void> {
+  const row: Partial<TablesInsert<"projects">> = {};
+  if (patch.statusHe !== undefined) row.status_he = patch.statusHe;
+  if (patch.physicalProgressPct !== undefined) row.physical_progress_pct = patch.physicalProgressPct;
+  if (patch.schedule) {
+    const { data, error } = await supabase.from("projects").select("schedule").eq("id", projectId).single();
+    if (error) throw new Error(`projects: ${error.message}`);
+    const current = ((data?.schedule as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+    const s = patch.schedule;
+    row.schedule = { ...current, ...(s.contractEnd !== undefined ? { contract_end: s.contractEnd } : {}), ...(s.expectedEnd !== undefined ? { expected_end: s.expectedEnd } : {}), ...(s.noteHe !== undefined ? { note_he: s.noteHe } : {}) } as Json;
+  }
+  if (!Object.keys(row).length) return;
+  const { error } = await supabase.from("projects").update(row).eq("id", projectId);
+  if (error) throw new Error(`projects: ${error.message}`);
 }
 
 /** Calls `onChange` (debounced) whenever an ERP table or the change log changes for the project. Returns an unsubscribe. */
