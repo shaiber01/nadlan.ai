@@ -23,13 +23,13 @@ export function BudgetScreen() {
           <span className="erp-count">
             תקציב גרסה {pkg.project.budgetVersion.number} (אושר {dateHe(pkg.project.budgetVersion.approvedAt)}) · כתב כמויות גרסה {pkg.project.boqVersion.number}
           </span>
-          <Button size="sm" variant="primary" onClick={() => store.go("control")} data-testid="erp-budget-to-control">
-            לבקרה ↗
+          <Button size="sm" variant="primary" onClick={() => store.go("report")} data-testid="erp-budget-to-report">
+            לדוח הבקרה ↗
           </Button>
         </div>
       </div>
       <div className="erp-notice">
-        התחזית המוצגת היא התחזית המאושרת האחרונה (בקרה {dateHe(lastFinal.controlDate)}). התחזית לבקרה {dateHe(CURRENT_CONTROL)} מוכנה במערכת הבקרה ומתעדכנת שם לפי ההחלטות; ״נרשם״ מחושב חי מחשבונות שאושרו עד {dateHe(CURRENT_CONTROL)} (חשבונות בבדיקה — {inReview.length}, {nis(inReview.reduce((a, i) => a + i.amount, 0))} — אינם נכללים).
+        התחזית המוצגת היא התחזית המאושרת האחרונה (בקרה {dateHe(lastFinal.controlDate)}). התחזית לבקרה {dateHe(CURRENT_CONTROL)} נבנית בדוח הבקרה ומתעדכנת שם לפי החלטות הסוכן; ״נרשם״ מחושב חי מחשבונות שאושרו עד {dateHe(CURRENT_CONTROL)} (חשבונות בבדיקה — {inReview.length}, {nis(inReview.reduce((a, i) => a + i.amount, 0))} — אינם נכללים).
       </div>
       <div className="erp-table-wrap">
         <table className="erp-table" data-testid="erp-budget-table">

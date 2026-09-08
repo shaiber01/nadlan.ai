@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Hadarim v2 visual tour: element-level screenshots of the report sections, the ERP forms and the
- * document viewer for presenter review (e2e/screenshots/hadarim-v-*.png), plus the scene-1 variant B
- * (new invoice) and the PO correction guard.
+ * Hadarim ERP variants, offline: element-level screenshots of the ERP forms for presenter review
+ * (e2e/screenshots/hadarim-v-*.png), the scene-1 variant B (new invoice), the PO correction guard and
+ * the reference screens. The report-section tour runs in e2e/hadarim.db.spec.ts, where the agent's
+ * tools produce a finished control for the viewer to show.
  */
 
 async function fresh(page: Page) {
@@ -14,17 +15,6 @@ async function fresh(page: Page) {
   });
   await page.reload();
   await page.getByTestId("presenter-bar").waitFor();
-  await page.getByTestId("skip-motion").check();
-}
-
-async function startControl(page: Page) {
-  await page.getByTestId("control-start").click();
-}
-
-async function option(page: Page, id: string) {
-  const button = page.getByTestId(`chat-option-${id}`).last();
-  await button.waitFor();
-  await button.click();
 }
 
 async function elementShot(page: Page, testId: string, name: string) {
@@ -33,70 +23,8 @@ async function elementShot(page: Page, testId: string, name: string) {
   await el.screenshot({ path: `e2e/screenshots/hadarim-v-${name}.png` });
 }
 
-async function runWholeScript(page: Page) {
-  await page.getByTestId("erp-invoice-row-1147").click();
-  await page.getByTestId("erp-invoice-edit").click();
-  await page.getByTestId("erp-invoice-by").selectOption("SARIT");
-  await page.getByTestId("erp-invoice-section").selectOption("02");
-  await page.getByTestId("erp-invoice-save").click();
-  await page.getByTestId("go-control").click();
-  await startControl(page);
-  await option(page, "review");
-  await option(page, "yes_target");
-  await option(page, "update");
-  await option(page, "yes_tons");
-  await option(page, "refer_roi");
-  await option(page, "all");
-  const coverage = page.getByTestId("finding-card").filter({ hasText: "ניקוז" }).last();
-  await coverage.getByTestId("finding-free-text").fill("צריך להזמין. יש הצעה בתיקייה");
-  await coverage.getByTestId("finding-free-send").click();
-  await option(page, "accept");
-  await expect(page.getByTestId("control-headline")).toContainText("48,360,000 ₪");
-}
-
-test.describe("Hadarim v2 — visual tour and ERP variants", () => {
-  test("report sections, chart, CEO page and document viewer", async ({ page }) => {
-    test.setTimeout(120_000);
-    await fresh(page);
-    await runWholeScript(page);
-    await option(page, "open");
-    await expect(page.getByTestId("report-view")).toBeVisible();
-    await page.getByTestId("report-toggle-trends").click();
-    await page.getByTestId("report-toggle-building").click();
-    await page.getByTestId("report-toggle-ceo").click();
-    await elementShot(page, "report-section-1", "exec-summary");
-    await elementShot(page, "report-section-2", "status");
-    await elementShot(page, "report-section-3", "sections-table");
-    await elementShot(page, "report-by-building", "by-building");
-    await elementShot(page, "report-section-4", "changes-4a-4b");
-    await elementShot(page, "report-section-5", "material");
-    await elementShot(page, "report-section-6", "contingency");
-    await elementShot(page, "report-section-7", "risks");
-    await elementShot(page, "report-section-8", "issues");
-    await elementShot(page, "report-section-9", "verified");
-    await elementShot(page, "report-section-10", "trends");
-    await page.getByTestId("report-appendices-toggle").click();
-    await elementShot(page, "report-section-11", "appendices");
-    await page.getByTestId("report-tab-ceo").click();
-    await elementShot(page, "report-ceo", "ceo-page");
-    await page.getByTestId("report-tab-full").click();
-    // a source link in 4a opens the price appendix in the viewer
-    await page.getByTestId("report-change-source").first().click();
-    await expect(page.getByTestId("document-view")).toBeVisible();
-    await elementShot(page, "document-view", "document-appendix");
-    await page.keyboard.press("Escape");
-    // back to the chat: the newest message is in view
-    await page.getByTestId("control-back-to-chat").click();
-    await expect(page.getByTestId("chat-message").last()).toBeInViewport();
-    // finding sources open documents at their anchor
-    const card = page.getByTestId("finding-card").filter({ hasText: "ניקוז" }).last();
-    await card.scrollIntoViewIfNeeded();
-    await card.getByTestId("finding-source").filter({ hasText: "3.4" }).first().click();
-    await expect(page.getByTestId("document-view")).toBeVisible();
-    await elementShot(page, "document-view", "document-contract-exclusion");
-  });
-
-  test("scene 1 variant B: a new invoice keyed into שלד triggers the allocation finding", async ({ page }) => {
+test.describe("Hadarim — ERP variants and screens", () => {
+  test("scene 1 variant B: a new invoice keyed into שלד gets the script's number and shows in the change log", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("scene1-variant").selectOption("B");
     await expect(page.getByTestId("erp-invoice-row-1147")).toHaveCount(0);
@@ -107,11 +35,10 @@ test.describe("Hadarim v2 — visual tour and ERP variants", () => {
     await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
     // the script: "המערכת מקצה חשבון 1147" — variant B seeds the ERP without it
     await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", "1147");
-    await page.getByTestId("go-control").click();
-    await startControl(page);
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible();
-    await option(page, "review");
-    await expect(page.getByTestId("finding-card").first()).toContainText("נ.ת.ב.");
+    await expect(page.getByTestId("erp-changelog-row").first()).toContainText("נקלט");
+    // the report viewer sees the new invoice in the live recorded amounts
+    await page.getByTestId("erp-nav-report").click();
+    await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
   });
 
   test("ERP: PO correction keeps the amount fixed; contracts and budget screens render", async ({ page }) => {

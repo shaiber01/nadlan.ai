@@ -1,5 +1,5 @@
 /* Hadarim v2 surface: shell, presenter strip, shared document viewer and print rules.
-   Feature screens ship their own stylesheets (features/erp/erp.css, features/control/control.css, features/report/report.css). */
+   Feature screens ship their own stylesheets (features/erp/erp.css, features/report/report.css, features/report/record.css). */
 
 .h2-shell {
   min-height: 100vh;

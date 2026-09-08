@@ -4,8 +4,9 @@ import { store, useV2State, type UiState } from "../../app/store";
 import { sectionLabel } from "../../engine/checks";
 import { pkg } from "../../engine/commands";
 import { dateHe, nis, num, timeHe } from "./fmt";
+import "./record.css";
 
-type RecordRef = NonNullable<UiState["control"]["recordRef"]>;
+type RecordRef = NonNullable<UiState["viewer"]["recordRef"]>;
 
 /** Read-only view of an ERP record (invoice, PO, contract) with its change log, and a jump into the ERP screen. */
 export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
@@ -76,14 +77,14 @@ export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
       { labelHe: "עכבון", value: `${c.retentionPct}%` },
       { labelHe: "כלול", value: c.inclusionsHe.join("; ") || "—" },
       { labelHe: "מוחרג", value: c.exclusions.length ? <ul className="h2c-notes">{c.exclusions.map((e) => <li key={e.clause}>סעיף {e.clause}: {e.textHe}{e.coveredByContractId ? ` (מכוסה בחוזה ${e.coveredByContractId})` : ""}</li>)}</ul> : "—" },
-      ...(c.priceAppendices?.length ? [{ labelHe: "נספחי מחיר", value: <ul className="h2c-notes">{c.priceAppendices.map((a) => <li key={a.id}>{a.titleHe} · {num(a.pricePerTon)} ₪/טון · מ-{dateHe(a.validFrom)} <button type="button" className="h2c-source is-link small" onClick={() => store.openDocument(a.documentId)}>PDF ↗</button></li>)}</ul> }] : []),
+      ...(c.priceAppendices?.length ? [{ labelHe: "נספחי מחיר", value: <ul className="h2c-notes">{c.priceAppendices.map((a) => <li key={a.id}>{a.titleHe} · {num(a.pricePerTon)} ₪/{a.unit ?? "טון"} · מ-{dateHe(a.validFrom)} <button type="button" className="h2c-source is-link small" onClick={() => store.openDocument(a.documentId)}>PDF ↗</button></li>)}</ul> }] : []),
       ...(c.closed ? [{ labelHe: "נסגר", value: `${dateHe(c.closed.at)} · חשבון סופי ${nis(c.closed.finalAccount)}` }] : []),
       ...(c.noteHe ? [{ labelHe: "הערה", value: c.noteHe }] : []),
       ...(c.documentId ? [{ labelHe: "מסמך", value: <button type="button" className="h2c-source is-link small" onClick={() => store.openDocument(c.documentId!)}>פתח PDF ↗</button> }] : []),
     ];
   }
 
-  const openInErp = () => store.setUi((u) => ({ ...u, app: "erp", erp: { ...u.erp, screen, ...erpPatch }, control: { ...u.control, recordRef: null } }));
+  const openInErp = () => store.setUi((u) => ({ ...u, app: "erp", erp: { ...u.erp, screen, ...erpPatch }, viewer: { ...u.viewer, recordRef: null } }));
 
   return (
     <Surface

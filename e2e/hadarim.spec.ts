@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Hadarim v2: the demo script end to end (hadarimdemoscript.md scenes 1–8) through the real UI, plus
- * persistence, reset, exports and the clean-data trap. Scene 9 (free questions) belongs to the Claude
- * agent, not to the web page — the panel points there.
+ * Hadarim web app, offline (browser-only generator data): the simulated ERP edit of scene 1 (both
+ * variants live in hadarim.visual.spec.ts), the report tab as a read-only viewer of the control,
+ * exports, persistence and reset. Running the control belongs to the Claude agent and its tools; the
+ * live-database flow that shows the agent's finished control in this viewer is e2e/hadarim.db.spec.ts.
  */
 
 async function fresh(page: Page) {
@@ -14,24 +15,22 @@ async function fresh(page: Page) {
   });
   await page.reload();
   await page.getByTestId("presenter-bar").waitFor();
-  await page.getByTestId("skip-motion").check();
 }
 
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e/screenshots/hadarim-${name}.png`, fullPage: false });
 }
 
-async function startControl(page: Page) {
-  await page.getByTestId("control-start").click();
+/** With invoice 1147 open in the ERP: re-allocate it to 02-שלד as שרית (the script's scene 1). */
+async function moveInvoiceToSheled(page: Page) {
+  await page.getByTestId("erp-invoice-edit").click();
+  await page.getByTestId("erp-invoice-by").selectOption("SARIT");
+  await page.getByTestId("erp-invoice-section").selectOption("02");
+  await page.getByTestId("erp-invoice-save").click();
+  await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
 }
 
-async function option(page: Page, id: string) {
-  const button = page.getByTestId(`chat-option-${id}`).last();
-  await button.waitFor();
-  await button.click();
-}
-
-test.describe("Hadarim v2 — the scripted demo", () => {
+test.describe("Hadarim — ERP and the report viewer (offline)", () => {
   test("scene 1 (variant A): the bookkeeper moves invoice 1147 to שלד in the ERP", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -40,114 +39,41 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await page.getByTestId("erp-invoice-row-1147").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("07 — פיתוח");
     await shot(page, "01-invoice-1147");
-    await page.getByTestId("erp-invoice-edit").click();
-    await page.getByTestId("erp-invoice-by").selectOption("SARIT");
-    await page.getByTestId("erp-invoice-section").selectOption("02");
-    await page.getByTestId("erp-invoice-save").click();
-    await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
+    await moveInvoiceToSheled(page);
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("שלד");
     await shot(page, "02-invoice-1147-changed");
     expect(errors).toEqual([]);
   });
 
-  test("scenes 2–8: control, four decisions, living report, configuration", async ({ page }) => {
-    test.setTimeout(120_000);
+  test("the report tab is a read-only viewer: draft before any control, live ERP data, exports, no controls", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await fresh(page);
-    // scene 1
-    await page.getByTestId("erp-invoice-row-1147").click();
-    await page.getByTestId("erp-invoice-edit").click();
-    await page.getByTestId("erp-invoice-by").selectOption("SARIT");
-    await page.getByTestId("erp-invoice-section").selectOption("02");
-    await page.getByTestId("erp-invoice-save").click();
-    await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
-
-    // scene 2: request the control
-    await page.getByTestId("go-control").click();
-    await expect(page.getByTestId("control-app")).toBeVisible();
-    await expect(page.getByTestId("control-headline")).toContainText("48,000,000 ₪");
-    await startControl(page);
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "ששונתה היום" })).toBeVisible();
-    await shot(page, "03-control-ready");
-    await option(page, "review");
-
-    // scene 3: allocation → yes → update in the ERP
-    const allocation = page.getByTestId("finding-card").filter({ hasText: "1147" }).last();
-    await expect(allocation).toContainText("הבעיה");
-    await expect(allocation).toContainText("אינו קבלן משנה מאושר");
-    await shot(page, "04-finding-allocation");
-    await option(page, "yes_target");
-    await option(page, "update");
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נקרא מחדש" }).last()).toBeVisible();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "תיעוד: חשבון 1147" }).last()).toBeVisible();
-
-    // scene 4: unit → yes 12 tons → refer to Roi
-    await expect(page.getByTestId("finding-card").filter({ hasText: "2291" }).last()).toContainText("57,600 ₪");
-    await shot(page, "05-finding-unit");
-    await option(page, "yes_tons");
-    await option(page, "refer_roi");
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נשלח לרועי" }).last()).toBeVisible();
-
-    // scene 5: price → all remaining tons
-    await expect(page.getByTestId("finding-card").filter({ hasText: "4,800" }).last()).toContainText("240,000");
-    await shot(page, "06-finding-price");
-    await option(page, "all");
-    await expect(page.getByTestId("control-headline")).toContainText("48,240,000 ₪");
-
-    // scene 5b: coverage → free text → quote from the folder → estimate
-    const coverage = page.getByTestId("finding-card").filter({ hasText: "ניקוז" }).last();
-    await expect(coverage).toContainText("3.4");
-    await shot(page, "07-finding-coverage");
-    await coverage.getByTestId("finding-free-text").fill("צריך להזמין. יש הצעה בתיקייה");
-    await coverage.getByTestId("finding-free-send").click();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "י. כהן" }).last()).toBeVisible();
-    await option(page, "accept");
-    await expect(page.getByTestId("control-headline")).toContainText("48,360,000 ₪");
-    await expect(page.getByTestId("chat-message").filter({ hasText: "הדוח מוכן" }).last()).toBeVisible();
-    await shot(page, "08-all-decided");
-
-    // scene 6: the report
-    await option(page, "open");
+    await page.getByTestId("go-report").click();
     await expect(page.getByTestId("report-view")).toBeVisible();
-    await expect(page.getByTestId("report-headline-eac")).toContainText("48,360,000 ₪");
+    await expect(page.getByTestId("report-view")).toHaveAttribute("data-source", "live");
+    await expect(page.getByTestId("report-idle-notice")).toContainText("טרם הופעלה");
+    await expect(page.getByTestId("report-status")).toContainText("לא הופעלה בקרה");
+    await expect(page.getByTestId("report-agent-hint")).toContainText("claude --agent bakara");
+    await expect(page.getByTestId("report-headline-eac")).toContainText("48,000,000 ₪");
     await expect(page.getByTestId("report-version")).toContainText("טיוטה");
-    await expect(page.getByTestId("report-section-4a")).toContainText("240,000");
-    await expect(page.getByTestId("report-section-4a")).toContainText("120,000");
-    await expect(page.getByTestId("report-section-4b")).toContainText("1147");
-    await expect(page.getByTestId("report-row-03")).toContainText("3,240,000");
-    await expect(page.getByTestId("report-row-07")).toContainText("3,320,000");
-    await expect(page.getByTestId("report-section-9")).toContainText("איטום");
+    await expect(page.getByTestId("report-row-07")).toContainText("2,280,000");
     await expect(page.getByTestId("report-comparison")).toHaveCount(0);
-    await shot(page, "09-report");
+    // nothing in the control is edited from the browser
+    await expect(page.getByTestId("report-toggle-trends")).toHaveCount(0);
+    await expect(page.getByTestId("report-save-config")).toHaveCount(0);
+    await expect(page.getByTestId("report-finalize")).toHaveCount(0);
+    await expect(page.getByTestId("chat-input")).toHaveCount(0);
+    await shot(page, "03-report-viewer-draft");
 
-    // scene 7: three live changes to the report's structure
-    await page.getByTestId("report-toggle-trends").click();
-    await expect(page.getByTestId("report-comparison")).toContainText("48.36");
-    await shot(page, "10-report-comparison");
-    await page.getByTestId("report-toggle-building").click();
-    await expect(page.getByTestId("report-by-building")).toContainText("משותף");
-    await shot(page, "11-report-by-building");
-    // scene 7, change 2: the "[שנה]" affordance tags invoice 1147 with a building and the split follows
-    await page.getByTestId("report-building-change-1147-A").click();
-    await expect(page.getByTestId("report-by-building-note")).toContainText("שויך לבניין A");
-    // scene 7, change 3: the CEO version, its hand-off and the Word export
-    await page.getByTestId("report-toggle-ceo").click();
-    await page.getByTestId("report-tab-ceo").click();
-    await expect(page.getByTestId("report-ceo")).toBeVisible();
-    await shot(page, "12-report-ceo");
-    await page.getByTestId("report-send-ceo").click();
-    await page.getByTestId("report-tab-full").click();
-    await expect(page.getByTestId("report-material-02")).toBeVisible();
-    await expect(page.getByTestId("report-material-12")).toContainText("בסיס 0%");
-
-    // scene 8: save the configuration — the prompt says what is kept and what never is
-    await page.getByTestId("report-save-config").click();
-    await expect(page.getByTestId("report-save-prompt")).toContainText("מה יישמר");
-    await expect(page.getByTestId("report-save-prompt")).toContainText("מה לא יישמר");
-    await page.getByTestId("report-save-confirm").click();
-    await expect(page.getByTestId("report-view")).toContainText("תצורת בקרה — הדרים");
+    // an ERP edit shows up in the live report's recorded amounts
+    await page.getByTestId("go-erp").click();
+    await page.getByTestId("erp-invoice-row-1147").click();
+    await moveInvoiceToSheled(page);
+    await page.getByTestId("erp-nav-report").click();
+    await expect(page.getByTestId("report-view")).toBeVisible();
+    await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
+    await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
 
     // exports: Word is a real download; PDF goes through the browser print dialog
     const download = page.waitForEvent("download");
@@ -162,48 +88,25 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await page.getByTestId("report-export-pdf").click();
     expect(await page.evaluate(() => (window as unknown as { __printed: boolean }).__printed)).toBe(true);
 
-    // back in the panel: the hand-off was logged, and free questions are routed to the agent
-    await page.getByTestId("control-back-to-chat").click();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נשלח לדנה" }).last()).toBeVisible();
-    await expect(page.getByTestId("chat-agent-hint")).toContainText("claude --agent bakara");
-    await expect(page.getByTestId("chat-input")).toHaveCount(0);
-    await shot(page, "13-panel-after-report");
+    // source links: a document opens in the viewer, an ERP record opens read-only with its change log
+    await page.getByTestId("report-tab-full").click();
+    await page.getByTestId("report-source").filter({ hasText: "נספח" }).first().click();
+    await expect(page.getByTestId("document-view")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("report-source").filter({ hasText: "הסכם מסגרת" }).first().click();
+    await expect(page.getByTestId("record-modal")).toBeVisible();
+    await expect(page.getByTestId("record-modal")).toHaveAttribute("data-record-type", "contract");
+    await page.keyboard.press("Escape");
 
-    // the ERP shows the corrected invoice and the audit trail
-    await page.getByTestId("go-erp").click();
-    await page.getByTestId("erp-nav-change_log").click();
-    await expect(page.getByTestId("erp-changelog-row").first()).toContainText("1147");
-    await page.getByTestId("erp-nav-invoices").click();
-    await page.getByTestId("erp-invoice-row-1147").click();
-    await expect(page.getByTestId("erp-invoice-view")).toContainText("07 — פיתוח");
-
-    // persistence across reload, then reset
+    // persistence across reload, then reset restores the seed
     await page.reload();
-    await page.getByTestId("go-control").click();
-    await expect(page.getByTestId("control-headline")).toContainText("48,360,000 ₪");
+    await expect(page.getByTestId("report-view")).toBeVisible();
+    await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
     await page.getByTestId("reset-demo").click();
     await page.getByTestId("reset-confirm").click();
     await expect(page.getByTestId("go-erp")).toHaveAttribute("aria-selected", "true");
     await page.getByTestId("erp-invoice-row-1147").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("07 — פיתוח");
     expect(errors).toEqual([]);
-  });
-
-  test("clean data: three findings, no allocation trap", async ({ page }) => {
-    await fresh(page);
-    await page.getByTestId("go-control").click();
-    await startControl(page);
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 3 ממצאים" })).toBeVisible();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "ששונתה היום" })).toHaveCount(0);
-  });
-
-  test("progressive steps play without the skip flag and can be skipped", async ({ page }) => {
-    await fresh(page);
-    await page.getByTestId("skip-motion").uncheck();
-    await page.getByTestId("go-control").click();
-    await startControl(page);
-    await page.getByTestId("steps-skip").click();
-    await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 3 ממצאים" })).toBeVisible();
-    await expect(page.getByTestId("chat-option-review").last()).toBeVisible();
   });
 });

@@ -1,0 +1,69 @@
+/* Record modal (read-only ERP record with its change log) and the report toolbar's status strip. */
+
+.h2c-source {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: right;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.h2c-source.small {
+  font-size: 12.5px;
+  padding: 3px 8px;
+}
+.h2c-source.is-link {
+  cursor: pointer;
+}
+.h2c-source.is-link:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.h2c-notes {
+  margin: 8px 0 0;
+  padding-inline-start: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.h2c-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 8px;
+}
+.h2c-table th,
+.h2c-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+.h2c-table th {
+  background: var(--bg-muted);
+  font-weight: 600;
+}
+
+/* report toolbar: version picker and the status strip */
+.h2-report-version-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.h2-report-version-pick select {
+  max-width: 320px;
+}
+.h2-report-status {
+  gap: 10px 14px;
+}
+.h2-report-agent-hint code {
+  font-size: 0.85em;
+  direction: ltr;
+  unicode-bidi: isolate;
+}

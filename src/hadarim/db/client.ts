@@ -334,20 +334,44 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
   if (error) throw new Error(`projects: ${error.message}`);
 }
 
-/** Calls `onChange` (debounced) whenever an ERP table or the change log changes for the project. Returns an unsubscribe. */
-export function subscribeErp(projectId: string, onChange: () => void, supabase: Db = db()): () => void {
+/** Tables whose changes the web app follows: the ERP, the control session the agent writes, saved reports, the project row. */
+const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions"] as const;
+
+/** Calls `onChange` (debounced) whenever the project's ERP data, control session or saved reports change. Returns an unsubscribe. */
+export function subscribeProject(projectId: string, onChange: () => void, supabase: Db = db()): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   const bump = () => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(onChange, 400);
   };
-  const channel = supabase.channel(`erp-${projectId}`);
-  for (const table of ["invoices", "purchase_orders", "change_log"] as const) {
-    channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, bump);
-  }
+  const channel = supabase.channel(`project-${projectId}`);
+  for (const table of LIVE_TABLES) channel.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, bump);
+  channel.on("postgres_changes", { event: "*", schema: "public", table: "projects", filter: `id=eq.${projectId}` }, bump);
   channel.subscribe();
   return () => {
     if (timer) clearTimeout(timer);
     void supabase.removeChannel(channel);
   };
+}
+
+export interface ReportVersionSummary {
+  id: number;
+  controlDate: string;
+  createdAt: string;
+  createdBy: string;
+  label: string | null;
+}
+
+/** Saved report versions of a project, newest first. */
+export async function listReportVersions(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<ReportVersionSummary[]> {
+  const rows = await all(supabase.from("report_versions").select("id, control_date, created_at, created_by, label").eq("project_id", projectId).order("created_at", { ascending: false }), "report_versions");
+  return rows.map((r) => ({ id: r.id, controlDate: r.control_date, createdAt: r.created_at, createdBy: r.created_by, label: r.label }));
+}
+
+/** One saved report version with its stored model (the ReportModel JSON the agent built). */
+export async function getReportVersion(id: number, projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<(ReportVersionSummary & { model: unknown }) | null> {
+  const { data, error } = await supabase.from("report_versions").select("id, control_date, created_at, created_by, label, model").eq("project_id", projectId).eq("id", id).maybeSingle();
+  if (error) throw new Error(`report_versions: ${error.message}`);
+  if (!data) return null;
+  return { id: data.id, controlDate: data.control_date, createdAt: data.created_at, createdBy: data.created_by, label: data.label, model: data.model };
 }

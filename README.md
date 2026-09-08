@@ -29,23 +29,23 @@ Node 22 and npm are the only requirements. The build uses a relative base path, 
 
 **התקדם שבוע** advances the simulated clock (starting 07/09/2026 09:00, Asia/Jerusalem) and creates the due weekly report draft for provider review, once per project and period.
 
-## Hadarim v2 — the control prototype (second surface)
+## Hadarim — the control prototype (second surface)
 
-A second, independent surface lives at `hadarim.html` (locally `http://localhost:5173/hadarim.html`; hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`, next to the v1 demo at `https://shaiber01.github.io/nadlan.ai/`). One project (הדרים, 48.0M budget, 18 sections), a simulated contractor ERP ("זיו — סביבת הדגמה") the presenter edits live, and the control panel ("בקרה") that prepares the 1.9.2026 control card by card and writes a living report per `budgetcontrolreportstandard.md`. Free conversation with the controller — questions, instructions, judgement — is the Claude agent's job (see "The agent" below); the web page has buttons, cards and toggles only. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
+A second, independent surface lives at `hadarim.html` (locally `http://localhost:5173/hadarim.html`; hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`, next to the v1 demo at `https://shaiber01.github.io/nadlan.ai/`). One project (הדרים, 48.0M budget, 18 sections) in a shared database, and two screens: a simulated contractor ERP ("זיו — סביבת הדגמה") whose edits are written to the database, and **דוח הבקרה** — a live, read-only view of the control the Claude agent ("בקרה") runs and of the report it produces per `budgetcontrolreportstandard.md`. There is one budget controller, the agent; the web app does not run controls or take decisions. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
 
-The script (scenes 1–8 in the browser, ~10 minutes; scene 9 with the agent):
+The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab following live):
 
-1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row appears on the record. (Variant B, chosen in the presenter strip: the ERP starts without 1147; חשבון חדש → מילוי לדוגמה → שמור assigns that number.)
-2. **בקרה** → "הכיני בקרה תקציבית". The data-gathering steps play (skip with "דלג" or the ללא אנימציה toggle), then "נמצאו 4 ממצאים … אחד מהם ברשומה ששונתה היום" → נעבור על הממצאים.
-3. Allocation card (1147): כן, לפיתוח → עדכן. The system checks permission, writes the ERP, re-reads the record and logs the audit line.
-4. Unit card (PO 2291, 12,000 "tons" at 4.8): כן, 12 טון → עדכן or העבר לרועי לביצוע.
-5. Price card (steel remainder at 4,800): כן, על כל 300 הטון → +240,000 (headline 48.24). Coverage card (drainage line excluded by clause 3.4): type "צריך להזמין. יש הצעה בתיקייה" → the quote is found → כן, הוסף לתחזית כאומדן → +120,000 (headline 48.36) and a task for אייל until 19.9.
-6. פתח את הדוח: the full report (draft), exports (ייצוא PDF = browser print, ייצוא Word = real `.docx`), סגור כגרסה סופית.
-7. In the report pane, the structure toggles: השוואה ומגמות, פילוח לפי בניין (the note on invoice 1147 offers "שנה" to tag it with a building), גרסה למנכ״לית — the same report restructured; then ייצוא PDF / ייצוא Word / שלח לדנה (the hand-off is logged in the panel). Every material-section and appendix row links back to its document, record or ERP screen.
-8. שמור תצורה shows what a saved configuration keeps (the structure) and never keeps (the data), then saves it as "תצורת בקרה — הדרים".
-9. Questions — what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose — are asked to the agent (`claude --agent bakara`), which answers from the tools with sources.
+1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row (written by a database trigger) appears on the record. (Variant B, chosen in the presenter strip: the ERP starts without 1147; חשבון חדש → מילוי לדוגמה → שמור assigns that number.)
+2. **Agent** (`claude --agent bakara`): "תכיני בקרה תקציבית להדרים". It runs the checks on the live data and brings the first card: "נמצאו 4 ממצאים … אחד מהם ברשומה ששונתה היום".
+3. Allocation (1147): כן, לפיתוח → עדכן. The tool checks permission, writes the ERP, re-reads the record and quotes the verification.
+4. Unit (PO 2291, 12,000 "tons" at 4.8): כן, 12 טון → עדכן or העבר לרועי לביצוע.
+5. Price (steel remainder at 4,800): כן, על כל 300 הטון → +240,000 (48.24). Coverage (drainage line excluded by clause 3.4): "צריך להזמין, יש הצעה בתיקייה" → the quote is found → כן, הוסף לתחזית כאומדן → +120,000 (48.36) and a task for אייל until 19.9.
+6. "תכיני את הדוח": the executive summary, 4א versus 4ב, the decision needed; the Word file on request. **דוח הבקרה** in the browser shows the same report, live.
+7. "תוסיפי השוואה לבקרה הקודמת", "תציגי לפי בניין", "גרסה למנכ״לית": the report restructures; the browser follows. The note on invoice 1147 offers "שנה" to tag it with a building.
+8. "שמרי את התצורה": what is kept (structure) and never kept (data); "סגרי כגרסה סופית" when the control is closed. Saved report versions are listed in the browser next to the live one.
+9. Questions — what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose — answered from the tools with sources.
 
-The presenter strip switches screens, skips animation, picks the scene-1 variant and resets the demo (two-step). State persists in `localStorage` (`hadarim-v2`, `hadarim-v2-ui`). Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, docx) and `e2e/hadarim*.spec.ts` (scenes 1–8 through the UI, plus element screenshots in `e2e/screenshots/hadarim-v-*.png`).
+The presenter strip switches screens, picks the scene-1 variant, toggles offline work and resets to the seed (two-step; online it restores the database snapshot). Offline (`?offline=1`) the browser uses the generator data only. Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, docx), `e2e/hadarim*.spec.ts` (ERP and the viewer offline) and `e2e/hadarim.db.spec.ts` (`RUN_DB_E2E=1`: the whole loop on the live database — browser edit, control through the tools, viewer, saved version, reset — with element screenshots in `e2e/screenshots/hadarim-v-*.png`).
 
 ### Database (prototype)
 

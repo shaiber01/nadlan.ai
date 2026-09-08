@@ -7,6 +7,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 - Whole session as the controller: `claude --agent bakara` from this folder (the `.mcp.json` servers load; approve them on first use).
 - From a normal session: "use the bakara agent to …" delegates one task to it.
 - `claude agents` lists the agents; the skills are `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`.
+- The web app (`npm run dev`, `hadarim.html`) is the simulated ERP plus a live view of the agent's report; open it next to the agent to watch the control take shape.
 - The same tools from a shell: `npm run bakara -- tools`, `npm run bakara -- tool get_forecast '{"sectionId":"03"}'`.
 
 ## What is here
@@ -16,7 +17,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
   - `engine/` — the deterministic core, general over any project's data: `checks.ts` (control checks → findings), `forecast.ts` (working forecast: recorded, committed, remaining, uncovered, EAC per section), `commands.ts` (pure state commands: ERP edits, control run, decisions on findings, report config), `operations.ts` (free-standing operations: forecast adjustments, tasks, controller notes, instructed corrections), `report.ts` (report model per `budgetcontrolreportstandard.md`, everything derived from data and notes), `model.ts` (session types). There is no scripted conversation: free text is the agent's job; the web app has buttons, cards and toggles only.
   - `tools/index.ts` — **the tool registry**: general-purpose read/check/decision/write tools over the database with zod schemas; the MCP server and the CLI both call it.
   - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, attributed ERP writes, realtime, project status), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
-  - `features/` — React screens: `erp/` (simulated ERP), `control/` (browser chat + board), `report/` (living report). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
+  - `features/` — React screens: `erp/` (simulated ERP; its edits are the only writes the browser makes) and `report/` (read-only live view of the agent's control session and the saved report versions; record and document modals). `app/store.ts` loads the whole session from the database and follows it over Realtime (offline via `?offline=1`); the browser never changes the control.
   - `export/` — Word (`docx.ts`) and Markdown (`markdown.ts`) renderers of the report model.
 - `mcp/bakara-server.ts` — the registry as an MCP server over stdio (`npx vite-node mcp/bakara-server.ts`; stdout is protocol-only, log to stderr).
 - `scripts/` — `bakara.ts` (CLI: demo commands plus `tool <name> [json]` passthrough), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.

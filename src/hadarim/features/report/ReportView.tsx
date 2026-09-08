@@ -1,30 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Chip } from "../../../components/primitives";
-import { store, useUi, useV2State } from "../../app/store";
-import { finalizeControl, pkg, saveConfig, savePromptHe, sendReport, setReportConfig } from "../../engine/commands";
-import { buildReport } from "../../engine/report";
+import { Badge, Button, Notice } from "../../../components/primitives";
+import { store, useReportVersions, useUi, useV2State } from "../../app/store";
+import { pkg } from "../../engine/commands";
+import { buildReport, type ReportModel } from "../../engine/report";
 import { exportReportDocx } from "../../export/docx";
+import { dateHe, timeHe } from "./fmt";
 import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
 import "./report.css";
 
 /**
- * The living control report. Reads the store, builds the ReportModel and renders it — the full report
- * (standard §3, sections 0–11) or the one-page CEO version (standard §4). Exports: browser print (PDF)
- * and a real Word document.
+ * The control report as a live, read-only view of the agent's work. The session (findings, decisions,
+ * adjustments, corrections, tasks, notes, report configuration) is what the Claude agent wrote to the
+ * database through its tools; the report is rebuilt from it here on every change (Realtime). Saved
+ * versions can be opened next to the live one. Exports: browser print (PDF) and a real Word document.
+ * Nothing in the control is edited from this screen.
  */
 export function ReportView() {
   const state = useV2State();
   const ui = useUi();
-  const report = useMemo(() => buildReport(pkg, state), [state]);
-  const config = state.control.reportConfig;
-  const tab: "full" | "ceo" = ui.control.reportTab === "ceo" && config.ceoVersion ? "ceo" : "full";
+  const versions = useReportVersions();
+  const [saved, setSaved] = useState<{ id: number; model: ReportModel; label: string | null } | null>(null);
   const [busy, setBusy] = useState<"docx" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [savePrompt, setSavePrompt] = useState(false);
-  const ceo = pkg.people.find((p) => /^מנכ/.test(p.roleHe));
-  const docxFile = `בקרה_${pkg.project.nameHe}_${state.control.controlDate.slice(0, 7)}${tab === "ceo" ? "_מנכל" : ""}.docx`;
 
-  const setTab = (next: "full" | "ceo") => store.setUi((u) => ({ ...u, control: { ...u.control, reportTab: next } }));
+  const live = useMemo(() => buildReport(pkg, state), [state]);
+  const selectedId = ui.report.versionId;
+  useEffect(() => {
+    if (selectedId == null) {
+      setSaved(null);
+      return;
+    }
+    let cancelled = false;
+    store
+      .loadVersion(selectedId)
+      .then((v) => {
+        if (cancelled) return;
+        if (!v) {
+          store.selectVersion(null);
+          return;
+        }
+        setSaved({ id: v.id, model: v.model as ReportModel, label: v.label });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  const report = saved && saved.id === selectedId ? saved.model : live;
+  const isLive = !(saved && saved.id === selectedId);
+  const ceoAvailable = isLive ? state.control.reportConfig.ceoVersion : true;
+  const tab: "full" | "ceo" = ui.report.tab === "ceo" && ceoAvailable ? "ceo" : "full";
+  const c = state.control;
+  const decided = c.findings.filter((f) => c.decisions[f.id] && c.decisions[f.id].status !== "open" && !c.decisions[f.id].pending).length;
+  const status = c.finalized ? { labelHe: "גרסה סופית", tone: "green" as const } : c.status === "idle" ? { labelHe: "לא הופעלה בקרה", tone: "neutral" as const } : c.status === "report" ? { labelHe: "טיוטת דוח — כל הממצאים טופלו", tone: "amber" as const } : { labelHe: `בעבודה — ${c.findings.length} ממצאים, ${decided} הוחלטו`, tone: "primary" as const };
+  const operator = pkg.people.find((p) => p.id === state.operatorId);
+  const personHe = (id: string) => pkg.people.find((p) => p.id === id)?.nameHe ?? id;
+  const docxFile = `בקרה_${pkg.project.nameHe}_${c.controlDate.slice(0, 7)}${tab === "ceo" ? "_מנכל" : ""}${isLive ? "" : `_v${selectedId}`}.docx`;
 
   const exportPdf = () => {
     setError(null);
@@ -60,31 +94,16 @@ export function ReportView() {
     }
   };
 
-  // exports requested from the chat (scene 7: [ייצוא PDF] [ייצוא Word]) run once the pane is mounted
-  const pendingExport = ui.control.pendingExport ?? null;
-  useEffect(() => {
-    if (!pendingExport) return;
-    store.clearExport();
-    if (pendingExport === "pdf") exportPdf();
-    else void exportDocx();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingExport]);
-
-  const toggle = (patch: Partial<typeof config>) => {
-    store.dispatch((s) => setReportConfig(s, patch));
-    if (patch.ceoVersion === false && tab === "ceo") setTab("full");
-  };
-
   return (
-    <section className="h2-report" data-testid="report-view" data-tab={tab}>
+    <section className="h2-report" data-testid="report-view" data-tab={tab} data-source={isLive ? "live" : "saved"}>
       <div className="h2-report-toolbar no-print">
         <div className="h2-report-toolbar-row">
           <div className="tabs h2-report-tabs" role="tablist">
-            <button type="button" role="tab" className="tab" aria-selected={tab === "full"} onClick={() => setTab("full")} data-testid="report-tab-full">
+            <button type="button" role="tab" className="tab" aria-selected={tab === "full"} onClick={() => store.setReportTab("full")} data-testid="report-tab-full">
               דוח מלא
             </button>
-            {config.ceoVersion ? (
-              <button type="button" role="tab" className="tab" aria-selected={tab === "ceo"} onClick={() => setTab("ceo")} data-testid="report-tab-ceo">
+            {ceoAvailable ? (
+              <button type="button" role="tab" className="tab" aria-selected={tab === "ceo"} onClick={() => store.setReportTab("ceo")} data-testid="report-tab-ceo">
                 גרסה למנכ״לית
               </button>
             ) : null}
@@ -94,6 +113,17 @@ export function ReportView() {
               {report.header.controlLabelHe}
             </Badge>
           </span>
+          <label className="h2-report-version-pick small">
+            גרסה:
+            <select value={selectedId ?? ""} onChange={(e) => store.selectVersion(e.target.value ? Number(e.target.value) : null)} data-testid="report-version-select">
+              <option value="">חיה — הבקרה הפעילה</option>
+              {versions.map((v) => (
+                <option key={v.id} value={v.id}>
+                  #{v.id} · {v.label ?? "ללא תווית"} · {dateHe(v.createdAt)} {timeHe(new Date(v.createdAt).toISOString().replace("T", "T"))} · {personHe(v.createdBy)}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="row h2-report-actions">
             <Button size="sm" onClick={exportPdf} data-testid="report-export-pdf">
               ייצוא PDF
@@ -101,57 +131,23 @@ export function ReportView() {
             <Button size="sm" onClick={exportDocx} busy={busy === "docx"} data-testid="report-export-docx">
               ייצוא Word
             </Button>
-            {config.ceoVersion && ceo ? (
-              <Button size="sm" onClick={() => store.dispatch((s) => sendReport(s, ceo.id))} data-testid="report-send-ceo" title="מסירה: אין תיבת דואר באב-טיפוס — המסירה נרשמת ביומן הבקרה">
-                שלח ל{ceo.nameHe}
-              </Button>
-            ) : null}
-            <Button size="sm" onClick={() => setSavePrompt(true)} data-testid="report-save-config" title={state.savedConfig ? `נשמר: ${state.savedConfig.savedAs}` : "שמירת מבנה הדוח לבקרות הבאות"}>
-              {state.savedConfig ? `נשמר: ${state.savedConfig.savedAs}` : "שמור תצורה"}
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => store.dispatch(finalizeControl)} disabled={report.finalized} data-testid="report-finalize">
-              {report.finalized ? "גרסה סופית" : "סגור כגרסה סופית"}
-            </Button>
           </div>
         </div>
-        {savePrompt ? (
-          <div className="h2-report-toolbar-row h2-report-save-prompt" role="dialog" aria-label="שמירת תצורה" data-testid="report-save-prompt">
-            <span className="small">{savePromptHe(config)}</span>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => {
-                store.dispatch((s) => saveConfig(s, true));
-                setSavePrompt(false);
-              }}
-              data-testid="report-save-confirm"
-            >
-              שמור
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                store.dispatch((s) => saveConfig(s, false));
-                setSavePrompt(false);
-              }}
-              data-testid="report-save-later"
-            >
-              לא עכשיו
-            </Button>
-          </div>
-        ) : null}
-        <div className="h2-report-toolbar-row h2-report-chips">
-          <span className="muted small">מבנה הדוח:</span>
-          <Chip active={config.includeTrends} onClick={() => toggle({ includeTrends: !config.includeTrends })} data-testid="report-toggle-trends">
-            השוואה ומגמות
-          </Chip>
-          <Chip active={config.splitByBuilding} onClick={() => toggle({ splitByBuilding: !config.splitByBuilding })} data-testid="report-toggle-building">
-            פילוח לפי בניין
-          </Chip>
-          <Chip active={config.ceoVersion} onClick={() => toggle({ ceoVersion: !config.ceoVersion })} data-testid="report-toggle-ceo">
-            גרסה למנכ״לית
-          </Chip>
+        <div className="h2-report-toolbar-row h2-report-status" data-testid="report-status">
+          <Badge tone={status.tone} dot>
+            {status.labelHe}
+          </Badge>
+          {operator ? (
+            <span className="muted small">
+              מבקר: {operator.nameHe}, {operator.roleHe}
+            </span>
+          ) : null}
+          <span className="muted small" data-testid="report-source">
+            {ui.db.status === "online" ? `מסד הנתונים · עודכן ${ui.db.lastSync ? new Date(ui.db.lastSync).toLocaleTimeString("he-IL") : "—"}` : ui.db.status === "loading" ? "מתחבר למסד הנתונים…" : "נתונים מקומיים (ללא מסד נתונים)"}
+          </span>
+          <span className="muted small h2-report-agent-hint" data-testid="report-agent-hint">
+            הבקרה מתנהלת עם הסוכן ״בקרה״ (<code>claude --agent bakara</code>); הדוח כאן מתעדכן מהחלטותיו.
+          </span>
           {tab === "full" ? (
             <nav className="h2-report-nav" aria-label="ניווט בדוח">
               {SECTION_TITLES.filter((s) => s.n !== "10" || report.trends.comparison).map((s) => (
@@ -168,6 +164,19 @@ export function ReportView() {
           </div>
         ) : null}
       </div>
+      {isLive && c.status === "idle" ? (
+        <div data-testid="report-idle-notice">
+          <Notice tone="navy">הבקרה ל-{dateHe(c.controlDate)} טרם הופעלה. מוצגים טיוטת התחזית והנתונים החיים ממערכת המידע; הממצאים, ההחלטות והשינויים בתחזית יופיעו כאן כשהסוכן יריץ את הבקרה.</Notice>
+        </div>
+      ) : null}
+      {!isLive ? (
+        <div data-testid="report-saved-notice">
+          <Notice tone="amber">
+            גרסה שמורה #{selectedId}
+            {saved?.label ? ` — ${saved.label}` : ""}. הנתונים כפי שנשמרו; הדוח החי עשוי להיות שונה.
+          </Notice>
+        </div>
+      ) : null}
       {tab === "ceo" ? (
         <CeoPage report={report} />
       ) : (

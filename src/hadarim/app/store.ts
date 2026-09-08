@@ -1,25 +1,31 @@
 import { useSyncExternalStore } from "react";
 import type { HInvoice, HPurchaseOrder } from "../data/types";
-import { deleteInvoice, loadErp, loadPackage, resetProject, saveInvoice, savePurchaseOrder, subscribeErp } from "../db/client";
+import { deleteInvoice, getReportVersion, listReportVersions, loadErp, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, type ReportVersionSummary } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
-import { initialState, revealAllSteps, revealNextStep, setPackage } from "../engine/commands";
+import { loadState } from "../db/session";
+import { SCRIPT_INVOICE_ID, initialState } from "../engine/commands";
 import type { Scene1Variant, V2State } from "../engine/model";
 
 /**
- * External store for the Hadarim app: one persisted domain state (`V2State`) and one persisted UI state.
- * Commands stay pure; the store applies them and, when connected to the database, persists any ERP
- * rows they changed and re-reads the ERP state (so the database, its triggers and its change log are
- * the source of truth). Offline mode (tests, no network) keeps the generator data in the browser only.
+ * External store for the Hadarim web app: the simulated ERP and a live view of the control.
+ *
+ * Online, the database is the source of truth: the whole session (`V2State` — ERP rows plus the control
+ * the agent writes through its tools) is loaded from it and re-loaded on Realtime changes. The browser
+ * writes only ERP rows (the ERP screens' edits), through the attributed writers, so the triggers log
+ * them. The control itself is never changed from the browser. Offline mode (tests, no network) keeps
+ * the generator data in the browser only.
  */
 
 export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" | "change_log";
 export type DbStatus = "offline" | "loading" | "online" | "error";
 
 export interface UiState {
-  app: "erp" | "control";
+  app: "erp" | "report";
   erp: { screen: ErpScreen; invoiceId: number | null; editing: boolean; creating: boolean; poId: number | null; contractId: string | null; sectionId: string | null };
-  control: { pane: "chat" | "report"; reportTab: "full" | "ceo"; documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null; pendingExport?: "pdf" | "docx" | null };
-  presenter: { skipMotion: boolean; showPresenterBar: boolean; scene1Variant: "A" | "B" };
+  /** Document and record viewers, shared by the ERP and the report. */
+  viewer: { documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null };
+  report: { tab: "full" | "ceo"; versionId: number | null };
+  presenter: { showPresenterBar: boolean; scene1Variant: "A" | "B" };
   db: { status: DbStatus; error: string | null; lastSync: string | null; syncing: boolean };
 }
 
@@ -30,8 +36,9 @@ const OFFLINE_KEY = "hadarim-offline";
 export const defaultUi: UiState = {
   app: "erp",
   erp: { screen: "invoices", invoiceId: null, editing: false, creating: false, poId: null, contractId: null, sectionId: null },
-  control: { pane: "chat", reportTab: "full", documentId: null, documentAnchor: null, recordRef: null, pendingExport: null },
-  presenter: { skipMotion: false, showPresenterBar: true, scene1Variant: "A" },
+  viewer: { documentId: null, documentAnchor: null, recordRef: null },
+  report: { tab: "full", versionId: null },
+  presenter: { showPresenterBar: true, scene1Variant: "A" },
   db: { status: "offline", error: null, lastSync: null, syncing: false },
 };
 
@@ -67,23 +74,26 @@ export function isOfflineRequested(): boolean {
   }
 }
 
+const isState = (v: unknown): v is V2State => !!v && typeof v === "object" && (v as V2State).version === 1 && Array.isArray((v as V2State).erp?.invoices) && Array.isArray((v as V2State).control?.notes) && Array.isArray((v as V2State).control?.tasks);
+
 class HadarimStore {
   private state: V2State;
   private ui: UiState;
+  private versions: ReportVersionSummary[] = [];
   private listeners = new Set<() => void>();
-  private stepTimer: number | null = null;
   private unsubscribeRealtime: (() => void) | null = null;
   private writesInFlight = 0;
   readonly projectId = DEFAULT_PROJECT_ID;
 
   constructor() {
-    this.state = load(STATE_KEY, initialState, (v) => !!v && typeof v === "object" && (v as V2State).version === 1 && Array.isArray((v as V2State).erp?.invoices));
-    const ui = load(UI_KEY, () => defaultUi, (v) => !!v && typeof v === "object" && "app" in (v as object));
-    this.ui = { ...defaultUi, ...ui, db: { ...defaultUi.db } };
+    this.state = load(STATE_KEY, initialState, isState);
+    const ui = load(UI_KEY, () => defaultUi, (v) => !!v && typeof v === "object" && "app" in (v as object)) as Partial<UiState>;
+    this.ui = { ...defaultUi, ...ui, app: ui.app === "report" ? "report" : "erp", erp: { ...defaultUi.erp, ...(ui.erp ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
   }
 
   getState = (): V2State => this.state;
   getUi = (): UiState => this.ui;
+  getVersions = (): ReportVersionSummary[] => this.versions;
 
   subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
@@ -99,7 +109,7 @@ class HadarimStore {
     this.emit();
   }
 
-  /** Connect to the database (unless offline was requested): load the package, replace the ERP state, follow changes. */
+  /** Connect to the database (unless offline was requested): load the session, then follow changes. */
   bootstrap = async (): Promise<void> => {
     if (isOfflineRequested()) {
       this.setDb({ status: "offline" });
@@ -107,34 +117,39 @@ class HadarimStore {
     }
     this.setDb({ status: "loading", error: null });
     try {
-      const pkg = await loadPackage(this.projectId);
-      setPackage(pkg);
-      this.state = { ...this.state, erp: { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog } };
-      save(STATE_KEY, this.state);
-      this.setDb({ status: "online", lastSync: new Date().toISOString() });
+      await this.loadFromDb();
+      this.setDb({ status: "online" });
       this.unsubscribeRealtime?.();
-      this.unsubscribeRealtime = subscribeErp(this.projectId, () => {
-        if (this.writesInFlight === 0) void this.refreshErp();
+      this.unsubscribeRealtime = subscribeProject(this.projectId, () => {
+        if (this.writesInFlight === 0) void this.refresh();
       });
     } catch (e) {
       this.setDb({ status: "error", error: e instanceof Error ? e.message : String(e) });
     }
   };
 
-  /** Re-read the ERP tables; the database (and its triggers) is the truth once online. */
-  refreshErp = async (): Promise<void> => {
+  private async loadFromDb(): Promise<void> {
+    const [session, versions] = await Promise.all([loadState(this.projectId), listReportVersions(this.projectId)]);
+    this.state = { ...session, variant: this.state.variant };
+    this.versions = versions;
+    save(STATE_KEY, this.state);
+    this.setDb({ lastSync: new Date().toISOString(), error: null });
+  }
+
+  /** Re-read the session (ERP and control) and the saved reports; the database is the truth once online. */
+  refresh = async (): Promise<void> => {
     if (this.ui.db.status !== "online") return;
     try {
-      const erp = await loadErp(this.projectId);
-      this.state = { ...this.state, erp };
-      save(STATE_KEY, this.state);
-      this.setDb({ lastSync: new Date().toISOString(), error: null });
+      await this.loadFromDb();
     } catch (e) {
       this.setDb({ error: e instanceof Error ? e.message : String(e) });
     }
   };
 
-  /** Apply a pure command. Errors propagate to the caller (the UI shows them inline). */
+  /** A saved report version with its model, or null for the live report. */
+  loadVersion = (id: number): Promise<Awaited<ReturnType<typeof getReportVersion>>> => getReportVersion(id, this.projectId);
+
+  /** Apply a pure ERP command. Errors propagate to the caller (the UI shows them inline). */
   dispatch = (command: (s: V2State) => V2State): void => {
     const prev = this.state;
     const next = command(prev);
@@ -186,16 +201,15 @@ class HadarimStore {
 
   go = (app: UiState["app"]): void => this.setUi((u) => ({ ...u, app }));
 
-  openDocument = (documentId: string, anchor?: string): void => this.setUi((u) => ({ ...u, control: { ...u.control, documentId, documentAnchor: anchor ?? null } }));
+  openDocument = (documentId: string, anchor?: string): void => this.setUi((u) => ({ ...u, viewer: { ...u.viewer, documentId, documentAnchor: anchor ?? null } }));
 
-  closeDocument = (): void => this.setUi((u) => ({ ...u, control: { ...u.control, documentId: null, documentAnchor: null } }));
+  closeDocument = (): void => this.setUi((u) => ({ ...u, viewer: { ...u.viewer, documentId: null, documentAnchor: null } }));
 
-  openRecord = (recordRef: UiState["control"]["recordRef"]): void => this.setUi((u) => ({ ...u, control: { ...u.control, recordRef } }));
+  openRecord = (recordRef: UiState["viewer"]["recordRef"]): void => this.setUi((u) => ({ ...u, viewer: { ...u.viewer, recordRef } }));
 
-  /** Ask the report pane to run an export once it is mounted (chat buttons in scene 7). */
-  requestExport = (format: "pdf" | "docx"): void => this.setUi((u) => ({ ...u, control: { ...u.control, pane: "report", pendingExport: format } }));
+  setReportTab = (tab: UiState["report"]["tab"]): void => this.setUi((u) => ({ ...u, report: { ...u.report, tab } }));
 
-  clearExport = (): void => this.setUi((u) => ({ ...u, control: { ...u.control, pendingExport: null } }));
+  selectVersion = (versionId: number | null): void => this.setUi((u) => ({ ...u, report: { ...u.report, versionId } }));
 
   setOffline = (offline: boolean): void => {
     try {
@@ -207,57 +221,29 @@ class HadarimStore {
     if (offline) {
       this.unsubscribeRealtime?.();
       this.unsubscribeRealtime = null;
+      this.versions = [];
       this.setDb({ status: "offline", error: null });
     } else {
       void this.bootstrap();
     }
   };
 
-  /** Reveal the control's data-gathering steps one by one (or all at once when motion is skipped). */
-  playSteps = (): void => {
-    this.stopSteps();
-    if (this.ui.presenter.skipMotion) {
-      this.dispatch(revealAllSteps);
-      return;
-    }
-    // script pacing: 2–3 s between steps, and the checks line spins for a few seconds before the summary
-    const step = () => {
-      const before = this.state;
-      this.dispatch(revealNextStep);
-      const steps = this.state.control.messages.find((m) => m.kind === "steps")?.steps ?? [];
-      const done = this.state === before || steps.every((st) => st.done);
-      if (done) this.stopSteps();
-      else {
-        const next = steps.find((st) => !st.done);
-        this.stepTimer = window.setTimeout(step, next?.spinner ? 4500 : 2200);
-      }
-    };
-    this.stepTimer = window.setTimeout(step, 900);
-  };
-
-  stopSteps = (): void => {
-    if (this.stepTimer != null) window.clearTimeout(this.stepTimer);
-    this.stepTimer = null;
-  };
-
   /**
    * Reset to seed. Online: the database is restored from its seed snapshot (and, for variant B, the
-   * script's invoice is removed so it can be keyed in live), then the app reloads from it. Offline: the
-   * generator state is rebuilt in the browser.
+   * seed's script invoice is removed so it can be keyed in live), then the session reloads from it.
+   * Offline: the generator state is rebuilt in the browser.
    */
   reset = async (variant: Scene1Variant = this.ui.presenter.scene1Variant): Promise<void> => {
-    this.stopSteps();
     this.ui = { ...defaultUi, presenter: { ...this.ui.presenter, scene1Variant: variant }, db: this.ui.db };
     save(UI_KEY, { ...this.ui, db: undefined });
     if (this.ui.db.status === "online" || this.ui.db.status === "error") {
       this.setDb({ syncing: true, error: null });
       try {
         await resetProject(this.projectId);
-        if (variant === "B") await deleteInvoice(1147, this.projectId);
-        const pkg = await loadPackage(this.projectId);
-        setPackage(pkg);
-        this.state = { ...initialState(variant), erp: { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog } };
-        this.setDb({ status: "online", syncing: false, lastSync: new Date().toISOString() });
+        if (variant === "B") await deleteInvoice(SCRIPT_INVOICE_ID, this.projectId);
+        this.state = { ...this.state, variant };
+        await this.loadFromDb();
+        this.setDb({ status: "online", syncing: false });
       } catch (e) {
         this.setDb({ syncing: false, error: `האיפוס נכשל: ${e instanceof Error ? e.message : String(e)}` });
         this.state = initialState(variant);
@@ -278,6 +264,10 @@ export function useV2State(): V2State {
 
 export function useUi(): UiState {
   return useSyncExternalStore(store.subscribe, store.getUi, store.getUi);
+}
+
+export function useReportVersions(): ReportVersionSummary[] {
+  return useSyncExternalStore(store.subscribe, store.getVersions, store.getVersions);
 }
 
 declare global {
