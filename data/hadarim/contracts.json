@@ -1,0 +1,209 @@
+[
+  {
+    "id": "02-01",
+    "sectionId": "02",
+    "supplierId": "SUP-BM",
+    "amount": 12600000,
+    "signedAt": "2025-10-20",
+    "scopeHe": "עבודות שלד — עבודה ובטון, שני בניינים וחניון",
+    "inclusionsHe": [
+      "עבודות בטון יצוק באתר",
+      "טפסות ותמיכות",
+      "הרכבת ברזל זיון (הברזל מסופק ע״י המזמין)",
+      "עבודות שלד החניון"
+    ],
+    "exclusions": [
+      {
+        "clause": "2.5",
+        "textHe": "אספקת ברזל זיון — ע״י המזמין (אספקת ברזל ע״י המזמין)"
+      },
+      {
+        "clause": "2.6",
+        "textHe": "מעליות — אינן כלולות בחוזה זה",
+        "coveredByContractId": "14-01"
+      },
+      {
+        "clause": "2.7",
+        "textHe": "אלומיניום — אינו כלול בחוזה זה",
+        "coveredByContractId": "11-01"
+      }
+    ],
+    "retentionPct": 5,
+    "steelSuppliedByClient": true,
+    "noteHe": "נספח שינוי מס׳ 2 (18.8.2026): פירוט תכולה בחניון, ללא שינוי בסכום החוזה"
+  },
+  {
+    "id": "04-01",
+    "sectionId": "04",
+    "supplierId": "SUP-DORON",
+    "amount": 2850000,
+    "signedAt": "2025-10-15",
+    "scopeHe": "עבודות עפר, דיפון וכלונסאות",
+    "inclusionsHe": [
+      "חפירה ופינוי",
+      "דיפון",
+      "כלונסאות"
+    ],
+    "exclusions": [],
+    "retentionPct": 5,
+    "closed": {
+      "at": "2026-04-30",
+      "finalAccount": 2850000
+    }
+  },
+  {
+    "id": "07-01",
+    "sectionId": "07",
+    "supplierId": "SUP-NTB",
+    "amount": 3200000,
+    "signedAt": "2026-01-05",
+    "scopeHe": "עבודות פיתוח ותשתיות חוץ",
+    "inclusionsHe": [
+      "עבודות עפר לפיתוח",
+      "קירות תומכים",
+      "תשתיות ראשיות בתחום המגרש (מים, חשמל, תקשורת)",
+      "ריצוף ואבן בשטחים החיצוניים",
+      "גינון והשקיה בהיקף המפרט",
+      "קווי ניקוז פנימיים בתחום המגרש"
+    ],
+    "exclusions": [
+      {
+        "clause": "3.4",
+        "textHe": "לא כולל קווי ניקוז ראשיים מחוץ לקו הבניין ועד נקודת החיבור לתשתית העירונית"
+      },
+      {
+        "clause": "3.4",
+        "textHe": "לא כולל אגרות חיבור לתאגיד המים"
+      },
+      {
+        "clause": "3.4",
+        "textHe": "לא כולל עבודות סלילה ברשות הרבים"
+      }
+    ],
+    "retentionPct": 5,
+    "documentId": "contract_07_01_excerpt"
+  },
+  {
+    "id": "05-01",
+    "sectionId": "05",
+    "supplierId": "SUP-ITUM",
+    "amount": 900000,
+    "signedAt": "2026-01-12",
+    "scopeHe": "עבודות איטום — יסודות, גגות, מרפסות וחדרים רטובים",
+    "inclusionsHe": [
+      "איטום יסודות וקירות תת-קרקעיים",
+      "איטום גגות",
+      "איטום חדרים רטובים ומרפסות"
+    ],
+    "exclusions": [],
+    "retentionPct": 5,
+    "noteHe": "היקף כתב הכמויות פרק 05 נבדק מול החוזה שורה-שורה: התאמה מלאה",
+    "boqMatchVerified": true
+  },
+  {
+    "id": "14-01",
+    "sectionId": "14",
+    "supplierId": "SUP-OREN",
+    "amount": 1300000,
+    "signedAt": "2026-03-03",
+    "scopeHe": "4 מעליות (2 לכל בניין) — אספקה, התקנה והפעלה",
+    "inclusionsHe": [
+      "4 מעליות נוסעים",
+      "התקנה והרצה",
+      "אישור מכון התקנים"
+    ],
+    "exclusions": [],
+    "retentionPct": 5,
+    "noteHe": "מקדמה 20% שולמה"
+  },
+  {
+    "id": "08-01",
+    "sectionId": "08",
+    "supplierId": "SUP-SHY",
+    "amount": 2300000,
+    "signedAt": "2026-05-18",
+    "scopeHe": "אינסטלציה ותברואה — 48 יח״ד וחניון",
+    "inclusionsHe": [],
+    "exclusions": [],
+    "retentionPct": 5
+  },
+  {
+    "id": "09-01",
+    "sectionId": "09",
+    "supplierId": "SUP-AR",
+    "amount": 2600000,
+    "signedAt": "2026-05-18",
+    "scopeHe": "חשמל ותקשורת — 48 יח״ד, שטחים משותפים וחניון",
+    "inclusionsHe": [],
+    "exclusions": [],
+    "retentionPct": 5
+  },
+  {
+    "id": "06-01",
+    "sectionId": "06",
+    "supplierId": "SUP-GAL",
+    "amount": 2400000,
+    "signedAt": "2026-06-02",
+    "scopeHe": "בנייה (בלוקים) וטיח",
+    "inclusionsHe": [
+      "בנייה בבלוקים",
+      "טיח פנים",
+      "טיח חוץ"
+    ],
+    "exclusions": [],
+    "retentionPct": 5
+  },
+  {
+    "id": "10-01",
+    "sectionId": "10",
+    "supplierId": "SUP-KOR",
+    "amount": 1500000,
+    "signedAt": "2026-07-14",
+    "scopeHe": "מיזוג אוויר — 48 יח״ד",
+    "inclusionsHe": [],
+    "exclusions": [],
+    "retentionPct": 5
+  },
+  {
+    "id": "11-01",
+    "sectionId": "11",
+    "supplierId": "SUP-GILAD",
+    "amount": 2000000,
+    "signedAt": "2026-08-25",
+    "scopeHe": "אלומיניום — חלונות, ויטרינות ומעקות זכוכית",
+    "inclusionsHe": [],
+    "exclusions": [],
+    "retentionPct": 5,
+    "noteHe": "נסגר מנושאי הבקרה הקודמת (חתימת חוזה אלומיניום)"
+  },
+  {
+    "id": "03-F",
+    "sectionId": "03",
+    "supplierId": "SUP-PLADOT",
+    "amount": null,
+    "signedAt": "2025-11-01",
+    "scopeHe": "הסכם מסגרת לאספקת ברזל זיון — ללא סכום קבוע; מחיר לפי נספח מחיר בתוקף",
+    "inclusionsHe": [
+      "ברזל זיון מצולע בכל הקטרים",
+      "הובלה לאתר"
+    ],
+    "exclusions": [],
+    "retentionPct": 0,
+    "priceAppendices": [
+      {
+        "id": "A",
+        "titleHe": "נספח א׳ — 4,000 ₪ לטון",
+        "validFrom": "2025-11-01",
+        "pricePerTon": 4000,
+        "documentId": "appendix_A_steel_price_2025_11"
+      },
+      {
+        "id": "A-2",
+        "titleHe": "נספח א׳-2 — 4,800 ₪ לטון",
+        "validFrom": "2026-07-15",
+        "pricePerTon": 4800,
+        "documentId": "appendix_A2_steel_price_2026_07_15"
+      }
+    ]
+  }
+]

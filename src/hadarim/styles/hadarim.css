@@ -1,0 +1,5 @@
+/* Hadarim v2 surface: two screens (simulated ERP, control system). Extends the shared tokens/components. */
+.h2-shell {
+  min-height: 100vh;
+  background: var(--bg);
+}

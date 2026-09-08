@@ -1,0 +1,26 @@
+[
+  {
+    "id": "EYAL",
+    "nameHe": "אייל",
+    "roleHe": "מנהל פרויקט",
+    "canWriteAllocation": true
+  },
+  {
+    "id": "ROI",
+    "nameHe": "רועי",
+    "roleHe": "סמנכ״ל ביצוע",
+    "canWriteAllocation": true
+  },
+  {
+    "id": "DANA",
+    "nameHe": "דנה",
+    "roleHe": "מנכ״לית",
+    "canWriteAllocation": false
+  },
+  {
+    "id": "SARIT",
+    "nameHe": "שרית",
+    "roleHe": "הנהלת חשבונות",
+    "canWriteAllocation": true
+  }
+]

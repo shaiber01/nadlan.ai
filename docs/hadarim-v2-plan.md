@@ -56,6 +56,12 @@ New for v2: the data model (sections, contracts with inclusions/exclusions, BOQ 
 
 Decision recorded as default: v2 lives beside v1 in the same repo (own entry route, shared utilities), so the sixteen-scenario demo keeps working until the user decides to retire it.
 
+## 4b. Phase 1 status (done 2026-09-08)
+
+- `src/hadarim/data/` holds the deterministic generator (`generate.ts`), the seven document pages (`documents.ts`) and the types. `npm run hadarim:dump` writes JSON/CSV to `data/hadarim/` for inspection; the app imports the generator directly.
+- `src/hadarim/engine/checks.ts` implements the four checks and the verified-match positive. `tests/hadarim.data.test.ts` pins every number in §2, the pre/post scene-1 states, the must-fire set and the five traps.
+- Modelling decisions taken: demo day is 3.9.2026 (invoice 1147 was keyed in on 2.9; control label stays "1.9.2026" with data received through 31.8); recorded total 20,070,000; blanket site-service orders cover 15 months and the site plan is 16 months, so section 01 shows a small schedule-extension estimate line; PO 2240 appears as a committed line only in the 1.8 forecast (delivered by 1.9); the 1.9 draft carries the 300 t × 4,000 line with PO 2291 inside it, so the headline moves 48.00 → 48.24 → 48.36 exactly as scripted.
+
 ## 5. Build phases for the next session
 
 1. Data package: generator + committed JSON + tests that assert every number in §2, the must-fire and must-not-fire sets, and the pre/post scene-1 states.
@@ -65,7 +71,7 @@ Decision recorded as default: v2 lives beside v1 in the same repo (own entry rou
 5. Q&A intents and the two control versions (1.8 final, 1.9 in progress) plus three earlier totals.
 6. Presenter polish: progressive steps with skip, document pages with the demo footer, Playwright run of the whole script.
 
-## 6. Decisions the user still owns (defaults if unanswered)
+## 6. Decisions — all defaults approved by the user on 2026-09-08
 
 1. Coexist with v1 or replace it. Default: coexist.
 2. Who generates the data package. Default: generate it here in TypeScript, deterministic, committed with the generator; no external zip needed.

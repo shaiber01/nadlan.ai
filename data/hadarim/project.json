@@ -1,0 +1,39 @@
+{
+  "id": "HADARIM",
+  "nameHe": "הדרים",
+  "companyHe": "אופק ביצוע בע״מ",
+  "buildings": [
+    {
+      "id": "A",
+      "floors": 8,
+      "floorsCast": 7,
+      "unitsPerFloor": 3
+    },
+    {
+      "id": "B",
+      "floors": 8,
+      "floorsCast": 5,
+      "unitsPerFloor": 3
+    }
+  ],
+  "units": 48,
+  "grossSqm": 8700,
+  "startDate": "2025-11-02",
+  "budgetVersion": {
+    "number": 3,
+    "approvedAt": "2026-03-15",
+    "amount": 48000000
+  },
+  "boqVersion": {
+    "number": 4,
+    "date": "2026-08-12"
+  },
+  "controlDates": [
+    "2026-05-01",
+    "2026-06-01",
+    "2026-07-01",
+    "2026-08-01"
+  ],
+  "currentControlDate": "2026-09-01",
+  "statusHe": "בניין A: קומה 7 מתוך 8 יצוקה · בניין B: קומה 5 · תחילת בנייה בקומות התחתונות של A · שרוולי אינסטלציה וחשמל תת-קרקעיים · פיתוח שלב א׳ (עפר, קירות תומכים, תשתיות ראשיות) ברובו הושלם"
+}

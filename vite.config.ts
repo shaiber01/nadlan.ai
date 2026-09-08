@@ -9,6 +9,10 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: false,
+    rollupOptions: {
+      // Two demo surfaces in one static build: the sixteen-scenario demo (index.html) and the Hadarim v2 demo (hadarim.html).
+      input: { main: "index.html", hadarim: "hadarim.html" },
+    },
   },
   test: {
     include: ["tests/**/*.test.ts"],

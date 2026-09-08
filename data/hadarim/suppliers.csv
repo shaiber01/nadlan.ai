@@ -1,0 +1,35 @@
+﻿id,nameHe,kind
+SUP-BM,ב.מ. בנייה מהירה בע״מ,subcontractor
+SUP-DORON,ע. דורון עבודות עפר,subcontractor
+SUP-NTB,נ.ת.ב. תשתיות ופיתוח בע״מ,subcontractor
+SUP-ITUM,איטום פלוס,subcontractor
+SUP-OREN,מעליות אורן,subcontractor
+SUP-SHY,ש.י. אינסטלציה,subcontractor
+SUP-AR,חשמל א.ר.,subcontractor
+SUP-GAL,גל בנייה קלה,subcontractor
+SUP-KOR,קור-אויר מערכות,subcontractor
+SUP-GILAD,אלומיניום גלעד,subcontractor
+SUP-PLADOT,פלדות הצפון בע״מ,supplier
+SUP-YCOHEN,י. כהן תשתיות בע״מ,subcontractor
+INTERNAL,הקצאה פנימית — הנהלה וביטוח,service
+SUP-CRANE,מנופי הגליל בע״מ,service
+SUP-GUARD,ש.ב. שמירה ואבטחה,service
+SUP-TOILET,סניטציה ניידת בע״מ,service
+SUP-SCAFF,פיגומי הצפון,service
+SUP-FORM,טפסות מהיר בע״מ,service
+SUP-UTIL,חשמל ומים לאתר (תאגיד),service
+SUP-LAB,מעבדת איזוטופ,service
+SUP-SURVEY,א. לוי מודדים,service
+SUP-SAFETY,ב. כהן יועץ בטיחות,service
+SUP-WASTE,פינוי פסולת ר.ד.,service
+SUP-PUMP,משאבות בטון ד.ר.,service
+SUP-FENCE,גידור והצללה ג.ש.,service
+SUP-OFFICE,יבילים למשרדי אתר,service
+SUP-COMMS,תקשורת ושילוט אתר,service
+SUP-GEN,ג.מ. ציוד וגנרטורים,service
+SUP-PPE,ציוד מגן ובטיחות בע״מ,supplier
+SUP-GEO,ג. אבן יועצי קרקע,consultant
+SUP-TRANS,הובלות כבד ר.מ.,service
+SUP-INS,סוכנות ביטוח קבלנים,service
+SUP-ENG,משרד קונסטרוקטורים ד.ק.,consultant
+SUP-STD,מכון התקנים,service
