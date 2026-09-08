@@ -31,7 +31,7 @@ Node 22 and npm are the only requirements. The build uses a relative base path, 
 
 ## Hadarim v2 — the chat-centric control demo (second surface)
 
-A second, independent demo lives at `hadarim.html` (locally `http://localhost:5173/hadarim.html`, on Pages `<site>/hadarim.html`). One project (הדרים, 48.0M budget, 18 sections), a simulated contractor ERP ("זיו — סביבת הדגמה") the presenter edits live, and the control system ("בקרה") that prepares the 1.9.2026 control in a conversation and writes a living report per `budgetcontrolreportstandard.md`. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
+A second, independent demo lives at `hadarim.html` (locally `http://localhost:5173/hadarim.html`; hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`, next to the v1 demo at `https://shaiber01.github.io/nadlan.ai/`). One project (הדרים, 48.0M budget, 18 sections), a simulated contractor ERP ("זיו — סביבת הדגמה") the presenter edits live, and the control system ("בקרה") that prepares the 1.9.2026 control in a conversation and writes a living report per `budgetcontrolreportstandard.md`. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
 
 The script (nine scenes, ~10 minutes):
 
