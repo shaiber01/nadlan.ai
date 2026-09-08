@@ -696,9 +696,10 @@ export function analyzeRecord(state: DemoState, recordId: string): AnalysisResul
   push(checkFuturePriceRisk(state, record));
 
   for (const f of findings) steps.push(...f.checkedHe.slice(0, 2));
-  const blocking = findings.some((f) => f.blocksReport || f.status === "needs_clarification");
+  const blocking = findings.some((f) => f.blocksReport);
+  const clarifying = findings.some((f) => f.status === "needs_clarification");
   if (findings.length === 0) steps.push("לא נמצאו אי-התאמות");
-  return { subjectId: recordId, stepsHe: dedupe(steps), findings, recordCheckStatus: blocking ? "flagged" : "verified" };
+  return { subjectId: recordId, stepsHe: dedupe(steps), findings, recordCheckStatus: blocking ? "flagged" : clarifying ? "clarifying" : "verified" };
 }
 
 function dedupe(items: string[]): string[] {

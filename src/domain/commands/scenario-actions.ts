@@ -120,6 +120,42 @@ export function approveRecovery(state: DemoState, recoveryId: string): DemoState
   return bump(tick(s, 1));
 }
 
+/** Chat: "פתח בירור מול מנהלת התפעול" creates an in-app draft question (never a real message). */
+export function draftSiteQuestion(state: DemoState, projectId: string, textHe: string, contactId = "OPS"): DemoState {
+  if (!textHe.trim()) throw new Error("נדרש טקסט לשאלה");
+  const [s1, findingId] = nextId(state, "FND");
+  const [s2, questionId] = nextId(s1, "Q");
+  const finding: Finding = {
+    id: findingId,
+    kind: "site_clarification",
+    projectId,
+    costCodeId: null,
+    recordIds: [],
+    documentIds: [],
+    titleHe: "בירור מידע תפעולי שאינו במסמכים",
+    explanationHe: "אין במסמכים שבדמו אישור למידע המבוקש; נוצרה טיוטת שאלה לאיש הקשר התפעולי. הטיוטה נשלחת רק לאחר בדיקת צוות הבקרה.",
+    status: "needs_clarification",
+    severity: "info",
+    checkedHe: ["נבדקו המסמכים והרישומים הזמינים בדמו: אין דיווח התקדמות בשטח"],
+    evidence: [],
+    proposalIds: [],
+    questionIds: [questionId],
+    alertIds: [],
+    taskIds: [],
+    amounts: {},
+    numbers: {},
+    blocksReport: false,
+    createdAt: state.clock,
+    createdAtRevision: state.revision,
+    sessionId: state.sessionId,
+    dedupeKey: `site_clarification:${questionId}`,
+  };
+  const question: ClientQuestion = { id: questionId, findingId, projectId, contactId, textHe: textHe.trim(), suggestedReplies: [{ id: "later", textHe: "אבדוק ואחזור", effect: { type: "open" } }], parser: "free", status: "pending_review", checkedHe: finding.checkedHe, createdAt: state.clock };
+  let s: DemoState = { ...s2, findings: [...s2.findings, finding], questions: [...s2.questions, question] };
+  s = addActivity(s, "question", `נוצרה טיוטת שאלה ל${contactId === "OPS" ? "מנהלת התפעול" : contactId}: ${textHe.slice(0, 50)}`, [questionId]);
+  return bump(tick(s, 1));
+}
+
 export function runAnalysisForCode(state: DemoState, costCodeId: string): DemoState {
   return bump(runPendingAnalyses(scheduleAnalysis(state, { costCodeId })));
 }

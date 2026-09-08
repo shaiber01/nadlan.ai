@@ -1,0 +1,65 @@
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+}
+.scenario-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+.scenario-card .scenario-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--navy-soft);
+  color: var(--navy);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.scenario-card h3 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.scenario-card .scenario-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.scenario-card details summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  color: var(--primary-text);
+}
+.scenario-card details ul {
+  margin: 6px 0 0;
+  padding-inline-start: 18px;
+  font-size: 0.86rem;
+}
+.tour-table td,
+.tour-table th {
+  vertical-align: top;
+}
+.explore-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 6px 14px;
+}
+.explore-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border);
+}

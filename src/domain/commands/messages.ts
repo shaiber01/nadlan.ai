@@ -315,16 +315,16 @@ export function createFuturePriceProposal(state: DemoState, costCodeId: string, 
 }
 
 /** Provider review gate 1 for outbound alerts: release the early alert to the customer channel and the linked clarification to OPS. */
-export function reviewAndReleaseAlert(state: DemoState, alertId: string, reviewerId = "REVIEWER", options: { combineForOps?: boolean; questionContactId?: string } = {}): DemoState {
+export function reviewAndReleaseAlert(state: DemoState, alertId: string, reviewerId = "REVIEWER", options: { combineForOps?: boolean; questionContactId?: string; recipientId?: string } = {}): DemoState {
   const alert = byId(state.alerts, alertId, "alert");
   if (alert.status === "delivered" || alert.status === "acknowledged") return state;
-  const key = `alert:${alert.id}:${alert.channel}:${alert.recipientId}`;
+  const key = `alert:${alert.id}:${alert.channel}:${options.recipientId ?? alert.recipientId}`;
   if (state.deliveries.some((d) => d.idempotencyKey === key)) return state;
   let s = state;
   const finding = byId(s.findings, alert.findingId, "finding");
   const linkedQuestion = alert.linkedQuestionId ? s.questions.find((q) => q.id === alert.linkedQuestionId) : undefined;
   const questionContactId = options.questionContactId ?? linkedQuestion?.contactId ?? "OPS";
-  const recipientId = options.combineForOps ? questionContactId : alert.recipientId;
+  const recipientId = options.combineForOps ? questionContactId : (options.recipientId ?? alert.recipientId);
   const [s1, conversation] = ensureConversation(s, alert.channel, options.combineForOps ? "clarification" : "alert", recipientId, alert.projectId, options.combineForOps ? `בירורים — ${contactName(s, recipientId)}` : `התרעות — ${contactName(s, recipientId)}`);
   s = s1;
   const name = contactName(s, recipientId).split(" ")[0];

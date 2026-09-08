@@ -1,0 +1,35 @@
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.sheet-preview {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow-x: auto;
+}
+.sheet-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.86rem;
+}
+.sheet-preview th,
+.sheet-preview td {
+  border: 1px solid var(--border);
+  padding: 5px 9px;
+  text-align: right;
+}
+.sheet-preview th {
+  background: var(--bg-muted);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.sheet-preview td.num {
+  direction: ltr;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+tr.flagged td {
+  background: var(--amber-soft);
+}

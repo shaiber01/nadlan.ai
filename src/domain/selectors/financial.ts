@@ -181,7 +181,7 @@ export function costLineView(state: DemoState, costCodeId: string): CostLineView
       if (isAccrualComponent(record)) incurredAccrued += al.amount;
       else incurredInvoiced += al.amount;
       paid += view.paid;
-      if (record.checkStatus !== "verified") provisional = true;
+      if (record.checkStatus === "pending" || record.checkStatus === "flagged") provisional = true;
     });
   }
   const commitmentViews: LineCommitmentView[] = state.commitments

@@ -1,0 +1,52 @@
+.reports-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .reports-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.prefs-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prefs-block .prefs-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.prep-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+}
+.prep-steps li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-faint);
+}
+.prep-steps li.active {
+  color: var(--text);
+  font-weight: 500;
+}
+.prep-steps li.done {
+  color: var(--green-text);
+}
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.checkbox-row input {
+  width: 16px;
+  height: 16px;
+}

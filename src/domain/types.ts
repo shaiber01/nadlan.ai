@@ -219,7 +219,8 @@ export type RecordKind =
   | "credit"
   | "adjustment";
 
-export type CheckStatus = "verified" | "pending" | "flagged";
+/** verified = checked, no open issue; pending = analysis not finished; clarifying = checked, waiting for client context; flagged = confirmed posted-data problem. */
+export type CheckStatus = "verified" | "pending" | "clarifying" | "flagged";
 
 export interface Allocation {
   id: string;
@@ -356,7 +357,8 @@ export type FindingKind =
   | "budget_assumption"
   | "missing_link"
   | "delivery_issue"
-  | "commitment_conditional";
+  | "commitment_conditional"
+  | "site_clarification";
 
 export type FindingStatus =
   | "pending_review"
