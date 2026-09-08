@@ -1,0 +1,76 @@
+# Hadarim demo v2 — engineering handoff plan
+
+Written 2026-09-08 after reading the three new specs. Purpose: let a fresh session build v2 without re-deriving the reconciliation below. Read this first, then the three specs, then the code map at the end.
+
+## 1. Sources and precedence
+
+| File | Role | Precedence |
+| --- | --- | --- |
+| `hadarimdataspec.md` | Entities, numbers, generation rules, traps, package layout | 1 (numbers win) |
+| `hadarimdemoscript.md` | 9 scenes, UI shape, Hebrew copy, presenter flow | 2 (flow and copy win) |
+| `budgetcontrolreportstandard.md` | Report structure (sections 0–11), definitions, disqualifier checklist, CEO one-pager | 3 (report engine spec) |
+| `Construction_AI_Demo_Build_Brief.md` | The v1 brief. Keep only its engineering conventions (integer agorot, immutable sources, review before write, frozen reports, deterministic adapter boundary) | 4 |
+
+v2 is a different product surface from v1, not an increment: one project ("הדרים", 48.0M budget, 18 budget sections), a simulated ERP the presenter edits live, and a conversation-centric control system whose report is a living document. WhatsApp clarifications, alerts by role and recurring tasks are explicitly "next phase" in the script's closing line and are out of scope for v2.
+
+## 2. Reconciled numbers (data spec §2 is authoritative)
+
+Project: אופק ביצוע בע״מ · הדרים · 2 buildings (A, B), 8 floors × 3 units = 48 units (the script's "72 יח״ד" is superseded), shared 2-level parking · execution start 2.11.2025 · budget 48,000,000 excl. VAT, version 3 approved 15.3.2026 · controls 1.5, 1.6, 1.7, 1.8.2026, current 1.9.2026 · people: אייל (PM, operates the demo), רועי (VP execution), דנה (CEO), שרית (bookkeeping, change log only).
+
+Budget sections (₪): 01 ארגון אתר 1,900,000 (recorded 1,250,000; forecast 1,950,000 both controls) · 02 שלד 12,600,000 (8,400,000; contract 02-01 12,600,000) · 03 ברזל 3,000,000 (1,800,000 = 450 t × 4,000; forecast 3,000,000 → **3,240,000**) · 04 עפר ודיפון 2,900,000 (2,850,000, closed final account, forecast 2,850,000) · 05 איטום 900,000 (320,000) · 06 בנייה וטיח 2,400,000 (180,000) · 07 פיתוח 3,200,000 (2,280,000 incl. invoice 1147; forecast 3,200,000 → **3,320,000**) · 08 אינסטלציה 2,300,000 (350,000) · 09 חשמל 2,600,000 (280,000) · 10 מיזוג 1,500,000 (0) · 11 אלומיניום 2,000,000 (0; contract signed 25.8) · 12 ריצוף 2,700,000 (0; estimate) · 13 נגרות 1,700,000 (0; estimate) · 14 מעליות 1,300,000 (260,000 advance) · 15 צבע וגבס 1,100,000 (0; estimate) · 16 מערכות חניון 1,200,000 (0; estimate) · 17 בלתי צפוי 1,500,000 (0) · 18 הנהלה 3,200,000 (2,100,000). Budgets sum to 48,000,000. Previous forecast nets to 48,000,000 (01 +50,000, 04 −50,000). New forecast 48,360,000 (+360,000, 0.75%).
+
+**Discrepancy to settle:** the recorded column sums to 20,070,000, not the 20,120,000 the spec prints. Proposed default: keep every section value, state the total as 20,070,000, and keep the script's rounded "20.1 מ׳". Alternative: raise 01 recorded to 1,300,000.
+
+Derived checks the generator must satisfy:
+
+- Steel: BOQ 750 t; delivered 450 t (18 invoices at 4,000 incl. the last delivery 28.8 against PO 2240, 60 t at 4,000, legitimately pre-appendix); remaining 300 t; PO 2291 (22.8) 12 t at 4,800 = 57,600 sits inside the 300 t; new forecast 1,800,000 + 300 × 4,800 = 3,240,000; still-estimate steel after the demo = 288 t = 1,382,400 (the standard's "228 טון חשופים" is a typo for 288).
+- Development: after correction recorded 2,280,000 (partials 1–7, partial 7 = invoice 1147, 180,000, 31.8, entered 2.9 by שרית on 07); committed 3,200,000; remaining commitment 920,000; uncovered estimate 120,000 (drainage quote י. כהן 20.8, 80 m × 1,500, valid 30 days → 19.9); EAC 3,320,000. Before correction (scene 1 variant A) 02 shows 8,580,000 and 07 shows 2,100,000; totals unchanged.
+- Still-estimate items (scene 9 reserve answer): packages 12, 13, 15, 16 = 6,700,000 + steel 1,382,400 + drainage 120,000 ≈ 8,202,400. The script's 637,600 "finishes phase B" line is dropped.
+- Status ratios for the report: physical ~38%, expense 42% (20.07 / 48.36), commitment ~78%.
+- Trend: 47.90 → 47.95 → 48.00 → 48.00 → 48.36.
+- Open issues carried from 1.8: three; closed 18.8 (change #2 shell contract) and 25.8 (aluminium contract); open since 07/2026: municipal sewer connection approval (highlighted as open two controls). New after the demo: PO 2291 fix (רועי, awaiting execution) and drainage order (אייל, by 19.9).
+- Contingency 1,500,000 unused; the executive summary must include the decision "fund the 360,000 from contingency or show as overrun".
+- Indexation: one explicit sentence in appendix ב׳ (the standard asks for it).
+
+Must fire (4): invoice 1147 on 02 (allocation vs contract scope, supplier history, change log) · PO 2291 qty 12,000 / unit ton / price 4.80 vs quote 12 t × 4,800 · steel remaining priced 4,000 vs appendix A-2 4,800 from 15.7.2026 · BOQ 57.03.040 excluded by contract 07-01 §3.4 with no estimate.
+Must not fire (5): PO 2240 at the old price · crane invoice in 01 whose text says "שלד" · elevators excluded from shell but covered by 14-01 · a steel invoice in kg with unit kg · earth/piling closed under budget (variance, not an error).
+
+## 3. Product surface
+
+Two screens, switchable in one app:
+
+1. **מערכת המידע (ERP מדומה)**, Ziv-flavoured vocabulary: lists and forms for חשבונות ספקים (view / edit / new; section from a dropdown; attachment; per-record change log), הזמנות רכש, חוזי קבלני משנה, תקציב/תחזית. The presenter's scene-1 edit (invoice 1147: 07 → 02, variant A) or new-invoice entry (variant B) really changes the data the control reads.
+2. **מערכת הבקרה**: chat in the center (Eyal writes; the system answers with progressive checklist steps, 2–3 s apart, skippable), findings board on the side, report area that opens once all findings are handled, configuration save, Q&A on the finished control.
+
+Finding card, always the same four blocks: הבעיה · המקורות (each opens the record or the document page, relevant field highlighted) · המשמעות · ההחלטה הנדרשת (buttons plus free text). Decision routes: `[עדכן]` (permission check → write → re-read verification → before/after log), `[העבר להנהלת חשבונות]`, `[רק בתחזית]`, `[העבר לרועי לביצוע]` (finding stays "ממתין לביצוע" until verified in the ERP). Free-text answers must work for scene 6 ("צריך להזמין אותו. יש הצעה עדכנית בתיקיית הפרויקט." → folder search → quote found → add as estimate, not commitment → task with owner and due date).
+
+Report engine per the standard: sections 0–11, 4א forecast changes versus 4ב data corrections (must reconcile to the summary), materiality threshold in the appendix, basis column (% covered by commitment), contingency as its own row, positive findings phrased as "נבדק ונמצא תואם", trend charts (four at most). Live operations from chat: add the comparison section (7), re-split section table by building (A / B / חניון / משותף; invoice 1147 has no building tag → "משותף", said out loud), CEO one-page version linked to the same control version, export PDF / Word, save configuration ("תצורת בקרה — הדרים", structure only, no data).
+
+Q&A intents (scene 9 plus reserve): what changed versus the previous control (with the price-versus-quantity decomposition), which previous issues closed, what is still estimate-based, why development rose by more than 120,000.
+
+## 4. Reuse map from the v1 code
+
+Reuse as-is or lightly adapted: `src/domain/money.ts`, `src/domain/dates.ts`, `src/export/xlsx.ts`, the store/persistence/session pattern in `src/app/store.ts`, `src/components/primitives.tsx`, `Drawer.tsx`, the CSS system in `src/styles/`, the DocumentViewer idea (documents as immutable HTML pages with anchors and a "scanned" look), the audit/history list, `IntelligenceAdapter` boundary, Playwright and vitest setup, the Pages workflow.
+
+New for v2: the data model (sections, contracts with inclusions/exclusions, BOQ lines with coverage flags, cumulative partial accounts with retention, POs, forecast versions with per-line basis, change log, open issues, buildings), a deterministic generator for ~215 invoices / 38 POs / ~120 BOQ lines committed as JSON next to the generator, the four checks and five traps, the chat-driven control flow, the findings board, the report engine with restructuring and the CEO version, exports, configuration save, and the ERP screens with a real change log.
+
+Decision recorded as default: v2 lives beside v1 in the same repo (own entry route, shared utilities), so the sixteen-scenario demo keeps working until the user decides to retire it.
+
+## 5. Build phases for the next session
+
+1. Data package: generator + committed JSON + tests that assert every number in §2, the must-fire and must-not-fire sets, and the pre/post scene-1 states.
+2. ERP mock screens with per-record change log and live edit (scene 1, both variants).
+3. Control engine: checks, finding cards, decision routes, permission check, write-back with re-read verification, audit.
+4. Report engine per the standard, comparison section, per-building split, CEO version, exports, configuration save.
+5. Q&A intents and the two control versions (1.8 final, 1.9 in progress) plus three earlier totals.
+6. Presenter polish: progressive steps with skip, document pages with the demo footer, Playwright run of the whole script.
+
+## 6. Decisions the user still owns (defaults if unanswered)
+
+1. Coexist with v1 or replace it. Default: coexist.
+2. Who generates the data package. Default: generate it here in TypeScript, deterministic, committed with the generator; no external zip needed.
+3. The 20,070,000 versus 20,120,000 recorded total. Default: 20,070,000.
+4. Company names and the "מסמך הדגמה — נתונים בדויים" footer on documents. Default: keep the names from the spec, footer on.
+5. Ziv screenshot for field names. Default: Ziv-flavoured vocabulary without a screenshot.
+6. Exports. Default: Word via a real `.docx` writer with RTL, PDF via a print stylesheet and the browser's print-to-PDF; no fake downloads.
+7. Scene-1 variant. Default: variant A as the primary path, variant B available.
