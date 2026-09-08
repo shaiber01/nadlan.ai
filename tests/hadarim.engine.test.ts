@@ -143,6 +143,9 @@ describe("Hadarim v2 engine — the report", () => {
     expect(r.verified[0].titleHe).toContain("איטום");
     expect(r.issues.open.map((i) => i.titleHe)).toEqual(expect.arrayContaining([expect.stringContaining("ביוב"), expect.stringContaining("ניקוז"), expect.stringContaining("2291")]));
     expect(r.issues.closed).toHaveLength(2);
+    expect(r.issues.open.find((i) => i.titleHe.includes("ביוב"))!.stale).toBe(true); // opened 1.7, still open at 1.8 and 1.9
+    expect(r.issues.open.find((i) => i.titleHe.includes("ניקוז"))!.stale).toBe(false);
+    expect(r.material[0].paragraphsHe[0]).toContain("03-F");
     expect(r.trends.eacSeries.map((p) => p.value)).toEqual([47_900_000, 47_950_000, 48_000_000, 48_000_000, 48_360_000]);
     expect(r.trends.commentaryHe).toContain("בקרה ראשונה");
     expect(r.trends.commentaryHe).toContain("ממחיר, לא מכמות");

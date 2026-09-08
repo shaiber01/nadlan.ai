@@ -29,6 +29,24 @@ Node 22 and npm are the only requirements. The build uses a relative base path, 
 
 **התקדם שבוע** advances the simulated clock (starting 07/09/2026 09:00, Asia/Jerusalem) and creates the due weekly report draft for provider review, once per project and period.
 
+## Hadarim v2 — the chat-centric control demo (second surface)
+
+A second, independent demo lives at `hadarim.html` (locally `http://localhost:5173/hadarim.html`, on Pages `<site>/hadarim.html`). One project (הדרים, 48.0M budget, 18 sections), a simulated contractor ERP ("זיו — סביבת הדגמה") the presenter edits live, and the control system ("בקרה") that prepares the 1.9.2026 control in a conversation and writes a living report per `budgetcontrolreportstandard.md`. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
+
+The script (nine scenes, ~10 minutes):
+
+1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row appears on the record. (Variant B: חשבון חדש → מילוי לדוגמה → שמור.)
+2. **בקרה** → type "תכיני בקרה תקציבית להדרים". The data-gathering steps play (skip with "דלג" or the ללא אנימציה toggle), then "נמצאו 4 ממצאים … אחד מהם ברשומה ששונתה היום" → נעבור על הממצאים.
+3. Allocation card (1147): כן, לפיתוח → עדכן. The system checks permission, writes the ERP, re-reads the record and logs the audit line.
+4. Unit card (PO 2291, 12,000 "tons" at 4.8): כן, 12 טון → עדכן or העבר לרועי לביצוע.
+5. Price card (steel remainder at 4,800): כן, על כל 300 הטון → +240,000 (headline 48.24). Coverage card (drainage line excluded by clause 3.4): type "צריך להזמין. יש הצעה בתיקייה" → the quote is found → כן, הוסף לתחזית כאומדן → +120,000 (headline 48.36) and a task for אייל until 19.9.
+6. פתח את הדוח: the full report (draft), exports (ייצוא PDF = browser print, ייצוא Word = real `.docx`), סגור כגרסה סופית.
+7. Back in the chat: "תוסיפי השוואה לבקרה הקודמת ומגמות", "תציגי את הטבלה לפי בניין", "תכיני גרסה לדנה — עמוד אחד" restructure the same report.
+8. שמור תצורה saves the structure as "תצורת בקרה — הדרים".
+9. Questions (suggestion chips): what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose.
+
+The presenter strip switches screens, skips animation, picks the scene-1 variant and resets the demo (two-step). State persists in `localStorage` (`hadarim-v2`, `hadarim-v2-ui`). Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, working forecast, report model and conversation in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, docx) and `e2e/hadarim*.spec.ts` (the whole script through the UI, plus element screenshots in `e2e/screenshots/hadarim-v-*.png`).
+
 ## Where to change things
 
 | What | Where |

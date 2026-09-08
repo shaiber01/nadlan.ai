@@ -528,7 +528,7 @@ export function buildBoq(): HBoqLine[] {
       if (ch.chapter === "02" && (descriptionHe.includes("פלדה") || descriptionHe.includes("רשתות"))) {
         sectionId = "03";
         coverage = "covered";
-        coverageRef = "הסכם מסגרת 03-F (אספקה ע״י המזמין, מוחרג מחוזה השלד 02-01 §2.5)";
+        coverageRef = "הסכם מסגרת ⁨03-F⁩ (אספקה ע״י המזמין, מוחרג מחוזה השלד 02-01 §2.5)";
         coveredBy = "03-F";
       }
       if (id === "57.03.040") {

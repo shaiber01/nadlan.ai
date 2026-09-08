@@ -227,7 +227,8 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
 
   const issues = allIssues(state);
   const personHe = (id: string) => pkg.people.find((p) => p.id === id)?.nameHe ?? id;
-  const controlsSince = (opened: string) => pkg.project.controlDates.filter((d) => d > opened).length + 1;
+  // number of controls (including this one) at which the issue has been open
+  const controlsSince = (opened: string) => [...new Set([...pkg.project.controlDates, CURRENT_CONTROL])].filter((d) => d >= opened).length;
   const toRow = (t: (typeof issues)[number]): IssueRow => ({ id: t.id, titleHe: t.titleHe, sectionHe: t.sectionId ? `${t.sectionId}-${SECTION_SHORT_HE[t.sectionId]}` : "—", ownerHe: personHe(t.ownerId), dueHe: t.dueDate ? dateHe(t.dueDate) : "—", openedHe: dateHe(t.openedInControl), statusHe: t.status === "closed" ? "נסגר" : t.status === "pending_execution" ? "ממתין לביצוע" : "פתוח", impactHe: t.impactIfIgnoredHe ?? "—", stale: t.status !== "closed" && controlsSince(t.openedInControl) > 2, closedHe: t.closedAt ? dateHe(t.closedAt) : undefined });
   const openIssues = issues.filter((t) => t.status !== "closed").map(toRow);
   const closedIssues = issues.filter((t) => t.status === "closed").map(toRow);
@@ -247,7 +248,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     material.push({
       sectionId: "03",
       titleHe: "03 — אספקת ברזל זיון",
-      paragraphsHe: [`הסכם מסגרת 03-F עם פלדות הצפון; מחיר לפי נספח. סופקו ${(steel.recorded / 4000).toLocaleString("he-IL")} טון מתוך 750 טון בכתב הכמויות.`, `יתרה: ${(steelLine.qty ?? 0).toLocaleString("he-IL")} טון, מהם 12 טון בהזמנה 2291 (במחיר החדש) ו-${exposedTons.toLocaleString("he-IL")} טון ללא הזמנה.`, "מה יכול עוד להשתנות: עדכון נספח רבעוני; כמויות בפועל לפי קומות עליונות."],
+      paragraphsHe: [`הסכם מסגרת ⁨03-F⁩ עם פלדות הצפון; מחיר לפי נספח. סופקו ${(steel.recorded / 4000).toLocaleString("he-IL")} טון מתוך 750 טון בכתב הכמויות.`, `יתרה: ${(steelLine.qty ?? 0).toLocaleString("he-IL")} טון, מהם 12 טון בהזמנה 2291 (במחיר החדש) ו-${exposedTons.toLocaleString("he-IL")} טון ללא הזמנה.`, "מה יכול עוד להשתנות: עדכון נספח רבעוני; כמויות בפועל לפי קומות עליונות."],
       table: [["רכיב", "נתון"], ["תקציב", nis(steel.budget)], ["עלות שנרשמה", nis(steel.recorded)], ["יתרה צפויה", `${(steelLine.qty ?? 0).toLocaleString("he-IL")} טון`], ["מחיר יח׳ — תקציב", "4,000 ₪/טון"], ["מחיר יח׳ — נספח בתוקף", `${(steelLine.unitPrice ?? 4000).toLocaleString("he-IL")} ₪/טון`], ["תחזית לגמר", nis(steel.eac)], ["סטייה", signed(steel.variance)]],
       recommendationHe: exposedTons > 0 ? `לשקול הזמנה מרוכזת ל-${exposedTons.toLocaleString("he-IL")} הטון הנותרים כדי לקבע מחיר.` : "אין פעולה נדרשת.",
     });
@@ -329,7 +330,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
       sourcesHe: [`מערכת המידע — ${state.erp.invoices.length} חשבונות, ${state.erp.purchaseOrders.length} הזמנות, ${pkg.contracts.length} חוזים`, `כתב כמויות גרסה ${pkg.project.boqVersion.number}`, `תחזית ${dateHe(previous.controlDate)} (סופית)`, "תיקיית הפרויקט: נספח א׳-2, הצעת י. כהן, חוזה 07-01"],
       correctionLog: corrections,
       inReview: wf.invoicesInReview,
-      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= CURRENT_CONTROL).map((c) => `${dateHe(c.at)} — ${c.recordType === "invoice" ? "חשבון" : c.recordType === "po" ? "הזמנה" : "חוזה"} ${c.recordId}: ${c.field} ${c.before} → ${c.after} (${pkg.people.find((p) => p.id === c.byId)?.nameHe})`),
+      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= CURRENT_CONTROL).map((c) => `${dateHe(c.at)} — ${c.recordType === "invoice" ? "חשבון" : c.recordType === "po" ? "הזמנה" : "חוזה"} ${c.recordId}: ${c.before === "—" ? `${c.field}: ${c.after}` : `${c.field} ${c.before} ← ${c.after}`} (${pkg.people.find((p) => p.id === c.byId)?.nameHe})`),
       uncovered: uncoveredRows,
       uncoveredTotal: uncoveredRows.reduce((a, r) => a + r.amount, 0),
     },

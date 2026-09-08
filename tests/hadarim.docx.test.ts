@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, route, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
+import { handleUserText } from "../src/hadarim/engine/conversation";
+import type { V2State } from "../src/hadarim/engine/model";
+import { buildReport } from "../src/hadarim/engine/report";
+import { exportReportDocx } from "../src/hadarim/export/docx";
+
+const findingByKind = (s: V2State, kind: string) => s.control.findings.find((f) => f.kind === kind)!;
+
+/** Scenes 1–6 of the script on the engine alone (same path as tests/hadarim.engine.test.ts). */
+function runScript(): V2State {
+  let s = revealAllSteps(startControl(updateInvoiceSection(initialState(), 1147, "02", "SARIT"), "תכיני בקרה תקציבית להדרים"));
+  s = reviewFindings(s);
+  const alloc = findingByKind(s, "allocation");
+  s = decide(s, alloc.id, "yes_target");
+  s = route(s, alloc.id, "update");
+  const unit = findingByKind(s, "unit");
+  s = decide(s, unit.id, "yes_tons");
+  s = route(s, unit.id, "refer_roi");
+  const price = findingByKind(s, "price");
+  s = decide(s, price.id, "all");
+  const cov = findingByKind(s, "coverage");
+  s = decide(s, cov.id, null, "צריך להזמין. יש הצעה בתיקייה");
+  s = confirmQuote(s, cov.id, true);
+  return s;
+}
+
+describe("Hadarim v2 — Word export", () => {
+  it("produces a real .docx for the full report of the scripted control", async () => {
+    let s = runScript();
+    s = handleUserText(s, "תוסיפי השוואה לבקרה הקודמת ומגמות");
+    s = handleUserText(s, "תציגי את הטבלה לפי בניין");
+    const report = buildReport(pkg, s);
+    expect(report.trends.comparison).not.toBeNull();
+    expect(report.sections.byBuilding).not.toBeNull();
+    const blob = await exportReportDocx(report, "full");
+    expect(blob.type).toContain("wordprocessingml");
+    expect(blob.size).toBeGreaterThan(5 * 1024);
+    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    expect([head[0], head[1]]).toEqual([0x50, 0x4b]); // zip signature "PK"
+  });
+
+  it("produces the one-page CEO version", async () => {
+    const s = handleUserText(runScript(), "תכיני גרסה לדנה — עמוד אחד");
+    const blob = await exportReportDocx(buildReport(pkg, s), "ceo");
+    expect(blob.size).toBeGreaterThan(2 * 1024);
+  });
+
+  it("does not throw on a state with no control run yet (empty tables)", async () => {
+    const report = buildReport(pkg, initialState());
+    expect(report.changes.forecast).toHaveLength(0);
+    const blob = await exportReportDocx(report, "full");
+    expect(blob.size).toBeGreaterThan(5 * 1024);
+  });
+});
