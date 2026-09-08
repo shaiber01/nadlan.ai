@@ -7,7 +7,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function fresh(page: Page) {
   await page.goto("/hadarim.html");
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("hadarim-offline", "1"); // e2e runs on the browser-only generator data, never the shared database
+  });
   await page.reload();
   await page.getByTestId("presenter-bar").waitFor();
   await page.getByTestId("skip-motion").check();

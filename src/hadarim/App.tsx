@@ -22,7 +22,7 @@ export function HadarimApp() {
   // switching the scene-1 variant re-seeds the demo (variant B has no invoice 1147 until it is keyed in)
   const chooseVariant = (variant: "A" | "B") => {
     if (variant === state.variant) return;
-    if (untouched) store.reset(variant);
+    if (untouched) void store.reset(variant);
     else setPendingVariant(variant);
   };
 
@@ -42,6 +42,13 @@ export function HadarimApp() {
             </div>
           </div>
           <div className="h2-presenter-group">
+            <span className={`h2-presenter-db is-${ui.db.status}`} data-testid="db-status" title={ui.db.error ?? (ui.db.lastSync ? `סנכרון אחרון ${new Date(ui.db.lastSync).toLocaleTimeString("he-IL")}` : "")}>
+              {ui.db.status === "online" ? (ui.db.syncing ? "מסד נתונים · שומר…" : "מסד נתונים · מחובר") : ui.db.status === "loading" ? "מסד נתונים · מתחבר…" : ui.db.status === "error" ? "מסד נתונים · שגיאה" : "ללא מסד נתונים (מקומי)"}
+            </span>
+            <label className="h2-presenter-toggle">
+              <input type="checkbox" checked={ui.db.status === "offline"} onChange={(e) => store.setOffline(e.target.checked)} data-testid="db-offline" />
+              עבודה מקומית
+            </label>
             <span className="h2-presenter-meta">
               משתמש: {operator.nameHe}, {operator.roleHe} · {state.clock.slice(0, 10).split("-").reverse().map((p, i) => (i < 2 ? String(Number(p)) : p)).join(".")} {state.clock.slice(11, 16)}
             </span>
@@ -59,7 +66,7 @@ export function HadarimApp() {
             {pendingVariant ? (
               <span className="h2-presenter-confirm">
                 החלפת הגרסה מאפסת את ההדגמה.
-                <Button size="sm" variant="danger" onClick={() => { store.reset(pendingVariant); setPendingVariant(null); }} data-testid="variant-confirm">
+                <Button size="sm" variant="danger" onClick={() => { void store.reset(pendingVariant); setPendingVariant(null); }} data-testid="variant-confirm">
                   אפס והחלף
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setPendingVariant(null)}>
@@ -70,7 +77,7 @@ export function HadarimApp() {
             {confirmReset ? (
               <span className="h2-presenter-confirm">
                 לאפס את ההדגמה?
-                <Button size="sm" variant="danger" onClick={() => { store.reset(); setConfirmReset(false); }} data-testid="reset-confirm">
+                <Button size="sm" variant="danger" onClick={() => { void store.reset(); setConfirmReset(false); }} data-testid="reset-confirm">
                   כן, אפס
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>

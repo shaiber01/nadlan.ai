@@ -92,7 +92,7 @@ async function main() {
     retention_pct: c.retentionPct,
     closed: c.closed ? { at: c.closed.at, final_account: c.closed.finalAccount } : null,
     steel_supplied_by_client: c.steelSuppliedByClient ?? false,
-    price_appendices: c.priceAppendices ? c.priceAppendices.map((a) => ({ id: a.id, price_per_ton: a.pricePerTon, valid_from: a.validFrom, document_id: a.documentId })) : null,
+    price_appendices: c.priceAppendices ? c.priceAppendices.map((a) => ({ id: a.id, title_he: a.titleHe, price_per_ton: a.pricePerTon, valid_from: a.validFrom, document_id: a.documentId })) : null,
     document_id: ref(c.documentId, documentIds),
     note_he: c.noteHe ?? null,
     boq_match_verified: c.boqMatchVerified ?? false,

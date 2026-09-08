@@ -189,3 +189,23 @@
     background: #fff;
   }
 }
+
+/* Database connection state in the presenter strip */
+.h2-presenter-db {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #26314f;
+  color: #c9d0e2;
+}
+.h2-presenter-db.is-online {
+  background: #14532d;
+  color: #d1fae5;
+}
+.h2-presenter-db.is-loading {
+  background: #3b4768;
+}
+.h2-presenter-db.is-error {
+  background: #7f1d1d;
+  color: #fee2e2;
+}

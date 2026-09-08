@@ -10,7 +10,16 @@ import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type
  * The package (static data) is passed in so commands stay pure and testable.
  */
 
-export const pkg: HadarimPackage = generateHadarimPackage();
+/**
+ * The project package the engine works on. Starts as the deterministic generator output (offline mode,
+ * tests) and is replaced by the database load when the app or the CLI connects — importers see the
+ * new value because ES module bindings are live.
+ */
+export let pkg: HadarimPackage = generateHadarimPackage();
+
+export function setPackage(next: HadarimPackage): void {
+  pkg = next;
+}
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const mil = (v: number) => `${(v / 1_000_000).toFixed(2)} מ׳ ₪`;
