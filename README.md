@@ -59,6 +59,22 @@ npm run db:types        # regenerate src/hadarim/db/types.ts after a migration
 
 Access is open through the publishable key for now (a prototype decision); RLS is on with a permissive policy per table, so restricting access later is a policy change.
 
+### The agent ("בקרה")
+
+Running `claude` in this folder makes Claude the project's budget controller: `CLAUDE.md` defines the role and rules, `.claude/agents/bakara.md` the agent, and the skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset` the procedures. The agent never computes numbers itself; it drives the deterministic engine over the database through the CLI:
+
+```bash
+npm run bakara -- status
+npm run bakara -- erp set-section 1147 02 --by SARIT --note "תיקון שיוך"   # the scene-1 change
+npm run bakara -- control run                                             # findings on live data
+npm run bakara -- decide allocation yes_target && npm run bakara -- route allocation update
+npm run bakara -- report --md /tmp/report.md --docx /tmp/report.docx     # per the report standard
+npm run bakara -- ask "מה השתנה בבקרה האחרונה לעומת הקודמת?"
+npm run bakara -- reset                                                   # back to the seed
+```
+
+Every command reads the current state from Supabase and writes back what it changed; ERP writes are attributed and logged by the database triggers, and the verification line after a write is a genuine re-read.
+
 ## Where to change things
 
 | What | Where |

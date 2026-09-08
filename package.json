@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "hadarim:seed": "vite-node scripts/seed-supabase.ts",
     "hadarim:reset": "vite-node scripts/reset-supabase.ts",
-    "db:types": "supabase gen types typescript --project-id aevdlzncwkdosbzkgpgy --schema public > src/hadarim/db/types.ts"
+    "db:types": "supabase gen types typescript --project-id aevdlzncwkdosbzkgpgy --schema public > src/hadarim/db/types.ts",
+    "bakara": "vite-node scripts/bakara.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

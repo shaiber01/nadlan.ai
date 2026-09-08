@@ -149,3 +149,6 @@ e2e/screenshots/
 
 # macOS
 .DS_Store
+
+# Claude Code local settings (per machine)
+.claude/settings.local.json

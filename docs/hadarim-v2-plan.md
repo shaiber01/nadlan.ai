@@ -100,7 +100,13 @@ Step 1 — done:
 - Verified against the project: 216 invoices (5 in review), recorded 20,070,000, section 07 = 2,280,000, 38 open POs, 118 BOQ lines, draft EAC 48,000,000, 5 change-log rows; a SQL edit of invoice 1147 produced the trigger row "סעיף תקציבי 07-פיתוח → 02-שלד by SARIT" and `reset_project` restored the seed. Security advisor clean.
 - Generator fix: `forceSum` now spreads the residual proportionally (one site-service invoice had gone negative); totals unchanged, one pinned trend value updated.
 
-Next steps: (2) ERP web app on Supabase; (3) engine CLI over database data; (4) the agent definition (`CLAUDE.md`, `.claude/agents/`, skills); (5) report viewer for saved versions; (6) plugin packaging.
+Step 2 — done: `src/hadarim/db/client.ts` loads a project as the engine's package and persists ERP writes (attributed through `updated_by`); the store bootstraps from the database, persists the ERP diff of every command and re-reads the trigger-written change log, follows Realtime changes, and resets through `reset_project()`. Offline mode (`?offline=1` or the `hadarim-offline` flag) keeps the browser-only generator data; the Playwright suites run offline. Opt-in live tests: `RUN_DB_TESTS=1` (round trip: database package equals the generator's; engine gives the same findings and totals) and `RUN_DB_E2E=1` (browser edit → trigger row → control sees it → reset).
+
+Step 3 — done: `scripts/bakara.ts` (`npm run bakara -- …`) is the engine as a command-line toolset over the database: status, reset, ERP writes, control run/show, decide/route/quote, config, report (Markdown + Word + saved `report_versions` row), ask, finalize. `src/hadarim/db/session.ts` rebuilds the engine state from the database (controls, decisions, adjustments, corrections, tasks, audit) and saves it back after each command; the verification line after a write is a genuine re-read from the database. `src/hadarim/export/markdown.ts` renders the report for the agent to read. The whole script ran through the CLI against the live project (48.00 → 48.24 → 48.36, report version #1).
+
+Step 4 — done: `CLAUDE.md` (the agent's role, rules and toolset — Claude never computes money, never writes without a decision), `.claude/agents/bakara.md` (the בקרה agent) and skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`.
+
+Next: (5) a report viewer in the web app for saved `report_versions`; (6) package `.claude/` + the CLI as a plugin; later: retire the browser chat, Supabase Auth and real RLS, more projects.
 
 ## 5. Build phases for the next session
 
