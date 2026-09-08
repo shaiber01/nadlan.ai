@@ -1,5 +1,191 @@
-/* Hadarim v2 surface: two screens (simulated ERP, control system). Extends the shared tokens/components. */
+/* Hadarim v2 surface: shell, presenter strip, shared document viewer and print rules.
+   Feature screens ship their own stylesheets (features/erp/erp.css, features/control/control.css, features/report/report.css). */
+
 .h2-shell {
   min-height: 100vh;
   background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.h2-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Presenter strip (dark, slim, never part of the "product") */
+.h2-presenter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 16px;
+  background: var(--navy);
+  color: #e6e9f2;
+  font-size: 12.5px;
+  min-height: 40px;
+  flex-wrap: wrap;
+}
+.h2-presenter-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.h2-presenter-brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.h2-presenter-meta {
+  color: #b8bfd1;
+}
+.h2-presenter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.h2-presenter-toggle select {
+  font: inherit;
+  background: #26314f;
+  color: inherit;
+  border: 1px solid #3b4768;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.h2-presenter .btn-ghost {
+  color: #e6e9f2;
+}
+.h2-presenter .btn-ghost:hover {
+  background: #26314f;
+}
+.h2-presenter-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.h2-switch {
+  display: inline-flex;
+  background: #26314f;
+  border-radius: 999px;
+  padding: 3px;
+}
+.h2-switch button {
+  font: inherit;
+  font-weight: 600;
+  color: #c9d0e2;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.h2-switch button.active {
+  background: #fff;
+  color: var(--navy);
+}
+
+/* Document viewer (paper look) */
+.h2-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.h2-doc-tab {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.h2-doc-file {
+  font-family: ui-monospace, Menlo, monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.h2-doc-paper {
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 28px 32px 20px;
+  box-shadow: var(--shadow);
+  line-height: 1.55;
+  font-size: 14px;
+}
+.h2-doc-block {
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius-sm);
+}
+.h2-doc-heading h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.h2-doc-paragraph p {
+  margin: 0;
+}
+.h2-doc-highlight p {
+  margin: 0;
+  font-weight: 600;
+}
+.h2-doc-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.h2-doc-table th,
+.h2-doc-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: right;
+}
+.h2-doc-table th {
+  background: var(--bg-muted);
+}
+.h2-doc-signature,
+.h2-doc-stamp {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.h2-doc-stamp span {
+  border: 2px solid var(--primary);
+  color: var(--primary-text);
+  border-radius: 6px;
+  padding: 3px 10px;
+  transform: rotate(-3deg);
+  display: inline-block;
+  font-weight: 700;
+}
+.h2-doc-block.is-highlight {
+  background: var(--amber-soft);
+}
+.h2-doc-block.is-anchored {
+  outline: 2px solid var(--primary);
+  background: var(--primary-soft);
+}
+.h2-doc-footer {
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media print {
+  .h2-presenter,
+  .no-print {
+    display: none !important;
+  }
+  .h2-shell {
+    background: #fff;
+  }
 }
