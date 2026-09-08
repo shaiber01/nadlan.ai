@@ -136,8 +136,12 @@ export interface ErpState {
   changeLog: HChangeLogEntry[];
 }
 
+export type Scene1Variant = "A" | "B";
+
 export interface V2State {
   version: 1;
+  /** Scene-1 variant the seed was prepared for: A = invoice 1147 exists and is re-allocated live; B = it is keyed in live. */
+  variant: Scene1Variant;
   clock: string; // yyyy-mm-ddTHH:MM (demo day, advances a few minutes per action)
   operatorId: PersonId;
   erp: ErpState;

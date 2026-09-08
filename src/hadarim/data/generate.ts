@@ -609,13 +609,13 @@ export function buildForecast(controlDate: string, invoices: HInvoice[], purchas
       }
       case "17": {
         uncovered = section.budget;
-        lines.push({ id: `${controlDate}-17`, sectionId: "17", descriptionHe: "בלתי צפוי — יתרה לא מנוצלת", qty: null, unit: null, unitPrice: null, amount: uncovered, basis: "estimate", sourceRef: "תקציב גרסה 3", kind: "uncovered" });
+        lines.push({ id: `${controlDate}-17`, sectionId: "17", descriptionHe: "בלתי צפוי — יתרה לא מנוצלת", qty: null, unit: null, unitPrice: null, amount: uncovered, basis: "allocation", sourceRef: "תקציב גרסה 3", kind: "uncovered" });
         break;
       }
       case "18": {
         const remainingMonths = PROJECT_MONTHS - monthsElapsed;
         uncovered = section.budget - rec;
-        lines.push({ id: `${controlDate}-18`, sectionId: "18", descriptionHe: `הנהלה, פיקוח, ביטוח ואגרות — ${remainingMonths} חודשים × ${MONTHLY_OVERHEAD.toLocaleString("he-IL")} ₪ (מותאם לתקציב)`, qty: remainingMonths, unit: "חודשים", unitPrice: null, amount: uncovered, basis: "estimate", sourceRef: "תקציב גרסה 3 — הקצאה חודשית", kind: "uncovered" });
+        lines.push({ id: `${controlDate}-18`, sectionId: "18", descriptionHe: `הנהלה, פיקוח, ביטוח ואגרות — ${remainingMonths} חודשים × ${MONTHLY_OVERHEAD.toLocaleString("he-IL")} ₪ (מותאם לתקציב)`, qty: remainingMonths, unit: "חודשים", unitPrice: null, amount: uncovered, basis: "allocation", sourceRef: "תקציב גרסה 3 — הקצאה חודשית", kind: "uncovered" });
         break;
       }
       default: {

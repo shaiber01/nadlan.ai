@@ -169,7 +169,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
   if (report.sections.byBuilding) {
     part2.push(h("פילוח משני — לפי בניין", 2));
     part2.push(
-      table(["בניין", "תקציב מאושר", "נרשם", "תחזית לגמר"], [...report.sections.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.eac)]), ["סה״כ", nis(report.sections.totals.budget), nis(report.sections.totals.recorded), nis(report.sections.totals.eac)]], { textWidth: LANDSCAPE_TEXT_WIDTH, boldLast: true }),
+      table(["בניין", "תקציב מאושר", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], [...report.sections.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), signedPct(b.variancePct), `${b.basisPct}%`]), ["סה״כ", nis(report.sections.totals.budget), nis(report.sections.totals.recorded), nis(report.sections.totals.committed), nis(report.sections.totals.remainingCommitment), nis(report.sections.totals.uncovered), nis(report.sections.totals.eac), signed(report.sections.totals.variance), signedPct(report.sections.totals.variancePct), `${report.sections.totals.basisPct}%`]], { textWidth: LANDSCAPE_TEXT_WIDTH, boldLast: true }),
     );
     if (report.sections.byBuildingNoteHe) part2.push(p(`הערה: ${report.sections.byBuildingNoteHe}`, { size: 16, color: "5B6478", before: 120 }));
   }
@@ -181,7 +181,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     h("4ב. תיקוני נתונים ללא השפעה על התחזית הכוללת", 2),
     correctionsTable(report.changes.corrections),
     h("5. ניתוח סעיפים מהותיים", 1),
-    ...(report.material.length ? report.material.flatMap((m) => [h(m.titleHe, 2), ...m.paragraphsHe.map((x) => p(x)), ...(m.table.length > 1 ? [table(m.table[0], m.table.slice(1), { widths: [2, 1.5] })] : []), label("המלצה", m.recommendationHe)]) : [p("אין סעיפים שחצו את סף המהותיות בבקרה זו.")]),
+    ...(report.material.length ? report.material.flatMap((m) => [h(m.titleHe, 2), p(`נכלל כי: ${m.reasonHe}`, { size: 16, color: "5B6478" }), ...m.paragraphsHe.map((x) => p(x)), ...(m.table.length > 1 ? [table(m.table[0], m.table.slice(1), { widths: [2, 1.5] })] : []), label("המלצה", m.recommendationHe), p(`מקורות: ${m.sources.map((s) => s.labelHe).join(" · ")}`, { size: 16, color: "5B6478" })]) : [p("אין סעיפים שחצו את סף המהותיות בבקרה זו.")]),
     h("6. בלתי צפוי, שינויים ותביעות", 1),
     table(["בלתי צפוי", "₪"], [["מקור (תקציב מאושר)", nis(c.original)], ["שימושים שאושרו בתקופה", nis(c.used)], ["יתרה", nis(c.remaining)]], { widths: [3, 2] }),
     label("פקודות שינוי", c.pendingChangeOrdersHe),
@@ -220,6 +220,8 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     ...(a.afterCutoffHe.length ? bullets(a.afterCutoffHe) : [p("אין אירועים לאחר מועד החתך.")]),
     h("ז. פירוט יתרה להשלמה לא מכוסה", 3),
     table(["פריט", "סעיף", "בסיס", "₪"], [...a.uncovered.map((u) => [u.descriptionHe, u.sectionHe, u.basisHe, nis(u.amount)]), ["סה״כ", "", "", nis(a.uncoveredTotal)]], { widths: [3, 1.2, 1.2, 1.4], boldLast: true }),
+    p("הקצאות פנימיות — לא רכש (מוצגות בנפרד, אינן נספרות כאומדנים)", { bold: true, before: 160 }),
+    table(["פריט", "סעיף", "בסיס", "₪"], [...a.allocations.map((u) => [u.descriptionHe, u.sectionHe, u.basisHe, nis(u.amount)]), ["סה״כ", "", "", nis(a.allocationTotal)]], { widths: [3, 1.2, 1.2, 1.4], boldLast: true }),
     p("ח. תזרים 90 יום — לא נכלל (דוח עלות, לא דוח תזרים).", { size: 18, color: "5B6478", before: 120 }),
   );
 

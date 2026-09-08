@@ -71,6 +71,23 @@ Everything in §5 is built, tested and committed on `main`. Entry: `hadarim.html
 - Screens: `features/erp/` (זיו-flavoured ERP: invoices with edit/new forms and per-record change log, POs with amount-locked correction, contracts with exclusions and appendices, budget/forecast, change log), `features/control/` (chat with steps, finding cards, decision routes, control board, record modal), `features/report/` (living report, print CSS, CEO tab, config chips, exports) and `src/hadarim/export/docx.ts` (real `.docx`, RTL, via the `docx` package). `e2e/hadarim.spec.ts` runs scenes 1–9 through the UI; `e2e/hadarim.visual.spec.ts` takes element screenshots (`e2e/screenshots/hadarim-v-*.png`) and covers scene-1 variant B and the PO guard.
 - Decisions taken while building: report section numbering follows the standard (0 כותרת … 4 שינויים with 4א/4ב, 5 סעיפים מהותיים … 11 נספחים); the unit finding's default script route is "העבר לרועי לביצוע", so the PO stays uncorrected in the ERP and the comparison shows 3 → 3 open issues (choose [עדכן] to get 3 → 2); an issue is "פתוח יותר משתי בקרות" when it has been open at three or more controls including the current one; materiality = 100,000 ₪ and 3 % of the section, or 250,000 ₪; scene-1 variant B assigns the next free invoice id (the seed already contains 1147) and its prefill button keys the same values into 02-שלד; the chat's "send" action opens the report pane (no simulated mailbox in v2); contract id "03-F" is wrapped in bidi isolates wherever it appears inside Hebrew prose.
 
+## 4d. Spec re-check after the build (2026-09-08, later the same day)
+
+A line-by-line re-read of the three specs against the built product found ten gaps; all are fixed and covered by tests:
+
+1. "Still estimate" figure now follows data spec §7: after the price decision the 12 t on PO 2291 become a commitment line (57,600) and 288 t stay uncovered at 4,800 (1,382,400); overhead and contingency lines carry basis `allocation` and are shown separately (appendix ז, second table) instead of being counted as estimates. Uncovered-estimates total = 6,700,000 + 1,382,400 + 120,000 + 75,000 (site-organisation extension) = 8,277,400; the scene-9 answer lists the three spec groups plus the extension line.
+2. Material sections (standard §5) are generated for every section over the threshold, over 10 % of budget, or with basis below 70 %: 02, 03, 07, 12, 13, 15, 16, 18 — each with reason, contract/order status, BOQ coverage, basis, "what can change", recommendation and source links.
+3. Step pacing: 2.2 s between steps and 4.5 s on the checks line (script: 2–3 s, then ~5 s); "דלג" and ללא אנימציה unchanged.
+4. Findings board shows the script's "השפעה משוערת על התחזית" column (estimate before the decision, applied amount after) and the owner on "ממתין לביצוע".
+5. Per-building split carries the same columns as the sections table (budget, recorded, commitments, remaining, uncovered, forecast, variance ₪/%, basis) and the "[שנה]" affordance: tagging invoice 1147 with a building writes the ERP field with a change-log row and moves its 180,000 out of "משותף".
+6. The CEO-version message carries [ייצוא PDF] [ייצוא Word] [שלח לדנה]; exports run from the chat through the report pane; "שלח לדנה" is a logged, audited simulated hand-off.
+7. Scene 8 prompt states what is kept (structure) and what is never kept (data), per the script.
+8. Traceability: material sections and appendix ז rows open their document page (at the anchor), ERP record or ERP screen (the invoice list pre-filtered by section).
+9. Trends: uncovered-estimates series (1.8 → 1.9) with a data-driven explanation of the movement (aluminium contract signed, steel repriced, drainage added); still one chart.
+10. Scene-1 variant B seeds the ERP without invoice 1147 and the keyed-in invoice receives that number, as the script states; switching the variant re-seeds the demo (with a confirmation once anything was touched).
+
+Left as data-driven deviations from the script's copy: three open issues (the standard's own §8 lists three) and 24 new invoices since the previous control (the data spec's volumes).
+
 ## 5. Build phases for the next session
 
 1. Data package: generator + committed JSON + tests that assert every number in §2, the must-fire and must-not-fire sets, and the pre/post scene-1 states.

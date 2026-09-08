@@ -51,7 +51,11 @@ export function handleUserText(state: V2State, rawText: string): V2State {
     return setReportConfig(state, { splitByBuilding: true }, rawText, `טבלת הסעיפים מוצגת עכשיו לפי בניין: A, B, חניון ומשותף. ${report.sections.byBuildingNoteHe ?? ""}`.trim());
   }
   if (/גרסה ל(דנה|מנכ)|עמוד אחד|למנכ/.test(text)) {
-    return setReportConfig(state, { ceoVersion: true }, rawText, "נפתחה לשונית ״גרסה למנכ״לית״: סיכום מנהלים, טבלת ההשפעות, נושאים פתוחים ושורת סיכונים אחת. אותם מספרים, אותם מקורות. שתי הגרסאות מקושרות לאותה בקרה; שינוי נתון באחת יתעדכן בשנייה.");
+    return setReportConfig(state, { ceoVersion: true }, rawText, `נפתחה לשונית ״גרסה למנכ״לית״: סיכום מנהלים, טבלת ההשפעות, נושאים פתוחים ושורת סיכונים אחת. אותם מספרים, אותם מקורות. שתי הגרסאות מקושרות לאותה בקרה (${dateHe(state.control.controlDate)}, ${state.control.finalized ? "גרסה סופית" : "טיוטה"}); שינוי נתון באחת יתעדכן בשנייה.`, [
+      { id: "export_pdf", labelHe: "ייצוא PDF", action: { type: "export", format: "pdf" } },
+      { id: "export_docx", labelHe: "ייצוא Word", action: { type: "export", format: "docx" } },
+      { id: "send_dana", labelHe: "שלח לדנה", action: { type: "send", toId: "DANA" } },
+    ]);
   }
   if (/^שמור/.test(text)) return saveConfig(state, true);
   if (/לא עכשיו/.test(text)) return saveConfig(state, false);
@@ -85,10 +89,14 @@ export function answerQuestion(state: V2State, rawText: string): V2State {
     return pushSystem(s, `משווה בקרה ${dateHe(wf.controlDate)} (${label}) לבקרה ${dateHe(previous.controlDate)}. התחזית ${change === 0 ? "לא השתנתה" : `${change > 0 ? "עלתה" : "ירדה"} ב-${nis(Math.abs(change))}`}${parts.length ? `: ${parts.join(", ")}` : ""}.${s.control.corrections.length ? ` בנוסף תוקנו ${s.control.corrections.length === 2 ? "שני" : num(s.control.corrections.length)} שדות נתונים ללא השפעה על התחזית הכוללת.` : ""}`, { sourcesHe: [`תחזית ${dateHe(previous.controlDate)}`, `בקרה ${dateHe(wf.controlDate)} — סעיף 4א`] });
   }
   if (/קנינו יותר|יותר ברזל|כמות/.test(text)) {
-    const line = steel.lines.find((l) => l.kind === "uncovered")!;
     const prevLine = previous.sections!.find((x) => x.sectionId === "03")!.lines.find((l) => l.kind === "uncovered")!;
-    const sameQty = (line.qty ?? 0) === (prevLine.qty ?? 0);
-    return pushSystem(s, `לא. כמות היתרה ${sameQty ? "לא השתנתה" : "השתנתה"} — ${num(prevLine.qty ?? 0)} טון בשתי הבקרות. העלייה נובעת מהמחיר: ${num(prevLine.qty ?? 0)} × ${num(prevLine.unitPrice ?? 0)} = ${nis(prevLine.amount)} → ${num(line.qty ?? 0)} × ${num(line.unitPrice ?? 0)} = ${nis(line.amount)}. הפרש: ${nis(line.amount - prevLine.amount)}. מקור: נספח מחיר פלדות הצפון, בתוקף מ-15.7.2026.`, { documentId: "appendix_A2_steel_price_2026_07_15", sourcesHe: ["נספח א׳-2", `תחזית ${dateHe(previous.controlDate)} — שורת יתרת ברזל`] });
+    // the remainder today = the uncovered tons plus the tons already on an order (both at the appendix price)
+    const remainderLines = steel.lines.filter((l) => l.kind === "uncovered" || l.basis === "po");
+    const qtyNow = remainderLines.reduce((a, l) => a + (l.qty ?? 0), 0);
+    const amountNow = remainderLines.reduce((a, l) => a + l.amount, 0);
+    const priceNow = qtyNow ? Math.round(amountNow / qtyNow) : 0;
+    const sameQty = qtyNow === (prevLine.qty ?? 0);
+    return pushSystem(s, `לא. כמות היתרה ${sameQty ? "לא השתנתה" : "השתנתה"} — ${num(prevLine.qty ?? 0)} טון ${sameQty ? "בשתי הבקרות" : `בבקרה הקודמת מול ${num(qtyNow)} טון היום`}. העלייה נובעת מהמחיר: ${num(prevLine.qty ?? 0)} × ${num(prevLine.unitPrice ?? 0)} = ${nis(prevLine.amount)} → ${num(qtyNow)} × ${num(priceNow)} = ${nis(amountNow)}. הפרש: ${nis(amountNow - prevLine.amount)}. מקור: נספח מחיר פלדות הצפון, בתוקף מ-15.7.2026.`, { documentId: "appendix_A2_steel_price_2026_07_15", sourcesHe: ["נספח א׳-2", `תחזית ${dateHe(previous.controlDate)} — שורת יתרת ברזל`] });
   }
   if (/נסגרו|נושאים.*קודמת|הבקרה הקודמת.*נסגר/.test(text)) {
     const closed = previous.openIssues.filter((o) => o.status === "closed");
@@ -97,13 +105,19 @@ export function answerQuestion(state: V2State, rawText: string): V2State {
   }
   if (/אומדן|לא הוזמן|מבוסס על|טרם הוזמן/.test(text)) {
     const u = uncoveredByBasis(wf);
-    const items = u.lines.filter((l) => l.amount > 0);
-    const total = items.reduce((a, l) => a + l.amount, 0);
-    const packages = items.filter((l) => l.basis === "estimate" && ["12", "13", "15", "16"].includes(l.sectionId));
-    const steelItem = items.find((l) => l.sectionId === "03");
-    const drainageItem = items.find((l) => l.basis === "quote");
-    const parts = [packages.length ? `${["12", "13", "15", "16"].filter((id) => packages.some((p) => p.sectionId === id)).length} חבילות שטרם נחתמו (${packages.map((p) => `${p.sectionId}-${SECTION_SHORT_HE[p.sectionId]}`).join(", ")} — ${nis(packages.reduce((a, p) => a + p.amount, 0))})` : "", steelItem ? `יתרת ברזל ${num((steelItem.qty ?? 0) - 12)} טון (${nis(steelItem.amount - (s.control.adjustments.find((a) => a.committedPortion)?.committedPortion?.amount ?? 0))} — 12 טון כבר הוזמנו)` : "", drainageItem ? `קו ניקוז חוץ (${nis(drainageItem.amount)})` : "", ...items.filter((l) => l.sectionId === "01" || l.sectionId === "18").map((l) => `${l.descriptionHe.split(" — ")[0]} (${nis(l.amount)})`)].filter(Boolean);
-    return pushSystem(s, `${num(items.length)} פריטים, ${nis(total)}: ${parts.join("; ")}.`, { sourcesHe: ["נספח ז׳ — פירוט יתרה להשלמה לא מכוסה"] });
+    const packageIds = ["12", "13", "15", "16"];
+    const packages = u.lines.filter((l) => l.basis === "estimate" && packageIds.includes(l.sectionId));
+    const steelItem = u.lines.find((l) => l.sectionId === "03");
+    const steelOrdered = s.control.adjustments.find((a) => a.sectionId === "03" && a.committedPortion)?.committedPortion;
+    const drainageItem = u.lines.find((l) => l.basis === "quote");
+    const others = u.lines.filter((l) => !packages.includes(l) && l !== steelItem && l !== drainageItem);
+    const groups = [
+      packages.length ? `${packages.length === 4 ? "ארבע" : num(packages.length)} חבילות שטרם נחתמו (${packages.map((p) => `${p.sectionId}-${SECTION_SHORT_HE[p.sectionId]}`).join(", ")} — ${nis(packages.reduce((a, p) => a + p.amount, 0))})` : "",
+      steelItem ? `יתרת ברזל ${num(steelItem.qty ?? 0)} טון (${nis(steelItem.amount)}${steelOrdered ? ` — ${num(steelOrdered.qty)} טון כבר הוזמנו בהזמנה ${steelOrdered.poId}` : ""})` : "",
+      drainageItem ? `קו ניקוז חוץ (${nis(drainageItem.amount)}, לפי הצעה — טרם הוזמן)` : "",
+      ...others.map((l) => `${l.descriptionHe.split(" — ")[0]} (${nis(l.amount)})`),
+    ].filter(Boolean);
+    return pushSystem(s, `${num(groups.length)} פריטים, ${nis(u.total)}: ${groups.join("; ")}.${u.allocationTotal ? ` הקצאות פנימיות של הנהלה ופיקוח (${nis(u.allocationTotal)}) אינן רכש ואינן נספרות כאן.` : ""}`, { sourcesHe: ["נספח ז׳ — פירוט יתרה להשלמה לא מכוסה"] });
   }
   if (/פיתוח עלה|למה פיתוח|פיתוח.*יותר/.test(text)) {
     const transferred = s.control.corrections.filter((c) => c.recordType === "invoice" && c.afterHe.startsWith("07")).map((c) => s.erp.invoices.find((i) => String(i.id) === c.recordId)!).filter(Boolean);

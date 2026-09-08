@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { initialState, revealAllSteps, revealNextStep } from "../engine/commands";
-import type { V2State } from "../engine/model";
+import type { Scene1Variant, V2State } from "../engine/model";
 
 /**
  * Tiny external store for the Hadarim v2 demo: one persisted domain state (`V2State`) and one
@@ -12,7 +12,7 @@ export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" 
 export interface UiState {
   app: "erp" | "control";
   erp: { screen: ErpScreen; invoiceId: number | null; editing: boolean; creating: boolean; poId: number | null; contractId: string | null; sectionId: string | null };
-  control: { pane: "chat" | "report"; reportTab: "full" | "ceo"; documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null };
+  control: { pane: "chat" | "report"; reportTab: "full" | "ceo"; documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null; pendingExport?: "pdf" | "docx" | null };
   presenter: { skipMotion: boolean; showPresenterBar: boolean; scene1Variant: "A" | "B" };
 }
 
@@ -22,7 +22,7 @@ const UI_KEY = "hadarim-v2-ui";
 export const defaultUi: UiState = {
   app: "erp",
   erp: { screen: "invoices", invoiceId: null, editing: false, creating: false, poId: null, contractId: null, sectionId: null },
-  control: { pane: "chat", reportTab: "full", documentId: null, documentAnchor: null, recordRef: null },
+  control: { pane: "chat", reportTab: "full", documentId: null, documentAnchor: null, recordRef: null, pendingExport: null },
   presenter: { skipMotion: false, showPresenterBar: true, scene1Variant: "A" },
 };
 
@@ -98,14 +98,19 @@ class HadarimStore {
       this.dispatch(revealAllSteps);
       return;
     }
+    // script pacing: 2–3 s between steps, and the checks line spins for a few seconds before the summary
     const step = () => {
       const before = this.state;
       this.dispatch(revealNextStep);
-      const done = this.state === before || this.state.control.messages.find((m) => m.kind === "steps")?.steps?.every((st) => st.done);
+      const steps = this.state.control.messages.find((m) => m.kind === "steps")?.steps ?? [];
+      const done = this.state === before || steps.every((st) => st.done);
       if (done) this.stopSteps();
-      else this.stepTimer = window.setTimeout(step, 650);
+      else {
+        const next = steps.find((st) => !st.done);
+        this.stepTimer = window.setTimeout(step, next?.spinner ? 4500 : 2200);
+      }
     };
-    this.stepTimer = window.setTimeout(step, 400);
+    this.stepTimer = window.setTimeout(step, 900);
   };
 
   stopSteps = (): void => {
@@ -113,10 +118,15 @@ class HadarimStore {
     this.stepTimer = null;
   };
 
-  reset = (): void => {
+  /** Ask the report pane to run an export once it is mounted (chat buttons in scene 7). */
+  requestExport = (format: "pdf" | "docx"): void => this.setUi((u) => ({ ...u, control: { ...u.control, pane: "report", pendingExport: format } }));
+
+  clearExport = (): void => this.setUi((u) => ({ ...u, control: { ...u.control, pendingExport: null } }));
+
+  reset = (variant: Scene1Variant = this.ui.presenter.scene1Variant): void => {
     this.stopSteps();
-    this.state = initialState();
-    this.ui = { ...defaultUi, presenter: this.ui.presenter };
+    this.state = initialState(variant);
+    this.ui = { ...defaultUi, presenter: { ...this.ui.presenter, scene1Variant: variant } };
     save(STATE_KEY, this.state);
     save(UI_KEY, this.ui);
     this.emit();

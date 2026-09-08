@@ -15,8 +15,16 @@ export function HadarimApp() {
   const ui = useUi();
   const state = useV2State();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [pendingVariant, setPendingVariant] = useState<"A" | "B" | null>(null);
   const operator = pkg.people.find((p) => p.id === state.operatorId)!;
   const doc = ui.control.documentId ? pkg.documents.find((d) => d.id === ui.control.documentId) : null;
+  const untouched = state.control.status === "idle" && state.audit.length === 0 && state.erp.changeLog.length === pkg.changeLog.length - (state.variant === "B" ? 1 : 0);
+  // switching the scene-1 variant re-seeds the demo (variant B has no invoice 1147 until it is keyed in)
+  const chooseVariant = (variant: "A" | "B") => {
+    if (variant === state.variant) return;
+    if (untouched) store.reset(variant);
+    else setPendingVariant(variant);
+  };
 
   return (
     <div className="h2-shell" dir="rtl" data-app={ui.app}>
@@ -43,11 +51,22 @@ export function HadarimApp() {
             </label>
             <label className="h2-presenter-toggle">
               סצנה 1:
-              <select value={ui.presenter.scene1Variant} onChange={(e) => store.setUi((u) => ({ ...u, presenter: { ...u.presenter, scene1Variant: e.target.value as "A" | "B" } }))} data-testid="scene1-variant">
-                <option value="A">א — שינוי שיוך</option>
-                <option value="B">ב — קליטת חשבון</option>
+              <select value={state.variant} onChange={(e) => chooseVariant(e.target.value as "A" | "B")} data-testid="scene1-variant">
+                <option value="A">א — שינוי שיוך (1147 קיים)</option>
+                <option value="B">ב — קליטת חשבון 1147</option>
               </select>
             </label>
+            {pendingVariant ? (
+              <span className="h2-presenter-confirm">
+                החלפת הגרסה מאפסת את ההדגמה.
+                <Button size="sm" variant="danger" onClick={() => { store.reset(pendingVariant); setPendingVariant(null); }} data-testid="variant-confirm">
+                  אפס והחלף
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setPendingVariant(null)}>
+                  ביטול
+                </Button>
+              </span>
+            ) : null}
             {confirmReset ? (
               <span className="h2-presenter-confirm">
                 לאפס את ההדגמה?

@@ -135,12 +135,27 @@ test.describe("Hadarim v2 — the scripted demo", () => {
     await expect(page.getByTestId("report-by-building")).toContainText("משותף");
     await shot(page, "11-report-by-building");
     await page.getByTestId("control-back-to-chat").click();
-    await say(page, "תכיני גרסה לדנה — עמוד אחד");
+    // scene 7, change 2: the "[שנה]" affordance tags invoice 1147 with a building and the split follows
     await option(page, "open");
+    await page.getByTestId("report-building-change-1147-A").click();
+    await expect(page.getByTestId("report-by-building-note")).toContainText("שויך לבניין A");
+    await page.getByTestId("control-back-to-chat").click();
+    await say(page, "תכיני גרסה לדנה — עמוד אחד");
+    // scene 7, change 3: the message carries the exports and the hand-off; scene 8: the full save prompt
+    await expect(page.getByTestId("chat-option-send_dana").last()).toBeVisible();
+    await expect(page.getByTestId("chat-message").filter({ hasText: "מה יישמר" }).last()).toBeVisible();
+    await page.getByTestId("chat-option-send_dana").last().click();
+    await expect(page.getByTestId("chat-message").filter({ hasText: "נשלח לדנה" }).last()).toBeVisible();
+    const chatDownload = page.waitForEvent("download");
+    await page.getByTestId("chat-option-export_docx").last().click();
+    expect((await chatDownload).suggestedFilename()).toMatch(/\.docx$/);
+    await expect(page.getByTestId("report-view")).toBeVisible();
     await page.getByTestId("report-tab-ceo").click();
     await expect(page.getByTestId("report-view")).toContainText("אותם מספרים");
     await shot(page, "12-report-ceo");
     await page.getByTestId("report-tab-full").click();
+    await expect(page.getByTestId("report-material-02")).toBeVisible();
+    await expect(page.getByTestId("report-material-12")).toContainText("בסיס 0%");
 
     // scene 8: save the configuration
     await page.getByTestId("report-save-config").click();

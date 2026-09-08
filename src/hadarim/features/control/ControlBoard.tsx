@@ -59,15 +59,24 @@ export function ControlBoard({ wf }: { wf: WorkingForecast }) {
         {control.findings.length ? (
           <ul className="h2c-board-list" data-testid="control-findings">
             {control.findings.map((f) => {
-              const st = decisionStatusHe(control.decisions[f.id]);
+              const decision = control.decisions[f.id];
+              const st = decisionStatusHe(decision);
+              const adjustment = control.adjustments.find((a) => a.findingId === f.id);
+              // the script's board column: estimated effect before the decision, the applied effect after it
+              const impactHe = adjustment ? `${adjustment.amount >= 0 ? "+" : "−"}${nis(Math.abs(adjustment.amount))}${adjustment.basis === "quote" || adjustment.basis === "estimate" ? " (אומדן)" : ""}` : f.impact.labelHe;
+              const ownerHe = decision?.ownerId && (decision.status === "pending_execution" || decision.status === "referred") ? personHe(decision.ownerId) : null;
               return (
                 <li key={f.id} data-finding-id={f.id}>
                   <div className="h2c-board-item-title">
                     <span className="muted small">{FINDING_KIND_HE[f.kind]}</span>
                     <span>{f.titleHe}</span>
+                    <span className="muted small" data-testid="control-finding-impact">
+                      השפעה על התחזית: {impactHe}
+                    </span>
                   </div>
                   <Badge tone={st.tone} dot>
                     {st.labelHe}
+                    {ownerHe ? ` — ${ownerHe}` : ""}
                   </Badge>
                 </li>
               );

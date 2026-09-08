@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Chip } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import { finalizeControl, pkg, saveConfig, setReportConfig } from "../../engine/commands";
@@ -58,6 +58,16 @@ export function ReportView() {
       setBusy(null);
     }
   };
+
+  // exports requested from the chat (scene 7: [ייצוא PDF] [ייצוא Word]) run once the pane is mounted
+  const pendingExport = ui.control.pendingExport ?? null;
+  useEffect(() => {
+    if (!pendingExport) return;
+    store.clearExport();
+    if (pendingExport === "pdf") exportPdf();
+    else void exportDocx();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExport]);
 
   const toggle = (patch: Partial<typeof config>) => {
     store.dispatch((s) => setReportConfig(s, patch));

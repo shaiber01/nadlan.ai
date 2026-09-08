@@ -1,9 +1,9 @@
 import { documentFacts } from "../data/documents";
 import { CURRENT_CONTROL, DEMO_DAY, generateHadarimPackage, openIssuesAtAugust } from "../data/generate";
-import type { HInvoice, HadarimPackage, PersonId, SectionId } from "../data/types";
+import type { BuildingTag, HInvoice, HadarimPackage, PersonId, SectionId } from "../data/types";
 import { CHECK_STEPS_HE, runChecks, sectionLabel, type HFinding } from "./checks";
 import { workingForecast } from "./forecast";
-import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type V2State } from "./model";
+import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
 
 /**
  * Pure commands over V2State. Nothing here touches the DOM; the store applies them and persists.
@@ -39,12 +39,18 @@ function audit(state: V2State, byId: PersonId, textHe: string, recordRef?: { typ
   return { ...s, audit: [...s.audit, { id, at: s.clock, byId, textHe, recordRef }] };
 }
 
-export function initialState(): V2State {
+/** The script's invoice: exists in the seed for variant A; keyed in live (and given this number) in variant B. */
+export const SCRIPT_INVOICE_ID = 1147;
+
+export function initialState(variant: Scene1Variant = "A"): V2State {
+  const invoices = variant === "B" ? pkg.invoices.filter((i) => i.id !== SCRIPT_INVOICE_ID) : pkg.invoices;
+  const changeLog = variant === "B" ? pkg.changeLog.filter((c) => !(c.recordType === "invoice" && c.recordId === String(SCRIPT_INVOICE_ID))) : pkg.changeLog;
   return {
     version: 1,
+    variant,
     clock: `${DEMO_DAY}T09:00`,
     operatorId: "EYAL",
-    erp: { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog },
+    erp: { invoices, purchaseOrders: pkg.purchaseOrders, changeLog },
     control: emptySession(CURRENT_CONTROL),
     savedConfig: null,
     audit: [],
@@ -82,7 +88,9 @@ export interface NewInvoiceInput {
 
 export function createInvoice(state: V2State, input: NewInvoiceInput): [V2State, HInvoice] {
   if (!(input.amount > 0)) throw new Error("סכום החשבון חייב להיות חיובי");
-  const id = Math.max(...state.erp.invoices.map((i) => i.id)) + 1;
+  const ids = new Set(state.erp.invoices.map((i) => i.id));
+  // the script's number is reused when the seed was prepared without it (variant B); otherwise the next free number
+  const id = ids.has(SCRIPT_INVOICE_ID) ? Math.max(...ids) + 1 : SCRIPT_INVOICE_ID;
   const contract = input.contractId ? pkg.contracts.find((c) => c.id === input.contractId) : undefined;
   const prev = contract ? state.erp.invoices.filter((i) => i.contractId === contract.id && i.status !== "בבדיקה").reduce((a, i) => Math.max(a, i.cumulativeNow ?? 0), 0) : null;
   const retentionPct = contract?.retentionPct ?? 0;
@@ -119,6 +127,17 @@ export function createInvoice(state: V2State, input: NewInvoiceInput): [V2State,
   const [s1, logId] = nextId(state, "CL");
   const entry = { id: logId, recordType: "invoice" as const, recordId: String(id), field: "קליטה", before: "—", after: `חשבון נקלט · סעיף תקציבי ${sectionLabel(input.sectionId)}`, at: state.clock, byId: input.byId, noteHe: "הזנה במערכת המידע" };
   return [tick({ ...s1, erp: { ...s1.erp, invoices: [...s1.erp.invoices, invoice], changeLog: [...s1.erp.changeLog, entry] } }), invoice];
+}
+
+/** Scene 7, change 2: the "[שנה]" affordance on the building-split note — tags an invoice with a building. */
+export function updateInvoiceBuilding(state: V2State, invoiceId: number, building: BuildingTag | null, byId: PersonId): V2State {
+  const invoice = state.erp.invoices.find((i) => i.id === invoiceId);
+  if (!invoice) throw new Error(`חשבון ${invoiceId} לא נמצא`);
+  if (invoice.building === building) return state;
+  const [s1, logId] = nextId(state, "CL");
+  const entry = { id: logId, recordType: "invoice" as const, recordId: String(invoiceId), field: "בניין", before: invoice.building ?? "—", after: building ?? "—", at: state.clock, byId, noteHe: "פילוח לפי בניין בדוח הבקרה" };
+  const s2: V2State = { ...s1, erp: { ...s1.erp, invoices: s1.erp.invoices.map((i) => (i.id === invoiceId ? { ...i, building } : i)), changeLog: [...s1.erp.changeLog, entry] } };
+  return tick(audit(s2, byId, `חשבון ${invoiceId}: בניין ${entry.before} → ${entry.after} (פילוח הדוח)`, { type: "invoice", id: String(invoiceId) }));
 }
 
 export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
@@ -457,22 +476,40 @@ function nextFinding(state: V2State): V2State {
 // Report configuration (scene 7 live changes, scene 8 save)
 // ---------------------------------------------------------------------------
 
-export function setReportConfig(state: V2State, patch: Partial<V2State["control"]["reportConfig"]>, userTextHe?: string, systemTextHe?: string): V2State {
+/** The scene-8 prompt: what a saved configuration keeps (structure) and what it never keeps (data). */
+export function savePromptHe(config: V2State["control"]["reportConfig"]): string {
+  const kept = ["מבנה הסעיפים לפי התקן", config.includeTrends ? "השוואה לבקרה קודמת ומגמות" : "", config.splitByBuilding ? "פילוח לפי בניין" : "", `סיכום מנהלים עד ${config.execSummaryMaxLines} שורות`, "טבלת אחריות (נושאים לטיפול)", "הפרדה בין תיקוני נתונים לשינויי תחזית", config.ceoVersion ? "גרסה נפרדת למנכ״לית" : ""].filter(Boolean);
+  return `לשמור את התצורה הזו לבקרות הבאות של הדרים? מה יישמר: ${kept.join(" · ")}. מה לא יישמר: הנתונים והמסקנות — יחושבו מחדש בכל בקרה.`;
+}
+
+export function setReportConfig(state: V2State, patch: Partial<V2State["control"]["reportConfig"]>, userTextHe?: string, systemTextHe?: string, extraOptions: ChatOption[] = []): V2State {
   let s = userTextHe ? push(state, { role: "user", kind: "text", textHe: userTextHe }) : state;
-  s = { ...s, control: { ...s.control, reportConfig: { ...s.control.reportConfig, ...patch } } };
+  const config = { ...s.control.reportConfig, ...patch };
+  s = { ...s, control: { ...s.control, reportConfig: config } };
   if (systemTextHe) {
+    s = push(s, { role: "system", kind: "text", textHe: systemTextHe, options: [{ id: "open", labelHe: "פתח את הדוח", action: { type: "open_report" } }, ...extraOptions] });
+    // scene 8: the full save prompt once the CEO version is on (the script's third change) or the presenter asked for all three
+    const askInFull = patch.ceoVersion === true || (config.includeTrends && config.splitByBuilding && config.ceoVersion);
     s = push(s, {
       role: "system",
       kind: "text",
-      textHe: `${systemTextHe} לשמור את התצורה הזו לבקרות הבאות?`,
+      textHe: askInFull ? savePromptHe(config) : "לשמור את התצורה הזו לבקרות הבאות?",
       options: [
-        { id: "open", labelHe: "פתח את הדוח", action: { type: "open_report" } },
-        { id: "save", labelHe: "שמור תצורה", action: { type: "save_config", save: true } },
+        { id: "save", labelHe: "שמור", action: { type: "save_config", save: true } },
         { id: "later", labelHe: "לא עכשיו", action: { type: "save_config", save: false } },
       ],
     });
   }
   return tick(s);
+}
+
+/** Scene 7: "[שלח לדנה]" — a simulated hand-off; the demo has no mailbox, so the send is logged and audited. */
+export function sendReport(state: V2State, toId: PersonId): V2State {
+  const to = pkg.people.find((p) => p.id === toId)!;
+  const version = state.control.reportConfig.ceoVersion && toId === "DANA" ? "הגרסה למנכ״לית" : "הדוח המלא";
+  // a button action, not a chat turn: the exports on the same message stay available afterwards
+  const s = push(state, { role: "system", kind: "log", textHe: `נשלח ל${to.nameHe} (${to.roleHe}): ${version} של בקרה 09/2026, ${state.control.finalized ? "גרסה סופית" : "טיוטה"} · קישור לאותה גרסת בקרה · ${dateHe(state.clock)} ${state.clock.slice(11, 16)}` });
+  return tick(audit(s, s.operatorId, `הדוח נשלח ל${to.nameHe} (${version})`));
 }
 
 export function saveConfig(state: V2State, save: boolean): V2State {
@@ -490,8 +527,8 @@ export function finalizeControl(state: V2State): V2State {
   return s;
 }
 
-export function resetDemo(): V2State {
-  return initialState();
+export function resetDemo(variant: Scene1Variant = "A"): V2State {
+  return initialState(variant);
 }
 
 /** Open issues carried into this control (from the 1.8 control) plus tasks created during it. */

@@ -137,7 +137,8 @@ export interface HBoqLine {
   noteHe?: string;
 }
 
-export type ForecastBasis = "invoice" | "contract" | "po" | "quote" | "appendix" | "estimate";
+/** `allocation` = an internal budget allocation (overhead, contingency) — not procurement, so not an "estimate" in the report's uncovered figure. */
+export type ForecastBasis = "invoice" | "contract" | "po" | "quote" | "appendix" | "estimate" | "allocation";
 
 export interface HForecastLine {
   id: string;

@@ -20,9 +20,11 @@ function openInvoice(id: number | null, patch: { editing?: boolean; creating?: b
 
 function InvoiceList() {
   const state = useV2State();
+  const ui = useUi();
   const [search, setSearch] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [section, setSection] = useState("");
+  // a deep link from the control report ("חשבונות הסעיף במערכת המידע") pre-filters the list by section
+  const [section, setSection] = useState<string>(ui.erp.sectionId ?? "");
   const [status, setStatus] = useState("");
   const rows = useMemo(() => {
     const q = search.trim();

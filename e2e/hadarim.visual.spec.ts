@@ -97,11 +97,14 @@ test.describe("Hadarim v2 — visual tour and ERP variants", () => {
   test("scene 1 variant B: a new invoice keyed into שלד triggers the allocation finding", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("scene1-variant").selectOption("B");
+    await expect(page.getByTestId("erp-invoice-row-1147")).toHaveCount(0);
     await page.getByTestId("erp-invoice-new").click();
     await page.getByTestId("erp-new-prefill").click();
     await elementShot(page, "erp-invoice-new-form", "erp-new-invoice-form");
     await page.getByTestId("erp-new-save").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
+    // the script: "המערכת מקצה חשבון 1147" — variant B seeds the ERP without it
+    await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", "1147");
     await page.getByTestId("go-control").click();
     await say(page, "תכיני בקרה תקציבית להדרים");
     await expect(page.getByTestId("chat-message").filter({ hasText: "נמצאו 4 ממצאים" })).toBeVisible();

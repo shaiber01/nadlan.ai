@@ -35,13 +35,13 @@ A second, independent demo lives at `hadarim.html` (locally `http://localhost:51
 
 The script (nine scenes, ~10 minutes):
 
-1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row appears on the record. (Variant B: חשבון חדש → מילוי לדוגמה → שמור.)
+1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row appears on the record. (Variant B, chosen in the presenter strip: the ERP starts without 1147; חשבון חדש → מילוי לדוגמה → שמור assigns that number.)
 2. **בקרה** → type "תכיני בקרה תקציבית להדרים". The data-gathering steps play (skip with "דלג" or the ללא אנימציה toggle), then "נמצאו 4 ממצאים … אחד מהם ברשומה ששונתה היום" → נעבור על הממצאים.
 3. Allocation card (1147): כן, לפיתוח → עדכן. The system checks permission, writes the ERP, re-reads the record and logs the audit line.
 4. Unit card (PO 2291, 12,000 "tons" at 4.8): כן, 12 טון → עדכן or העבר לרועי לביצוע.
 5. Price card (steel remainder at 4,800): כן, על כל 300 הטון → +240,000 (headline 48.24). Coverage card (drainage line excluded by clause 3.4): type "צריך להזמין. יש הצעה בתיקייה" → the quote is found → כן, הוסף לתחזית כאומדן → +120,000 (headline 48.36) and a task for אייל until 19.9.
 6. פתח את הדוח: the full report (draft), exports (ייצוא PDF = browser print, ייצוא Word = real `.docx`), סגור כגרסה סופית.
-7. Back in the chat: "תוסיפי השוואה לבקרה הקודמת ומגמות", "תציגי את הטבלה לפי בניין", "תכיני גרסה לדנה — עמוד אחד" restructure the same report.
+7. Back in the chat: "תוסיפי השוואה לבקרה הקודמת ומגמות", "תציגי את הטבלה לפי בניין" (the note on invoice 1147 offers "שנה" to tag it with a building), "תכיני גרסה לדנה — עמוד אחד" restructure the same report; the last message offers ייצוא PDF / ייצוא Word / שלח לדנה. Every material-section and appendix row links back to its document, record or ERP screen.
 8. שמור תצורה saves the structure as "תצורת בקרה — הדרים".
 9. Questions (suggestion chips): what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose.
 

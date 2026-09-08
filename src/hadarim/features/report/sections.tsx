@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Badge, Notice } from "../../../components/primitives";
 import { store } from "../../app/store";
-import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, SectionRow } from "../../engine/report";
+import { updateInvoiceBuilding } from "../../engine/commands";
+import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, SectionRow, UncoveredRow } from "../../engine/report";
 import { mil, nis, num, pct, signedNis, signedPct } from "./format";
 
 /**
@@ -25,6 +26,27 @@ export const SECTION_TITLES: { n: string; titleHe: string }[] = [
   { n: "10", titleHe: "השוואה לבקרה הקודמת ומגמות" },
   { n: "11", titleHe: "נספחים" },
 ];
+
+/** A number's origin (standard §1 principle 4): opens the document page at its anchor, the ERP record, or the ERP screen. */
+export function SourceLink({ source }: { source: ReportSource }) {
+  const open = () => {
+    if (source.documentId) return store.openDocument(source.documentId, source.anchor);
+    if (source.recordRef) return store.openRecord(source.recordRef);
+    if (source.erp) {
+      const erp = source.erp;
+      return store.setUi((u) => ({ ...u, app: "erp", erp: { ...u.erp, screen: erp.screen, invoiceId: erp.invoiceId ?? null, poId: erp.poId ?? null, contractId: erp.contractId ?? null, sectionId: erp.sectionId ?? null, editing: false, creating: false } }));
+    }
+  };
+  return (
+    <button type="button" className="h2-report-source no-print" onClick={open} data-testid="report-source" title="פתח את המקור">
+      {source.labelHe} ↗
+    </button>
+  );
+}
+
+function UncoveredTable({ rows, total, testId, emptyHe }: { rows: UncoveredRow[]; total: number; testId: string; emptyHe: string }) {
+  return <DataTable head={["פריט", "סעיף", "בסיס", "₪", "מקור"]} numeric={[3]} testId={testId} rows={rows.map((u) => [u.descriptionHe, u.sectionHe, u.basisHe, nis(u.amount), u.source ? <SourceLink key="s" source={u.source} /> : "—"])} foot={["סה״כ", "", "", nis(total), ""]} emptyHe={emptyHe} />;
+}
 
 export function scrollToSection(n: string): void {
   document.getElementById(`report-section-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -326,17 +348,28 @@ export function SectionsTableSection({ report }: { report: ReportModel }) {
       </p>
       {sec.byBuilding ? (
         <div className="h2-report-subsection" data-testid="report-by-building">
-          <h3 className="h2-report-h3">פילוח משני — לפי בניין</h3>
+          <h3 className="h2-report-h3">פילוח משני — לפי בניין (אותן עמודות)</h3>
           <DataTable
-            head={["בניין", "תקציב מאושר", "נרשם", "תחזית לגמר"]}
-            numeric={[1, 2, 3]}
-            rows={sec.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.eac)])}
-            foot={["סה״כ", nis(sec.totals.budget), nis(sec.totals.recorded), nis(sec.totals.eac)]}
+            head={["בניין", "תקציב מאושר", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"]}
+            numeric={[1, 2, 3, 4, 5, 6, 7, 8, 9]}
+            rows={sec.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signedNis(b.variance), signedPct(b.variancePct), `${num(b.basisPct)}%`])}
+            foot={["סה״כ", nis(sec.totals.budget), nis(sec.totals.recorded), nis(sec.totals.committed), nis(sec.totals.remainingCommitment), nis(sec.totals.uncovered), nis(sec.totals.eac), signedNis(sec.totals.variance), signedPct(sec.totals.variancePct), `${num(sec.totals.basisPct)}%`]}
             rowTestId={(i) => `report-building-${sec.byBuilding![i].building}`}
           />
           {sec.byBuildingNoteHe ? (
             <Notice tone="navy">
               <span data-testid="report-by-building-note">הערה: {sec.byBuildingNoteHe}</span>
+              {sec.byBuildingChangeable.map((c) => (
+                <span key={c.invoiceId} className="h2-report-change-building no-print">
+                  {" "}
+                  שנה — {c.labelHe}:
+                  {(["A", "B", "משותף"] as const).map((b) => (
+                    <button key={b} type="button" className={`btn btn-sm ${c.building === b || (!c.building && b === "משותף") ? "btn-primary" : "btn-ghost"}`} onClick={() => store.dispatch((s) => updateInvoiceBuilding(s, c.invoiceId, b, s.operatorId))} data-testid={`report-building-change-${c.invoiceId}-${b}`}>
+                      {b === "משותף" ? "משותף" : `בניין ${b}`}
+                    </button>
+                  ))}
+                </span>
+              ))}
             </Notice>
           ) : null}
         </div>
@@ -405,6 +438,7 @@ export function MaterialSection({ report }: { report: ReportModel }) {
       {report.material.map((m) => (
         <article key={m.sectionId} className="h2-report-material" data-testid={`report-material-${m.sectionId}`}>
           <h3 className="h2-report-h3">{m.titleHe}</h3>
+          <p className="muted small">נכלל כי: {m.reasonHe}</p>
           {m.paragraphsHe.map((p, i) => (
             <p key={i}>{p}</p>
           ))}
@@ -412,6 +446,12 @@ export function MaterialSection({ report }: { report: ReportModel }) {
           <p className="h2-report-recommendation">
             <strong>המלצה:</strong> {m.recommendationHe}
           </p>
+          <div className="h2-report-sources">
+            <span className="muted small">מקורות:</span>
+            {m.sources.map((s, i) => (
+              <SourceLink key={i} source={s} />
+            ))}
+          </div>
         </article>
       ))}
     </Section>
@@ -601,9 +641,10 @@ export function TrendsSection({ report }: { report: ReportModel }) {
         <EacChart series={t.eacSeries} budget={report.working.totalBudget} />
         <DataTable head={["בקרה", "תחזית לגמר"]} numeric={[1]} rows={t.eacSeries.map((p) => [p.labelHe, nis(p.value)])} className="h2-report-trend-table" />
       </div>
-      <p>
-        <strong>יתרה לא מכוסה כיום:</strong> {nis(t.uncoveredNow)} — צריכה לרדת מבקרה לבקרה ככל שאומדנים הופכים להזמנות.
-      </p>
+      <div className="h2-report-trend-grid">
+        <DataTable head={["בקרה", "יתרה לא מכוסה (אומדנים)"]} numeric={[1]} rows={t.uncoveredSeries.map((p) => [p.labelHe, nis(p.value)])} className="h2-report-trend-table" testId="report-uncovered-series" />
+        <p data-testid="report-uncovered-commentary">{t.uncoveredCommentaryHe}</p>
+      </div>
       <Notice tone="navy">
         <strong>מגמה:</strong> <span data-testid="report-trend-commentary">{t.commentaryHe}</span>
       </Notice>
@@ -685,7 +726,9 @@ export function AppendicesSection({ report }: { report: ReportModel }) {
         )}
       </Appendix>
       <Appendix id="g" titleHe="ז. פירוט יתרה להשלמה לא מכוסה — שורה שורה, עם בסיס" open={isOpen("g")} onToggle={() => toggle("g")}>
-        <DataTable head={["פריט", "סעיף", "בסיס", "₪"]} numeric={[3]} testId="report-uncovered" rows={a.uncovered.map((u) => [u.descriptionHe, u.sectionHe, u.basisHe, nis(u.amount)])} foot={["סה״כ", "", "", nis(a.uncoveredTotal)]} emptyHe="אין יתרה לא מכוסה." />
+        <UncoveredTable rows={a.uncovered} total={a.uncoveredTotal} testId="report-uncovered" emptyHe="אין יתרה לא מכוסה." />
+        <h4 className="h2-report-h4">הקצאות פנימיות — לא רכש (מוצגות בנפרד, אינן נספרות כאומדנים)</h4>
+        <UncoveredTable rows={a.allocations} total={a.allocationTotal} testId="report-allocations" emptyHe="אין הקצאות פנימיות." />
       </Appendix>
       <p className="muted small">ח. תזרים 90 יום — לא נכלל (דוח עלות, לא דוח תזרים).</p>
     </Section>

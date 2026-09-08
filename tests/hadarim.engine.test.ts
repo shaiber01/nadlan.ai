@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allIssues, confirmQuote, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, setReportConfig, startControl, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
+import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
 import { handleUserText } from "../src/hadarim/engine/conversation";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
@@ -41,6 +41,18 @@ describe("Hadarim v2 engine — ERP edits", () => {
     const entry = s.erp.changeLog.at(-1)!;
     expect(entry).toMatchObject({ recordId: "1147", before: "07-פיתוח", after: "02-שלד", byId: "SARIT" });
     expect(() => updateInvoiceSection(initialState(), 1147, "02", "DANA")).toThrow(/אינו מורשה/);
+  });
+
+  it("variant B: the seed has no invoice 1147 and the keyed-in invoice gets that number", () => {
+    const seed = initialState("B");
+    expect(seed.erp.invoices.some((i) => i.id === 1147)).toBe(false);
+    expect(seed.erp.changeLog.some((c) => c.recordId === "1147")).toBe(false);
+    expect(seed.erp.invoices).toHaveLength(initialState("A").erp.invoices.length - 1);
+    const [s, invoice] = createInvoice(seed, { supplierId: "SUP-NTB", supplierDocNo: "2026-087", date: "2026-08-31", amount: 180_000, descriptionHe: "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳", sectionId: "02", contractId: "07-01", attachmentId: "inv_1147_ntb_partial7", byId: "SARIT" });
+    expect(invoice).toMatchObject({ id: 1147, partialNo: 7, cumulativePrev: 2_100_000, cumulativeNow: 2_280_000, retentionAmt: 9_000, sectionId: "02" });
+    expect(startControl(s, "בקרה").control.findings.map((f) => f.kind).sort()).toEqual(["allocation", "coverage", "price", "unit"]);
+    // variant A keeps numbering sequential for any extra invoice
+    expect(createInvoice(initialState("A"), { supplierId: "SUP-NTB", supplierDocNo: "x", date: "2026-08-31", amount: 1, descriptionHe: "x", sectionId: "07", contractId: null, attachmentId: null, byId: "SARIT" })[1].id).toBeGreaterThan(1147);
   });
 
   it("keeps the PO amount fixed when correcting quantity and unit", () => {
@@ -130,7 +142,8 @@ describe("Hadarim v2 engine — the report", () => {
     expect(r.executive.paragraphHe).toContain("48.36");
     expect(r.executive.decisionsHe[0]).toContain("360,000");
     const steel = r.sections.rows.find((x) => x.sectionId === "03")!;
-    expect(steel).toMatchObject({ recorded: 1_800_000, uncovered: 1_440_000, eac: 3_240_000, variance: 240_000, previousEac: 3_000_000, highlighted: true });
+    // after the price decision the 12 t on PO 2291 are a commitment; 288 t stay uncovered at the appendix price
+    expect(steel).toMatchObject({ recorded: 1_800_000, committed: 57_600, remainingCommitment: 57_600, uncovered: 1_382_400, eac: 3_240_000, variance: 240_000, previousEac: 3_000_000, highlighted: true });
     const dev = r.sections.rows.find((x) => x.sectionId === "07")!;
     expect(dev).toMatchObject({ recorded: 2_280_000, remainingCommitment: 920_000, uncovered: 120_000, eac: 3_320_000, variance: 120_000 });
     expect(r.sections.rows.find((x) => x.sectionId === "02")!.recorded).toBe(8_400_000);
@@ -139,20 +152,33 @@ describe("Hadarim v2 engine — the report", () => {
     expect(r.changes.forecast).toHaveLength(2);
     expect(r.changes.forecastTotal).toBe(360_000);
     expect(r.changes.corrections.map((c) => c.statusHe)).toEqual(["בוצע במקור", "ממתין לביצוע"]);
-    expect(r.material.map((m) => m.sectionId)).toEqual(["03", "07"]);
+    // standard §5: changed sections, sections above 10 % of budget, and sections whose basis is below 70 %
+    expect(r.material.map((m) => m.sectionId)).toEqual(["02", "03", "07", "12", "13", "15", "16", "18"]);
+    expect(r.material.find((m) => m.sectionId === "02")!.reasonHe).toContain("10%");
+    expect(r.material.find((m) => m.sectionId === "12")!.reasonHe).toContain("בסיס 0%");
+    expect(r.material.find((m) => m.sectionId === "03")!.sources.some((s) => s.documentId === "appendix_A2_steel_price_2026_07_15")).toBe(true);
+    expect(r.material.every((m) => m.sources.length > 0 && m.table.length > 5 && m.paragraphsHe.length >= 3)).toBe(true);
     expect(r.verified[0].titleHe).toContain("איטום");
     expect(r.issues.open.map((i) => i.titleHe)).toEqual(expect.arrayContaining([expect.stringContaining("ביוב"), expect.stringContaining("ניקוז"), expect.stringContaining("2291")]));
     expect(r.issues.closed).toHaveLength(2);
     expect(r.issues.open.find((i) => i.titleHe.includes("ביוב"))!.stale).toBe(true); // opened 1.7, still open at 1.8 and 1.9
     expect(r.issues.open.find((i) => i.titleHe.includes("ניקוז"))!.stale).toBe(false);
-    expect(r.material[0].paragraphsHe[0]).toContain("03-F");
+    expect(r.material.find((m) => m.sectionId === "03")!.paragraphsHe[0]).toContain("03-F");
     expect(r.trends.eacSeries.map((p) => p.value)).toEqual([47_900_000, 47_950_000, 48_000_000, 48_000_000, 48_360_000]);
     expect(r.trends.commentaryHe).toContain("בקרה ראשונה");
     expect(r.trends.commentaryHe).toContain("ממחיר, לא מכמות");
     expect(r.trends.comparison).toBeNull();
     expect(r.appendices.inReview.count).toBe(5);
     expect(r.appendices.afterCutoffHe.length).toBeGreaterThanOrEqual(2);
-    expect(r.appendices.uncoveredTotal).toBe(r.working.totalUncovered - 1_500_000);
+    // data spec §7: four packages 6.7M + steel 288 t 1,382,400 + drainage 120,000 (+ the site-organisation extension estimate)
+    expect(r.appendices.uncoveredTotal).toBe(6_700_000 + 1_382_400 + 120_000 + 75_000);
+    expect(r.appendices.allocationTotal).toBe(1_100_000);
+    expect(r.appendices.uncoveredTotal + r.appendices.allocationTotal + 1_500_000).toBe(r.working.totalUncovered);
+    expect(r.appendices.uncovered.every((u) => u.source)).toBe(true);
+    expect(r.executive.keyTable.find((k) => k.labelHe.startsWith("יתרה להשלמה"))!.valueHe).toBe("8,277,400 ₪");
+    // 1.8: packages 6.7M + aluminium estimate (contract not yet signed) + steel 300 t × 4,000 + site-organisation extension
+    expect(r.trends.uncoveredSeries.map((p) => p.value)).toEqual([9_971_140, 8_277_400]);
+    expect(r.trends.uncoveredCommentaryHe).toContain("נחתם חוזה");
     expect(allIssues(final).length).toBe(5);
   });
 
@@ -171,12 +197,36 @@ describe("Hadarim v2 engine — the report", () => {
     expect(rows.reduce((a, x) => a + x.budget, 0)).toBe(48_000_000);
     expect(rows.reduce((a, x) => a + x.eac, 0)).toBe(48_360_000);
     expect(rows.reduce((a, x) => a + x.recorded, 0)).toBe(r.working.totalRecorded);
+    expect(rows.reduce((a, x) => a + x.committed, 0)).toBe(r.working.totalCommitted);
+    expect(rows.reduce((a, x) => a + x.uncovered, 0)).toBe(r.working.totalUncovered);
+    expect(rows.every((x) => x.eac === x.recorded + x.remainingCommitment + x.uncovered)).toBe(true);
     expect(r.sections.byBuildingNoteHe).toContain("1147");
+    expect(r.sections.byBuildingChangeable).toEqual([{ invoiceId: 1147, labelHe: "חשבון 1147", building: null }]);
+    // the "[שנה]" affordance: tagging 1147 with building A moves its 180,000 out of "משותף"
+    const taggedState = updateInvoiceBuilding(s, 1147, "A", "EYAL");
+    const tagged = buildReport(pkg, taggedState);
+    const before = rows.find((x) => x.building === "משותף")!.recorded;
+    expect(tagged.sections.byBuilding!.find((x) => x.building === "משותף")!.recorded).toBe(before - 180_000);
+    expect(tagged.sections.byBuilding!.find((x) => x.building === "A")!.recorded).toBe(rows.find((x) => x.building === "A")!.recorded + 180_000);
+    expect(tagged.sections.byBuildingNoteHe).toContain("שויך לבניין A");
+    expect(taggedState.erp.changeLog.at(-1)).toMatchObject({ recordId: "1147", field: "בניין", after: "A" });
     s = handleUserText(s, "תכיני גרסה לדנה — עמוד אחד");
     expect(s.control.reportConfig.ceoVersion).toBe(true);
     r = buildReport(pkg, s);
     expect(r.ceo.keyTable).toHaveLength(4);
     expect(r.ceo.changes).toHaveLength(2);
+    // scene 7: the CEO-version message offers the exports and the hand-off; scene 8: the full save prompt
+    const ceoMessage = [...s.control.messages].reverse().find((m) => m.options?.some((o) => o.id === "send_dana"))!;
+    expect(ceoMessage.options!.map((o) => o.labelHe)).toEqual(["פתח את הדוח", "ייצוא PDF", "ייצוא Word", "שלח לדנה"]);
+    const savePrompt = lastSystem(s);
+    expect(savePrompt.textHe).toContain("מה יישמר");
+    expect(savePrompt.textHe).toContain("פילוח לפי בניין");
+    expect(savePrompt.textHe).toContain("מה לא יישמר: הנתונים והמסקנות");
+    expect(savePrompt.options!.map((o) => o.labelHe)).toEqual(["שמור", "לא עכשיו"]);
+    s = sendReport(s, "DANA");
+    expect(lastSystem(s).kind).toBe("log");
+    expect(lastSystem(s).textHe).toContain("נשלח לדנה");
+    expect(lastSystem(s).textHe).toContain("הגרסה למנכ״לית");
     s = saveConfig(s, true);
     expect(s.savedConfig?.savedAs).toBe("תצורת בקרה — הדרים");
     expect(resetDemo().savedConfig).toBeNull();
@@ -188,8 +238,16 @@ describe("Hadarim v2 engine — the report", () => {
     expect(ask(final, "מה השתנה בבקרה האחרונה לעומת הקודמת?")).toContain("360,000");
     expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toMatch(/^לא\./);
     expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("300 × 4,000");
+    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("300 טון בשתי הבקרות");
+    expect(ask(final, "אז החריגה בברזל נובעת מזה שקנינו יותר?")).toContain("הפרש: 240,000 ₪");
     expect(ask(final, "אילו נושאים מהבקרה הקודמת כבר נסגרו?")).toContain("נסגרו 2 מתוך 3");
-    expect(ask(final, "מה עדיין מבוסס על אומדן ולא על הזמנה?")).toContain("פריטים");
+    const estimate = ask(final, "מה עדיין מבוסס על אומדן ולא על הזמנה?");
+    expect(estimate).toContain("8,277,400 ₪");
+    expect(estimate).toContain("ארבע חבילות שטרם נחתמו");
+    expect(estimate).toContain("6,700,000 ₪");
+    expect(estimate).toContain("יתרת ברזל 288 טון (1,382,400 ₪ — 12 טון כבר הוזמנו");
+    expect(estimate).toContain("קו ניקוז חוץ (120,000 ₪");
+    expect(estimate).toContain("הקצאות פנימיות של הנהלה ופיקוח (1,100,000 ₪) אינן רכש");
     expect(ask(final, "למה פיתוח עלה ביותר מ-120 אלף?")).toContain("180,000");
     expect(ask(final, "מה מזג האוויר?")).toContain("בדמו אפשר לשאול");
   });

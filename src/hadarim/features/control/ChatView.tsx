@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button, Chip } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import { confirmQuote, decide, pkg, revealAllSteps, reviewFindings, route, saveConfig } from "../../engine/commands";
+import { confirmQuote, decide, pkg, revealAllSteps, reviewFindings, route, saveConfig, sendReport } from "../../engine/commands";
 import { handleUserText, suggestedQuestionsHe } from "../../engine/conversation";
 import type { ChatMessage, ChatOption } from "../../engine/model";
 import { FindingCard } from "./FindingCard";
@@ -23,7 +23,13 @@ export function ChatView() {
   const pendingStepsIdx = messages.findIndex((m) => m.kind === "steps" && m.steps?.some((st) => !st.done));
   const visible = pendingStepsIdx >= 0 ? messages.slice(0, pendingStepsIdx + 1) : messages;
   const pendingSteps = pendingStepsIdx >= 0 ? messages[pendingStepsIdx] : null;
-  const activeOptionsId = useMemo(() => [...visible].reverse().find((m) => m.options?.length)?.id ?? null, [visible]);
+  // Options stay active on every system message after the last user turn (the engine may answer with two
+  // option-bearing messages, e.g. a report change followed by the save prompt); earlier ones are consumed.
+  const activeOptionIds = useMemo(() => {
+    const lastUser = visible.map((m) => m.role).lastIndexOf("user");
+    return new Set(visible.filter((m, i) => i > lastUser && m.options?.length).map((m) => m.id));
+  }, [visible]);
+  const activeOptionsId = useMemo(() => [...visible].reverse().find((m) => m.options?.length && activeOptionIds.has(m.id))?.id ?? null, [visible, activeOptionIds]);
   const doneCount = pendingSteps?.steps?.filter((st) => st.done).length ?? -1;
 
   useEffect(() => {
@@ -62,9 +68,11 @@ export function ChatView() {
       case "open_record":
         return store.openRecord({ type: a.recordType, id: a.recordId });
       case "open_report":
-      case "export":
-      case "send":
         return store.setUi((u) => ({ ...u, control: { ...u.control, pane: "report" } }));
+      case "export":
+        return store.requestExport(a.format);
+      case "send":
+        return run((s) => sendReport(s, a.toId));
     }
   };
 
@@ -115,7 +123,7 @@ export function ChatView() {
           </div>
         ) : null}
         {visible.map((m) => (
-          <Message key={m.id} message={m} active={m.id === activeOptionsId} onOption={runAction} onFreeText={(t) => run((s) => (state.control.decisions[m.findingId!]?.pending?.kind === "quote" ? confirmQuote(s, m.findingId!, /כן|הוסף|מתאים|תואם/.test(t)) : decide(s, m.findingId!, null, t)))} onSkip={() => { store.stopSteps(); run(revealAllSteps); }} />
+          <Message key={m.id} message={m} active={activeOptionIds.has(m.id)} onOption={runAction} onFreeText={(t) => run((s) => (state.control.decisions[m.findingId!]?.pending?.kind === "quote" ? confirmQuote(s, m.findingId!, /כן|הוסף|מתאים|תואם/.test(t)) : decide(s, m.findingId!, null, t)))} onSkip={() => { store.stopSteps(); run(revealAllSteps); }} />
         ))}
         <div ref={endRef} />
       </div>
