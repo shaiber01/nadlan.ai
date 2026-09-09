@@ -1,8 +1,61 @@
 import { useEffect, useRef } from "react";
-import { DOCUMENT_KIND_HE } from "../data/types";
+import { useV2State } from "../app/store";
+import { DOCUMENT_KIND_HE, type HDocument } from "../data/types";
 import { documentFileUrl } from "../db/client";
 import { isImage, isPdf, mimeTypeFor } from "../documents/mime";
+import { FACT_LABEL_HE, documentRecord, factValueHe } from "../engine/checks";
 import { pkg } from "../engine/commands";
+import { isUnprocessed } from "../engine/heartbeat";
+import { DocumentFacts, documentStatusHe } from "./DocumentFacts";
+
+const RECORD_HE = { invoice: "חשבון", po: "הזמנה", contract: "חוזה" } as const;
+
+/** Who read the document and what was read from it — against the record it belongs to when there is one. Shown under every document, seed page or uploaded file. */
+function DocumentMeta({ doc }: { doc: HDocument }) {
+  const state = useV2State();
+  const status = documentStatusHe(doc);
+  const at = doc.factsSource?.at ? ` · ${new Date(doc.factsSource.at).toLocaleString("he-IL")}` : "";
+  const uploader = doc.uploadedById ? pkg.people.find((p) => p.id === doc.uploadedById) : null;
+  const record = documentRecord(pkg, state.erp, doc);
+  const facts = doc.facts && Object.keys(doc.facts).length ? (doc.facts as Record<string, unknown>) : null;
+  return (
+    <div className="h2-doc-meta" data-testid="document-meta">
+      <div className="h2-doc-meta-row">
+        <strong>עיבוד:</strong> {isUnprocessed(doc) ? "טרם עובד — ממתין לסוכן הבקרה" : `${status.labelHe}${at}`}
+        {uploader ? ` · הועלה על ידי ${uploader.nameHe}` : ""}
+      </div>
+      {doc.summaryHe ? <div className="h2-doc-meta-row">{doc.summaryHe}</div> : null}
+      {record ? (
+        <div className="h2-doc-meta-row">
+          <strong>העובדות שנקראו מהמסמך מול {RECORD_HE[record.type]} {record.id}:</strong>
+          <DocumentFacts record={record} doc={doc} compact />
+        </div>
+      ) : facts ? (
+        <div className="h2-doc-meta-row">
+          <strong>עובדות שנקראו מהמסמך:</strong>
+          <table className="h2-docfacts-table">
+            <tbody>
+              {Object.entries(facts).map(([k, v]) => (
+                <tr key={k} className="is-info" data-fact={k}>
+                  <td>{FACT_LABEL_HE[k] ?? k}</td>
+                  <td>{factValueHe(pkg, k, v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : isUnprocessed(doc) ? null : (
+        <div className="h2-doc-meta-row">לא נרשמו עובדות מהמסמך.</div>
+      )}
+      {doc.text ? (
+        <details className="h2-doc-text">
+          <summary>טקסט שחולץ מהקובץ</summary>
+          <pre>{doc.text}</pre>
+        </details>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Renders one simulated source document (invoice, quote, price appendix, contract excerpt, BOQ page)
@@ -22,8 +75,6 @@ export function DocumentView({ documentId, anchor }: { documentId: string; ancho
   if (doc.filePath) {
     const url = documentFileUrl(doc.filePath);
     const mime = doc.mimeType ?? mimeTypeFor(doc.fileName);
-    const uploader = doc.uploadedById ? pkg.people.find((p) => p.id === doc.uploadedById) : null;
-    const facts = doc.facts && Object.keys(doc.facts).length ? doc.facts : null;
     return (
       <div className="h2-doc h2-doc-file" data-testid="document-view" data-document-id={doc.id} data-file="1">
         <div className="h2-doc-tab">
@@ -37,24 +88,7 @@ export function DocumentView({ documentId, anchor }: { documentId: string; ancho
         <div className="h2-doc-frame">
           {isPdf(mime) ? <iframe src={url} title={doc.titleHe} /> : isImage(mime) ? <img src={url} alt={doc.titleHe} /> : <a href={url} target="_blank" rel="noreferrer">{doc.fileName}</a>}
         </div>
-        <div className="h2-doc-meta">
-          <div className="h2-doc-meta-row">
-            <strong>עיבוד:</strong> {doc.factsSource ? `${{ seed: "נתוני הבסיס", agent: "נקרא על ידי הסוכן", extraction: "חילוץ אוטומטי" }[doc.factsSource.method] ?? doc.factsSource.method}${doc.factsSource.byId ? ` · ${pkg.people.find((p) => p.id === doc.factsSource!.byId)?.nameHe ?? doc.factsSource.byId}` : ""}${doc.factsSource.at ? ` · ${new Date(doc.factsSource.at).toLocaleString("he-IL")}` : ""}` : "טרם עובד — ממתין לסוכן הבקרה"}
-            {uploader ? ` · הועלה על ידי ${uploader.nameHe}` : ""}
-          </div>
-          {doc.summaryHe ? <div className="h2-doc-meta-row">{doc.summaryHe}</div> : null}
-          {facts ? (
-            <div className="h2-doc-meta-row">
-              <strong>עובדות שנרשמו:</strong> {Object.entries(facts).map(([k, v]) => `${k}: ${String(v)}`).join(" · ")}
-            </div>
-          ) : null}
-          {doc.text ? (
-            <details className="h2-doc-text">
-              <summary>טקסט שחולץ מהקובץ</summary>
-              <pre>{doc.text}</pre>
-            </details>
-          ) : null}
-        </div>
+        <DocumentMeta doc={doc} />
       </div>
     );
   }
@@ -110,6 +144,7 @@ export function DocumentView({ documentId, anchor }: { documentId: string; ancho
         })}
         <div className="h2-doc-footer">{doc.footerHe}</div>
       </div>
+      <DocumentMeta doc={doc} />
     </div>
   );
 }

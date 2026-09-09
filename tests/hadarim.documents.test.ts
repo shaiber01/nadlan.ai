@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
-import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
+import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, documentRecord, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
 import { tools } from "../src/hadarim/tools";
 
@@ -25,6 +25,18 @@ describe("compareDocument — the record against its document, the way the cards
     for (const a of framework.priceAppendices!) expect(ids).toContain(a.documentId);
     const excerpt = pkg.contracts.find((c) => c.documentId)!;
     expect(recordDocuments(pkg, state.erp, { type: "contract", id: excerpt.id }).map((d) => d.id)).toContain(excerpt.documentId);
+  });
+
+  it("a document knows its record: the invoice or order that attaches it, the contract whose excerpt or appendix it is; a free page has none", () => {
+    const state = seedState();
+    const inv = invoiceWithDoc();
+    expect(documentRecord(pkg, state.erp, pkg.documents.find((d) => d.id === inv.attachmentId)!)).toEqual({ type: "invoice", id: String(inv.id) });
+    const po = state.erp.purchaseOrders.find((p) => p.attachmentId)!;
+    expect(documentRecord(pkg, state.erp, pkg.documents.find((d) => d.id === po.attachmentId)!)).toEqual({ type: "po", id: String(po.id) });
+    const framework = pkg.contracts.find((c) => c.priceAppendices?.length)!;
+    expect(documentRecord(pkg, state.erp, pkg.documents.find((d) => d.id === framework.priceAppendices![0].documentId)!)).toEqual({ type: "contract", id: framework.id });
+    const boqPage = pkg.documents.find((d) => d.kind === "boq_page")!;
+    expect(documentRecord(pkg, state.erp, boqPage)).toBeNull();
   });
 
   it("every compared fact of the seed invoice matches, with Hebrew labels; the rows the document check reads are exactly its mismatches", () => {

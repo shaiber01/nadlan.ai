@@ -20,22 +20,24 @@ const CHECK_TITLE_HE = { document: "מושווה בבדיקת המסמכים —
  * One document of a record: the file, who read it, and the facts read from it against the record's own values —
  * the same comparison the checks make, so what the screen marks and what the control raises never differ.
  */
-export function DocumentFacts({ record, doc }: { record: RecordRefLite; doc: HDocument }) {
+export function DocumentFacts({ record, doc, compact = false }: { record: RecordRefLite; doc: HDocument; compact?: boolean }) {
   const state = useV2State();
   const status = documentStatusHe(doc);
   const pending = isUnprocessed(doc);
   const rows = pending ? [] : compareDocument(pkg, state.erp, record, doc);
   return (
-    <div className="h2-docfacts" data-testid="document-facts" data-document-id={doc.id}>
-      <div className="h2-docfacts-head">
-        <button type="button" className="h2-docfacts-link" onClick={() => store.openDocument(doc.id)}>
-          📎 {doc.fileName}
-        </button>
-        <span className="h2-docfacts-title">{doc.titleHe}</span>
-        <span className={`h2-docfacts-status is-${status.tone}`} data-testid="document-facts-status">
-          {status.labelHe}
-        </span>
-      </div>
+    <div className={`h2-docfacts${compact ? " is-compact" : ""}`} data-testid="document-facts" data-document-id={doc.id}>
+      {compact ? null : (
+        <div className="h2-docfacts-head">
+          <button type="button" className="h2-docfacts-link" onClick={() => store.openDocument(doc.id)}>
+            📎 {doc.fileName}
+          </button>
+          <span className="h2-docfacts-title">{doc.titleHe}</span>
+          <span className={`h2-docfacts-status is-${status.tone}`} data-testid="document-facts-status">
+            {status.labelHe}
+          </span>
+        </div>
+      )}
       {pending ? (
         <div className="h2-docfacts-empty">המסמך טרם נקרא — אין עובדות להשוואה. סוכן הבקרה קורא אותו בפעימת הלב הבאה.</div>
       ) : rows.length === 0 ? (

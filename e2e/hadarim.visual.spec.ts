@@ -79,6 +79,12 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await page.getByTestId("erp-po-save").click();
     await expect(page.getByTestId("erp-po-view")).toContainText("02 — שלד");
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("סעיף תקציבי");
+    // the order's quote: the card shows the facts read from it against the order, and the viewer shows the same under the page
+    await expect(page.getByTestId("erp-record-documents")).toContainText("כמות ויחידה");
+    await page.getByTestId("erp-po-attachment").click();
+    await expect(page.getByTestId("document-meta")).toContainText("עיבוד");
+    await expect(page.getByTestId("document-meta").getByTestId("document-facts")).toContainText("12 טון");
+    await page.keyboard.press("Escape");
     await page.getByTestId("erp-nav-contracts").click();
     await page.getByTestId("erp-contract-row-07-01").click();
     await elementShot(page, "erp-contract-view", "erp-contract-07-01");

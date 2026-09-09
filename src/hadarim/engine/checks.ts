@@ -744,6 +744,18 @@ export function recordDocuments(pkg: HadarimPackage, erp: ErpState, record: Reco
   return pkg.documents.filter((d) => ids.has(d.id));
 }
 
+/** The record a document belongs to — its recordRef, or the invoice, order or contract that points at it. Null for a free-standing page (BOQ, a quote nobody ordered). */
+export function documentRecord(pkg: HadarimPackage, erp: ErpState, doc: HDocument): RecordRefLite | null {
+  if (doc.recordRef && (doc.recordRef.type === "invoice" || doc.recordRef.type === "po" || doc.recordRef.type === "contract")) return { type: doc.recordRef.type, id: doc.recordRef.id };
+  const inv = erp.invoices.find((i) => i.attachmentId === doc.id);
+  if (inv) return { type: "invoice", id: String(inv.id) };
+  const po = erp.purchaseOrders.find((p) => p.attachmentId === doc.id);
+  if (po) return { type: "po", id: String(po.id) };
+  const c = pkg.contracts.find((x) => x.documentId === doc.id || x.priceAppendices?.some((a) => a.documentId === doc.id));
+  if (c) return { type: "contract", id: c.id };
+  return null;
+}
+
 /**
  * One line of the comparison between a record and the facts read from one of its documents. `match` is null
  * when the fact has no counterpart on the record (shown, not compared); `check` names the deterministic check
