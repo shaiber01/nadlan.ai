@@ -2,7 +2,7 @@ import type { HFinding, HPositive } from "../engine/checks";
 import { sectionLabel } from "../engine/checks";
 import { initialState, pkg, setPackage } from "../engine/commands";
 import type { AuditEntry, ControlNote, ControlQuestion, ControlSession, ControlTask, DataCorrection, FindingDecision, ForecastAdjustment, ReportConfig, V2State } from "../engine/model";
-import type { PersonId } from "../data/types";
+import type { HInvoice, PersonId } from "../data/types";
 import { db, fromStamp, loadErp, loadPackage, readInvoice, saveInvoice, savePurchaseOrder, toStamp } from "./client";
 import { DEFAULT_PROJECT_ID } from "./config";
 import type { Json, Tables } from "./types";
@@ -17,6 +17,24 @@ import type { Json, Tables } from "./types";
 /** Israel time as "yyyy-mm-ddTHH:MM" — the engine's clock format. */
 export function nowStamp(): string {
   return toStamp(new Date().toISOString());
+}
+
+const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
+
+/** What the re-read record says about the field a finding's fix touched. */
+function describeForKind(inv: HInvoice, kind: HFinding["kind"]): string {
+  switch (kind) {
+    case "retention":
+      return `עכבון ${inv.retentionPct}% = ${nis(inv.retentionAmt)} · לתשלום ${nis(inv.netPayable)}`;
+    case "cumulative":
+      return `מצטבר ${inv.cumulativePrev != null ? nis(inv.cumulativePrev) : "—"} → ${inv.cumulativeNow != null ? nis(inv.cumulativeNow) : "—"}`;
+    case "review_aging":
+      return `סטטוס = ${inv.status}${inv.approvedBy ? ` · אישר ${inv.approvedBy}` : ""}`;
+    case "dates":
+      return `תאריך ${inv.date} · התקבל ${inv.dateReceived}`;
+    default:
+      return `סעיף = ${sectionLabel(inv.sectionId)}`;
+  }
 }
 
 function counterFrom(ids: string[], prefix: string): number {
@@ -163,7 +181,7 @@ export async function saveState(prev: V2State, next: V2State, projectId = DEFAUL
     const finding = s.findings.find((f) => f.id === d.findingId);
     if (!finding || finding.record.type !== "invoice") continue;
     const fresh = await readInvoice(Number(finding.record.id), projectId);
-    if (fresh) decisions[d.findingId] = { ...d, verifiedHe: `חשבון ${fresh.id} נקרא מחדש ממסד הנתונים — סעיף = ${sectionLabel(fresh.sectionId)}` };
+    if (fresh) decisions[d.findingId] = { ...d, verifiedHe: `חשבון ${fresh.id} נקרא מחדש ממסד הנתונים — ${describeForKind(fresh, finding.kind)}` };
   }
 
   check(

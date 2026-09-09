@@ -1,5 +1,5 @@
 import { priceAppendixAt } from "../data/generate";
-import type { HBoqLine, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, QuoteFacts, SectionId } from "../data/types";
+import type { HBoqLine, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, PersonId, QuoteFacts, SectionId } from "../data/types";
 import type { ErpState } from "./model";
 import { pkg } from "./package";
 import { convertQuantity, lineValue } from "./units";
@@ -30,9 +30,24 @@ export interface HDecisionOption {
 export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging";
 export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"];
 
+/** A person connected to the record a finding is about — who to ask when the operator does not know. */
+export interface InvolvedPerson {
+  id: PersonId;
+  nameHe: string;
+  roleHe: string;
+  relationHe: string;
+}
+
+/** Invoice fields a data-quality card may correct on approval. */
+export type InvoiceFixPatch = Partial<Pick<HInvoice, "retentionPct" | "retentionAmt" | "netPayable" | "cumulativePrev" | "cumulativeNow" | "date" | "dateReceived" | "status" | "approvedBy">>;
+
 export interface HFinding {
   id: string;
   kind: FindingKind;
+  /** People who entered, approved or changed the record (from the record and the change log). */
+  people?: InvolvedPerson[];
+  /** When the right values are determined by other stored data: the fix the card offers to apply. */
+  proposedFix?: { labelHe: string; patch: InvoiceFixPatch };
   titleHe: string;
   problemHe: string;
   sources: HSource[];
@@ -388,9 +403,44 @@ function invoiceSource(pkg: HadarimPackage, inv: HInvoice): HSource {
   return { kind: "invoice", refId: String(inv.id), labelHe: `חשבון ${inv.id} · ${supplierNameOf(pkg, inv.supplierId)} · ${nis(inv.amount)} · ${dateHe(inv.date)} · מס׳ מסמך ${inv.supplierDocNo} · ${sectionLabel(inv.sectionId, pkg)}`, documentId: inv.attachmentId ?? undefined };
 }
 
-/** The standard decision of a data-quality card: refer the fix to bookkeeping, or confirm the record is right. */
-function fixDecision(questionHe: string, fixHe: string): HFinding["decision"] {
-  return { questionHe, options: [{ id: "refer", labelHe: fixHe }, { id: "accept", labelHe: "תקין — לא נדרש תיקון" }], freeText: true };
+/**
+ * The standard decision of a data-quality card: apply the proposed fix now (when the right values are known),
+ * refer the fix to bookkeeping, or confirm the record is right.
+ */
+function fixDecision(questionHe: string, fixHe: string, applyHe?: string): HFinding["decision"] {
+  return { questionHe, options: [...(applyHe ? [{ id: "apply", labelHe: applyHe }] : []), { id: "refer", labelHe: fixHe }, { id: "accept", labelHe: "תקין — לא נדרש תיקון" }], freeText: true };
+}
+
+/** Who entered, approved or changed the record — the people to ask when the operator does not know. */
+export function peopleInvolved(pkg: HadarimPackage, erp: ErpState, record: HFinding["record"]): InvolvedPerson[] {
+  const out: InvolvedPerson[] = [];
+  const add = (id: string | null | undefined, relationHe: string) => {
+    const p = id ? pkg.people.find((x) => x.id === id) : undefined;
+    if (!p) return;
+    const existing = out.find((x) => x.id === p.id);
+    if (existing) {
+      if (!existing.relationHe.includes(relationHe)) existing.relationHe += `; ${relationHe}`;
+      return;
+    }
+    out.push({ id: p.id, nameHe: p.nameHe, roleHe: p.roleHe, relationHe });
+  };
+  if (record.type === "invoice") {
+    const inv = erp.invoices.find((i) => String(i.id) === record.id);
+    if (inv) {
+      add(inv.enteredBy, `קלט/ה את החשבון ב-${dateHe(inv.enteredAt)}`);
+      add(inv.approvedBy, "אישר/ה את החשבון");
+    }
+  }
+  const logType = record.type === "po" ? "po" : record.type === "contract" ? "contract" : "invoice";
+  if (record.type === "invoice" || record.type === "po" || record.type === "contract") {
+    for (const c of erp.changeLog.filter((x) => x.recordType === logType && x.recordId === record.id)) add(c.byId, `שינה/תה ״${c.field}״ ב-${dateHe(c.at)}`);
+  }
+  return out;
+}
+
+/** Attach the people involved to each finding. */
+export function withPeople(pkg: HadarimPackage, erp: ErpState, findings: HFinding[]): HFinding[] {
+  return findings.map((f) => ({ ...f, people: peopleInvolved(pkg, erp, f.record) }));
 }
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
@@ -479,7 +529,8 @@ export function checkCumulative(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
         sources: [...(prev ? [invoiceSource(pkg, prev)] : []), invoiceSource(pkg, inv)],
         meaningHe: "מצטבר שגוי מסתיר תשלום כפול או חסר מול החוזה ומשבש את יתרת ההתחייבות; הסכום שנרשם לסעיף אינו משתנה עד לבירור.",
         impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ עד לבירור" },
-        decision: fixDecision("מה נכון — המצטבר או הסכום?", "לתקן בהנהלת חשבונות"),
+        decision: fixDecision("מה נכון — המצטבר או הסכום?", "לתקן בהנהלת חשבונות", `לתקן את המצטבר ל-${nis(chain ? prev!.cumulativeNow! + inv.amount : expectedNow)}`),
+        proposedFix: chain ? { labelHe: `מצטבר קודם ${nis(prev!.cumulativeNow!)} · נוכחי ${nis(prev!.cumulativeNow! + inv.amount)}`, patch: { cumulativePrev: prev!.cumulativeNow!, cumulativeNow: prev!.cumulativeNow! + inv.amount } } : { labelHe: `מצטבר נוכחי ${nis(expectedNow)}`, patch: { cumulativeNow: expectedNow } },
         sectionId: inv.sectionId,
         record: { type: "invoice", id: String(inv.id) },
         detailsTable: [["שדה", "נרשם", "מתבקש"], ["מצטבר קודם", nis(inv.cumulativePrev ?? 0), prev?.cumulativeNow != null ? nis(prev.cumulativeNow) : "—"], ["סכום", nis(inv.amount), nis(inv.amount)], ["מצטבר נוכחי", nis(inv.cumulativeNow!), nis(expectedNow)]],
@@ -507,7 +558,12 @@ export function checkRetention(pkg: HadarimPackage, erp: ErpState, onlyInvoiceId
       sources: [invoiceSource(pkg, inv), ...(contract ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${contract.id} · עכבון ${contract.retentionPct}%`, documentId: contract.documentId }] : [])],
       meaningHe: "הסכום שנרשם לסעיף אינו משתנה, אך התשלום לספק והעכבון המצטבר שגויים.",
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: fixDecision("לתקן את העכבון?", "לתקן בהנהלת חשבונות"),
+      decision: fixDecision("לתקן את העכבון?", "לתקן בהנהלת חשבונות", `לתקן לפי ${rate ? `החוזה (${contract!.retentionPct}%)` : `${inv.retentionPct}%`} — עכבון ${nis(rate ? Math.round((inv.amount * contract!.retentionPct) / 100) : expectedRetention)}`),
+      proposedFix: (() => {
+        const pct = rate ? contract!.retentionPct : inv.retentionPct;
+        const amt = Math.round((inv.amount * pct) / 100);
+        return { labelHe: `עכבון ${pct}% = ${nis(amt)} · לתשלום ${nis(inv.amount - amt)}`, patch: { retentionPct: pct, retentionAmt: amt, netPayable: inv.amount - amt } };
+      })(),
       sectionId: inv.sectionId,
       record: { type: "invoice", id: String(inv.id) },
       detailsTable: [["שדה", "נרשם", "מתבקש"], ["שיעור עכבון", `${inv.retentionPct}%`, contract && inv.docType !== "חשבון מקדמה" ? `${contract.retentionPct}%` : `${inv.retentionPct}%`], ["סכום עכבון", nis(inv.retentionAmt), nis(expectedRetention)], ["לתשלום", nis(inv.netPayable), nis(inv.amount - expectedRetention)]],
@@ -557,7 +613,8 @@ export function checkReviewAging(pkg: HadarimPackage, erp: ErpState, controlDate
       sources: [invoiceSource(pkg, inv)],
       meaningHe: `כל עוד החשבון בבדיקה הוא אינו נספר בנרשם של ${sectionLabel(inv.sectionId, pkg)}; אם יאושר, הנרשם יעלה ב-${nis(inv.amount)}.`,
       impact: { kind: "amount", amount: inv.amount, labelHe: `+${nis(inv.amount)} אם יאושר` },
-      decision: { questionHe: "מה מעכב את האישור?", options: [{ id: "refer", labelHe: "לזרז אישור — הנהלת חשבונות" }, { id: "accept", labelHe: "נשאר בבדיקה בכוונה" }], freeText: true },
+      decision: { questionHe: "מה מעכב את האישור?", options: [{ id: "apply", labelHe: "לאשר את החשבון עכשיו" }, { id: "refer", labelHe: "לזרז אישור — הנהלת חשבונות" }, { id: "accept", labelHe: "נשאר בבדיקה בכוונה" }], freeText: true },
+      proposedFix: { labelHe: "סטטוס: אושר", patch: { status: "אושר" } },
       sectionId: inv.sectionId,
       record: { type: "invoice", id: String(inv.id) },
     });
@@ -573,6 +630,6 @@ export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והי
 
 /** All checks. `today` bounds the date check (the control date when the run is not "live"). */
 export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {
-  const findings = [...checkAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)];
+  const findings = withPeople(pkg, erp, [...checkAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)]);
   return { findings, positives: positives(pkg, draft), checkedHe: CHECK_STEPS_HE };
 }

@@ -192,7 +192,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     h("8. נושאים לטיפול", 1),
     issuesTable(report.issues.open),
     ...(report.openFindings.length || report.openQuestions.length ? [h("8א. ממצאים שטרם הוכרעו ושאלות פתוחות", 2)] : []),
-    ...(report.openFindings.length ? [table(["ממצא", "סעיף", "ההחלטה הנדרשת", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.statusHe]), { size: 16 })] : []),
+    ...(report.openFindings.length ? [table(["ממצא", "סעיף", "ההחלטה הנדרשת", "תיקון מומלץ", "מעורבים", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.fixHe, f.peopleHe, f.statusHe]), { size: 16 })] : []),
     ...(report.openQuestions.length ? [table(["שאלה", "נשאל", "ערוץ", "נשלח"], report.openQuestions.map((q) => [q.textHe, q.toHe, q.channelHe, q.askedHe]), { size: 16 })] : []),
     ...(report.openFindings.length || report.openQuestions.length ? [p("הדוח אינו סופי כל עוד יש ממצאים שלא הוכרעו; הסכומים אינם כוללים תיקונים שטרם הוחלטו.", { size: 16, color: "5B6478", before: 120 })] : []),
     h("נסגרו מאז הבקרה הקודמת", 3),

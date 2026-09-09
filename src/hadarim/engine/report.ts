@@ -1,6 +1,6 @@
 import { priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { boqPageFor, documentById, isContingency, quoteFacts, sectionShort } from "./checks";
+import { boqPageFor, documentById, isContingency, quoteFacts, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
@@ -158,8 +158,12 @@ export interface ReportModel {
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
   risks: RiskRow[];
   issues: { open: IssueRow[]; closed: IssueRow[] };
-  /** Findings the checks raised that nobody has decided on yet — the report says so rather than hiding them. */
-  openFindings: { id: string; kind: string; titleHe: string; sectionHe: string; questionHe: string; statusHe: string }[];
+  /**
+   * Findings nobody has decided on: those of the session still open, plus what a fresh run of the checks on
+   * the current data raises beyond the session (the control not run, or data changed since). The report
+   * says so rather than hiding them, with the recommended fix and the people involved.
+   */
+  openFindings: { id: string; kind: string; titleHe: string; sectionHe: string; questionHe: string; fixHe: string; peopleHe: string; statusHe: string }[];
   /** Questions put to people and not yet answered. */
   openQuestions: { id: string; toHe: string; channelHe: string; textHe: string; askedHe: string; findingId: string | null }[];
   verified: { titleHe: string; textHe: string }[];
@@ -521,6 +525,29 @@ function periodEvents(pkg: HadarimPackage, state: V2State, from: string, to: str
 }
 
 // ---------------------------------------------------------------------------
+// Open findings: the report never goes out without saying what the checks found and nobody decided
+// ---------------------------------------------------------------------------
+
+function findingRow(f: HFinding, statusHe: string): ReportModel["openFindings"][number] {
+  const fix = f.proposedFix?.labelHe ?? (f.kind === "allocation" || f.kind === "unit" || f.kind === "price" || f.kind === "coverage" ? f.decision.options[0].labelHe : f.decision.options[0].labelHe);
+  return { id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, fixHe: fix, peopleHe: (f.people ?? []).map((p) => `${p.nameHe} (${p.relationHe})`).join("; ") || "—", statusHe };
+}
+
+function openFindingRows(pkg: HadarimPackage, state: V2State): ReportModel["openFindings"] {
+  const c = state.control;
+  const undecided = c.findings.filter((f) => {
+    const d = c.decisions[f.id];
+    return !d || d.status === "open" || !!d.pending;
+  });
+  // a fresh run of the checks on the data as it is now: anything the session does not know about is unreviewed
+  const draft = pkg.forecasts.find((f) => f.controlDate === c.controlDate && f.sections);
+  const fresh = draft ? runChecks(pkg, state.erp, draft, c.controlDate, state.clock.slice(0, 10)).findings : [];
+  const known = new Set(c.findings.map((f) => f.id));
+  const unreviewed = fresh.filter((f) => !known.has(f.id));
+  return [...undecided.map((f) => findingRow(f, c.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע")), ...unreviewed.map((f) => findingRow(f, c.status === "idle" ? "הבקרה טרם רצה" : "חדש מאז הרצת הבקרה"))];
+}
+
+// ---------------------------------------------------------------------------
 // The report
 // ---------------------------------------------------------------------------
 
@@ -692,12 +719,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     },
     risks,
     issues: { open: openIssues, closed: closedIssues },
-    openFindings: state.control.findings
-      .filter((f) => {
-        const d = state.control.decisions[f.id];
-        return !d || d.status === "open" || !!d.pending;
-      })
-      .map((f) => ({ id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, statusHe: state.control.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע" })),
+    openFindings: openFindingRows(pkg, state),
     openQuestions: state.control.questions.filter((q) => q.status === "open").map((q) => ({ id: q.id, toHe: personName(pkg, q.toId), channelHe: CHANNEL_HE[q.channel], textHe: q.textHe, askedHe: `${dateHe(q.askedAt)} ${q.askedAt.slice(11, 16)}`, findingId: q.findingId ?? null })),
     verified: state.control.positives.map((p) => ({ titleHe: p.titleHe, textHe: p.textHe })),
     trends: { eacSeries, uncoveredSeries, uncoveredNow: uncovered.total, uncoveredCommentaryHe, commentaryHe: firstOverrun ? `בקרה ראשונה מבין ${eacSeries.length - 1} שבה התחזית חורגת מהתקציב. ${priceDriven ? "החריגה נובעת ממחיר, לא מכמות." : ""}`.trim() : "התחזית בתוך התקציב לאורך כל הבקרות.", comparison },

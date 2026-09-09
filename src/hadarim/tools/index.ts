@@ -5,7 +5,7 @@ import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
 import { db, deleteInvoice, listProjects, resetProject, updateProject } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
-import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
@@ -135,6 +135,8 @@ function findingView(f: HFinding, state: V2State) {
     meaningHe: f.meaningHe,
     impact: f.impact,
     ...(f.notesHe?.length ? { notesHe: f.notesHe } : {}),
+    ...(f.proposedFix ? { proposedFix: f.proposedFix } : {}),
+    people: f.people ?? [],
     decision: f.decision,
     status: d?.status ?? "open",
     ...(d?.choiceId ? { choiceId: d.choiceId } : {}),
@@ -580,7 +582,7 @@ define({
       ...(want("dates") ? bySection(checkDates(pkg, state.erp, today, a.invoiceId)) : []),
       ...(want("review_aging") ? bySection(checkReviewAging(pkg, state.erp, state.control.controlDate, a.invoiceId)) : []),
     ];
-    return { controlDate: state.control.controlDate, findings: findings.map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
+    return { controlDate: state.control.controlDate, findings: withPeople(pkg, state.erp, findings).map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
   },
 });
 
@@ -943,7 +945,9 @@ define({
       uncoveredTotal: report.appendices.uncoveredTotal,
       finalized: report.finalized,
     };
-    return { ok: true, tab: a.tab, format: a.format, path, versionId, ...(a.format === "json" ? { report } : a.format === "markdown" ? { markdown: text } : {}), summary };
+    const unreviewed = report.openFindings.filter((f) => f.statusHe !== "טרם הוכרע" && f.statusHe !== "בהחלטה").length;
+    const attentionHe = report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : null;
+    return { ok: true, tab: a.tab, format: a.format, path, versionId, ...(attentionHe ? { attentionHe } : {}), ...(a.format === "json" ? { report } : a.format === "markdown" ? { markdown: text } : {}), summary };
   },
 });
 

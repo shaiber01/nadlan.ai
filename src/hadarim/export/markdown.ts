@@ -66,7 +66,7 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
   out.push("## 8. נושאים לטיפול", "", table(["#", "נושא", "סעיף", "אחראי", "יעד", "נפתח בבקרה", "סטטוס", "השפעה אם לא יטופל"], report.issues.open.map((i, idx) => [idx + 1, i.stale ? `${i.titleHe} (פתוח יותר משתי בקרות)` : i.titleHe, i.sectionHe, i.ownerHe, i.dueHe, i.openedHe, i.statusHe, i.impactHe])));
   if (report.openFindings.length || report.openQuestions.length) {
     out.push("### 8א. ממצאים שטרם הוכרעו ושאלות פתוחות", "");
-    if (report.openFindings.length) out.push(table(["ממצא", "סעיף", "ההחלטה הנדרשת", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.statusHe])));
+    if (report.openFindings.length) out.push(table(["ממצא", "סעיף", "ההחלטה הנדרשת", "תיקון מומלץ", "מעורבים", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.fixHe, f.peopleHe, f.statusHe])));
     if (report.openQuestions.length) out.push(table(["שאלה", "נשאל", "ערוץ", "נשלח"], report.openQuestions.map((q) => [q.textHe, q.toHe, q.channelHe, q.askedHe])));
     out.push("הדוח אינו סופי כל עוד יש ממצאים שלא הוכרעו; הסכומים אינם כוללים תיקונים שטרם הוחלטו.", "");
   }

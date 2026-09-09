@@ -7,8 +7,8 @@ description: Build, enrich, adapt and deliver the budget-control report per the 
 
 The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`; every call rebuilds it from the live database, so call it again whenever something changed. You deliver it, explain it and shape it; you never restate a number that is not in it, and you do not redo its arithmetic by hand.
 
-## Before building
-`get_project` → `control.status`. If it is `idle`, the checks have not run on this data: run the control first (`/bakara-control`) or tell the user the report will carry no findings. If findings are still open, the report lists them in 8א as "טרם הוכרע" and open questions next to them — say so when delivering; a report with open findings is not final.
+## Before delivering: the checks
+`build_report` runs all the checks on the current data by itself. Its result carries `attentionHe` and `summary.openFindings` when something needs a decision: findings of the session nobody decided on, and findings the checks raise beyond the session ("הבקרה טרם רצה" / "חדש מאז הרצת הבקרה"). Walk them before delivering: for each, the recommended fix (`fixHe`) and the people involved (`peopleHe`); get the decision through `/bakara-control` (`run_control` first if the control has not run, so decisions can be recorded), then build again. A report delivered with open findings is delivered as not final, and you say so.
 
 ## Build and deliver
 1. `build_report` (default `format: "summary"`). Give the user:

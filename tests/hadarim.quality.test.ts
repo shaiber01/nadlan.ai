@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkContractOverrun, checkCumulative, checkDates, checkDuplicates, checkRetention, checkReviewAging, runChecks } from "../src/hadarim/engine/checks";
-import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, startControl } from "../src/hadarim/engine/commands";
+import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { answerQuestion, askPerson } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -142,5 +142,82 @@ describe("questions to people", () => {
     expect(buildReport(pkg, answered).openQuestions).toHaveLength(0);
     expect(() => askPerson(state, { toId: "NOBODY", textHe: "?" })).toThrow(/NOBODY/);
     expect(() => answerQuestion(asked, "Q-9", "x")).toThrow(/Q-9/);
+  });
+});
+
+describe("recommended fixes are applied only on approval, and verified", () => {
+  const broken = (patch: (i: V2State["erp"]["invoices"][number]) => V2State["erp"]["invoices"][number], pick: (i: V2State["erp"]["invoices"][number]) => boolean) => {
+    const seed = initialState();
+    const s = withInvoice(seed, patch, pick);
+    return { state: reviewFindings(revealAllSteps(startControl(s, "בקרה"))), invoiceId: seed.erp.invoices.find(pick)!.id };
+  };
+
+  it("a retention card carries the fix from the contract's rate; 'apply' writes it, logs it and records a correction", () => {
+    const { state, invoiceId } = broken((i) => ({ ...i, retentionAmt: i.retentionAmt + 7 }), (i) => i.retentionPct > 0 && !!i.contractId && i.docType === "חשבון חלקי");
+    const f = state.control.findings.find((x) => x.id === `F-RET-${invoiceId}`)!;
+    expect(f.proposedFix).toBeDefined();
+    expect(f.decision.options[0]).toMatchObject({ id: "apply" });
+    expect(f.people?.some((p) => p.relationHe.includes("קלט"))).toBe(true);
+    const s = decide(state, f.id, "apply");
+    const inv = s.erp.invoices.find((i) => i.id === invoiceId)!;
+    expect(inv.retentionAmt).toBe(Math.round((inv.amount * inv.retentionPct) / 100));
+    expect(inv.netPayable).toBe(inv.amount - inv.retentionAmt);
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ recordId: String(invoiceId), field: "עכבון", byId: s.operatorId });
+    expect(s.control.corrections.at(-1)).toMatchObject({ recordId: String(invoiceId), findingId: f.id, status: "applied" });
+    expect(s.control.decisions[f.id]).toMatchObject({ status: "handled", routeId: "update" });
+    expect(s.control.decisions[f.id].verifiedHe).toContain("נקרא מחדש");
+    expect(buildReport(pkg, s).openFindings.some((x) => x.id === f.id)).toBe(false);
+  });
+
+  it("a cumulative card fixes the chain on approval", () => {
+    const { state, invoiceId } = broken((i) => ({ ...i, cumulativeNow: (i.cumulativeNow ?? 0) + 1000 }), (i) => i.cumulativeNow != null && i.cumulativePrev != null);
+    const f = state.control.findings.find((x) => x.id === `F-CUM-${invoiceId}`)!;
+    const s = decide(state, f.id, "apply");
+    const inv = s.erp.invoices.find((i) => i.id === invoiceId)!;
+    expect(inv.cumulativeNow).toBe((inv.cumulativePrev ?? 0) + inv.amount);
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ field: "מצטבר" });
+  });
+
+  it("an invoice in review can be approved from the card; it then counts as recorded", () => {
+    const { state, invoiceId } = broken((i) => ({ ...i, dateReceived: "2026-07-01" }), (i) => i.status === "בבדיקה");
+    const f = state.control.findings.find((x) => x.id === `F-REVIEW-${invoiceId}`)!;
+    const before = buildReport(pkg, state).working.totalRecorded;
+    const s = decide(state, f.id, "apply");
+    const inv = s.erp.invoices.find((i) => i.id === invoiceId)!;
+    expect(inv.status).toBe("אושר");
+    expect(inv.approvedBy).toBe(s.operatorId);
+    expect(buildReport(pkg, s).working.totalRecorded).toBe(before + inv.amount);
+  });
+
+  it("without a decision nothing changes: 'refer' leaves the record as it was", () => {
+    const { state, invoiceId } = broken((i) => ({ ...i, retentionAmt: i.retentionAmt + 7 }), (i) => i.retentionPct > 0 && !!i.contractId && i.docType === "חשבון חלקי");
+    const s = decide(state, `F-RET-${invoiceId}`, "refer");
+    expect(s.erp.invoices.find((i) => i.id === invoiceId)!.retentionAmt).toBe(state.erp.invoices.find((i) => i.id === invoiceId)!.retentionAmt);
+    expect(s.control.tasks.at(-1)).toMatchObject({ status: "pending_execution", ownerId: "SARIT" });
+  });
+});
+
+describe("who to ask, and the report without a control", () => {
+  it("a finding names the people who entered, approved and changed the record", () => {
+    const seed = initialState();
+    const moved = updateInvoiceSection(seed, 1147, "02", "SARIT");
+    const state = reviewFindings(revealAllSteps(startControl(moved, "בקרה")));
+    const f = state.control.findings.find((x) => x.kind === "allocation")!;
+    const names = (f.people ?? []).map((p) => p.id);
+    expect(names).toEqual(expect.arrayContaining(["SARIT", "EYAL"]));
+    expect(f.people!.find((p) => p.id === "SARIT")!.relationHe).toContain("קלט");
+    expect(f.people!.find((p) => p.id === "SARIT")!.relationHe).toContain("סעיף תקציבי");
+    expect(f.people!.find((p) => p.id === "EYAL")!.relationHe).toContain("אישר");
+  });
+
+  it("the report built before any control lists what the checks find now, with the recommended fix and the people", () => {
+    const seed = initialState();
+    const moved = updateInvoiceSection(seed, 1147, "02", "SARIT");
+    const r = buildReport(pkg, moved);
+    expect(r.openFindings.length).toBe(4);
+    expect(r.openFindings.every((f) => f.statusHe === "הבקרה טרם רצה")).toBe(true);
+    const alloc = r.openFindings.find((f) => f.kind === "allocation")!;
+    expect(alloc.fixHe).toContain("כן, ל");
+    expect(alloc.peopleHe).toContain("שרית");
   });
 });

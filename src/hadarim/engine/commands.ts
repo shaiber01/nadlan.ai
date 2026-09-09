@@ -1,7 +1,7 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
-import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
+import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFixPatch } from "./checks";
 import { workingForecast } from "./forecast";
 import { lineValue, pricePerUnitHe } from "./units";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
@@ -161,6 +161,30 @@ export function orderLineHe(line: { qty: number; unit: string; priceUnit: string
   return `${num(line.qty)} ${line.unit} × ${pricePerUnitHe(line.unitPrice, line.priceUnit || line.unit)}`;
 }
 
+/** Correct invoice fields a data-quality card proposes (retention, cumulative, dates, approval); each changed field is logged. */
+export function updateInvoiceFields(state: V2State, invoiceId: number, patch: InvoiceFixPatch, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
+  const invoice = state.erp.invoices.find((i) => i.id === invoiceId);
+  if (!invoice) throw new Error(`חשבון ${invoiceId} לא נמצא`);
+  if (!pkg.people.some((p) => p.id === byId)) throw new Error(`${byId} אינו מוגדר בפרויקט`);
+  const next: HInvoice = { ...invoice, ...patch, ...(patch.status === "אושר" && !patch.approvedBy && !invoice.approvedBy ? { approvedBy: byId } : {}) };
+  if (next.retentionAmt !== Math.round((next.amount * next.retentionPct) / 100) || next.netPayable !== next.amount - next.retentionAmt) throw new Error("העכבון חייב להתחבר: סכום × שיעור, ולתשלום = סכום − עכבון");
+  if (next.cumulativeNow != null && (next.cumulativePrev ?? 0) + next.amount !== next.cumulativeNow) throw new Error("המצטבר חייב להתחבר: מצטבר קודם + סכום = מצטבר נוכחי");
+  const labels: { field: string; before: string; after: string }[] = [];
+  if (next.retentionPct !== invoice.retentionPct || next.retentionAmt !== invoice.retentionAmt || next.netPayable !== invoice.netPayable) labels.push({ field: "עכבון", before: `${invoice.retentionPct}% · ${nis(invoice.retentionAmt)} · לתשלום ${nis(invoice.netPayable)}`, after: `${next.retentionPct}% · ${nis(next.retentionAmt)} · לתשלום ${nis(next.netPayable)}` });
+  if (next.cumulativePrev !== invoice.cumulativePrev || next.cumulativeNow !== invoice.cumulativeNow) labels.push({ field: "מצטבר", before: `${invoice.cumulativePrev != null ? num(invoice.cumulativePrev) : "—"} → ${invoice.cumulativeNow != null ? num(invoice.cumulativeNow) : "—"}`, after: `${next.cumulativePrev != null ? num(next.cumulativePrev) : "—"} → ${next.cumulativeNow != null ? num(next.cumulativeNow) : "—"}` });
+  if (next.date !== invoice.date || next.dateReceived !== invoice.dateReceived) labels.push({ field: "תאריכים", before: `${dateHe(invoice.date)} / התקבל ${dateHe(invoice.dateReceived)}`, after: `${dateHe(next.date)} / התקבל ${dateHe(next.dateReceived)}` });
+  if (next.status !== invoice.status) labels.push({ field: "סטטוס", before: invoice.status, after: next.status });
+  if (next.approvedBy !== invoice.approvedBy) labels.push({ field: "אושר על ידי", before: invoice.approvedBy ?? "—", after: next.approvedBy ?? "—" });
+  if (!labels.length) return state;
+  let s = state;
+  const entries = labels.map((l) => {
+    const [s1, logId] = nextId(s, "CL");
+    s = s1;
+    return { id: logId, recordType: "invoice" as const, recordId: String(invoiceId), field: l.field, before: l.before, after: l.after, at: state.clock, byId, noteHe };
+  });
+  return tick({ ...s, erp: { ...s.erp, invoices: s.erp.invoices.map((i) => (i.id === invoiceId ? next : i)), changeLog: [...s.erp.changeLog, ...entries] } });
+}
+
 export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
   const po = state.erp.purchaseOrders.find((p) => p.id === poId);
   if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
@@ -280,6 +304,22 @@ export function decide(state: V2State, findingId: string, choiceId: string | nul
 function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
   const reason = freeTextHe ? ` (${freeTextHe})` : "";
   const text = freeTextHe ?? "";
+  const operator = pkg.people.find((p) => p.id === state.operatorId)!;
+  // the proposed fix, approved: written to the ERP, logged, recorded as a data correction (4ב), verified on re-read
+  if (f.proposedFix && f.record.type === "invoice" && (choiceId === "apply" || (!choiceId && /לתקן|לאשר|תקן|אשר/.test(text)))) {
+    const before = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
+    let s = updateInvoiceFields(state, before.id, f.proposedFix.patch, state.operatorId, `אישור ממצא ${f.id}`);
+    const after = s.erp.invoices.find((i) => i.id === before.id)!;
+    const changed = s.erp.changeLog.slice(state.erp.changeLog.length);
+    const beforeHe = changed.map((c) => `${c.field}: ${c.before}`).join(" · ");
+    const afterHe = changed.map((c) => `${c.field}: ${c.after}`).join(" · ");
+    const [s2, corrId] = nextId(s, "COR");
+    s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: "invoice", recordId: String(before.id), fieldHe: changed.map((c) => c.field).join(" / ") || f.proposedFix.labelHe, beforeHe, afterHe, approvedById: s2.operatorId, crossSectionHe: f.kind === "review_aging" ? `${sectionLabel(after.sectionId)} +${nis(after.amount)} (אושר)` : "ללא השפעה בין סעיפים", findingId: f.id, at: s2.clock, status: "applied" }] } };
+    s = setDecision(s, f.id, { status: "handled", routeId: "update", resolvedAt: s.clock, auditHe: `תוקן: ${f.proposedFix.labelHe} · אישר: ${operator.nameHe}${reason}`, verifiedHe: `חשבון ${after.id} נקרא מחדש — ${f.proposedFix.labelHe}` });
+    s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: חשבון ${after.id} נקרא מחדש — ${f.proposedFix.labelHe}`, done: true }] });
+    s = audit(s, s.operatorId, `חשבון ${after.id}: ${afterHe} (ממצא ${f.id})${reason}`, { type: "invoice", id: String(after.id) });
+    return nextFinding(tick(s));
+  }
   if (choiceId === "accept" || (!choiceId && /תקין|לא כפול|בסדר|נכון/.test(text))) {
     let s = setDecision(state, f.id, { status: "handled", resolvedAt: state.clock, auditHe: `נבדק — תקין${reason}` });
     s = push(s, { role: "system", kind: "text", textHe: "נרשם כתקין. הממצא נסגר ללא שינוי בנתונים; ההחלטה מתועדת בדוח." });
