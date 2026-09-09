@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Badge, Notice } from "../../../components/primitives";
 import { store } from "../../app/store";
-import { SHARED_BUILDING } from "../../data/types";
 import { updateInvoiceBuilding } from "../../engine/commands";
 import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, SectionRow, UncoveredRow } from "../../engine/report";
 import { mil, nis, num, pct, signedNis, signedPct } from "./format";
@@ -365,7 +364,7 @@ export function SectionsTableSection({ report }: { report: ReportModel }) {
                   {" "}
                   שנה — {c.labelHe}:
                   {sec.byBuildingOptions.map((b) => (
-                    <button key={b.id} type="button" className={`btn btn-sm ${c.building === b.id || (!c.building && b.id === SHARED_BUILDING) ? "btn-primary" : "btn-ghost"}`} onClick={() => store.dispatch((s) => updateInvoiceBuilding(s, c.invoiceId, b.id, s.operatorId))} data-testid={`report-building-change-${c.invoiceId}-${b.id}`}>
+                    <button key={b.id} type="button" className={`btn btn-sm ${c.building === b.id || (!c.building && b.kind === "shared") ? "btn-primary" : "btn-ghost"}`} onClick={() => store.dispatch((s) => updateInvoiceBuilding(s, c.invoiceId, b.id, s.operatorId))} data-testid={`report-building-change-${c.invoiceId}-${b.id}`}>
                       {b.labelHe}
                     </button>
                   ))}

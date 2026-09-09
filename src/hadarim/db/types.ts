@@ -945,6 +945,7 @@ export type Database = {
       projects: {
         Row: {
           boq_version: Json
+          buckets: Json
           budget_version: Json
           buildings: Json
           company_he: string
@@ -962,6 +963,7 @@ export type Database = {
         }
         Insert: {
           boq_version: Json
+          buckets?: Json
           budget_version: Json
           buildings?: Json
           company_he: string
@@ -979,6 +981,7 @@ export type Database = {
         }
         Update: {
           boq_version?: Json
+          buckets?: Json
           budget_version?: Json
           buildings?: Json
           company_he?: string

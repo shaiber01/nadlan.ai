@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import { SHARED_BUILDING, type HInvoice, type PersonId, type SectionId } from "../../data/types";
+import type { HInvoice, PersonId, SectionId } from "../../data/types";
 import { createInvoice, pkg, updateInvoiceBuilding, updateInvoiceSection } from "../../engine/commands";
 import { dateHe, dateTimeHe, monthHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
@@ -271,7 +271,7 @@ function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onD
   const [error, setError] = useState<string | null>(null);
   const changed = sectionId !== invoice.sectionId;
   const buildingChanged = (building || null) !== invoice.building;
-  const buildingOptions = [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}` })), { id: SHARED_BUILDING, labelHe: SHARED_BUILDING }];
+  const buildingOptions = [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}` })), { id: pkg.project.buckets.shared.id, labelHe: pkg.project.buckets.shared.labelHe }];
 
   const save = () => {
     try {

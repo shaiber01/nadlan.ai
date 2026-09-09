@@ -116,3 +116,20 @@ describe("generic building split", () => {
     expect(updateInvoiceBuilding(seed, inv.id, "משותף", "EYAL").erp.invoices.find((i) => i.id === inv.id)!.building).toBe("משותף");
   });
 });
+
+describe("generic bucket names", () => {
+  it("the shared and parking buckets are the project's own ids and labels", () => {
+    const state = setReportConfig(initialState(), { splitByBuilding: true });
+    const renamed = { ...pkg, project: { ...pkg.project, buckets: { shared: { id: "כללי", labelHe: "עלויות כלליות" }, parking: { id: "מרתף", labelHe: "מרתף חניה" } } } };
+    // invoices keep the seed's shared tag, which is no longer this project's shared id: they count as shared and are noted
+    const r = buildReport(renamed, state);
+    const rows = r.sections.byBuilding!;
+    expect(rows.map((x) => x.building)).toEqual(["A", "B", "מרתף", "כללי"]);
+    expect(rows.map((x) => x.labelHe)).toEqual(["בניין A", "בניין B", "מרתף חניה", "עלויות כלליות"]);
+    expect(r.sections.byBuildingOptions.at(-1)).toEqual({ id: "כללי", labelHe: "עלויות כלליות", kind: "shared" });
+    expect(r.sections.byBuildingNoteHe).toContain("עלויות כלליות");
+    expect(rows.reduce((a, x) => a + x.eac, 0)).toBe(r.sections.totals.eac);
+    // with the seed's own buckets the seed's tags are recognised: nothing is reported as an unknown tag
+    expect(buildReport(pkg, state).sections.byBuildingNoteHe).not.toContain("שאינו בפרויקט");
+  });
+});

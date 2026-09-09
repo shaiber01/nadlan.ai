@@ -1,5 +1,5 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
-import { SHARED_BUILDING, type BuildingTag, type HInvoice, type PersonId, type SectionId } from "../data/types";
+import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
 import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
 import { workingForecast } from "./forecast";
@@ -146,7 +146,7 @@ export function createInvoice(state: V2State, input: NewInvoiceInput): [V2State,
 export function updateInvoiceBuilding(state: V2State, invoiceId: number, building: BuildingTag | null, byId: PersonId): V2State {
   const invoice = state.erp.invoices.find((i) => i.id === invoiceId);
   if (!invoice) throw new Error(`חשבון ${invoiceId} לא נמצא`);
-  const allowed = [...pkg.project.buildings.map((b) => b.id), SHARED_BUILDING];
+  const allowed = [...pkg.project.buildings.map((b) => b.id), pkg.project.buckets.shared.id];
   if (building != null && !allowed.includes(building)) throw new Error(`בניין ${building} אינו בפרויקט (${allowed.join(", ")})`);
   if (invoice.building === building) return state;
   const [s1, logId] = nextId(state, "CL");

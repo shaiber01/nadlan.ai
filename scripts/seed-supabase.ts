@@ -70,6 +70,7 @@ async function main() {
       control_dates: pkg.project.controlDates,
       current_control_date: pkg.project.currentControlDate,
       buildings: pkg.project.buildings.map((b) => ({ id: b.id, floors: b.floors, floors_cast: b.floorsCast, units_per_floor: b.unitsPerFloor })),
+      buckets: { shared: { id: pkg.project.buckets.shared.id, label_he: pkg.project.buckets.shared.labelHe }, parking: { id: pkg.project.buckets.parking.id, label_he: pkg.project.buckets.parking.labelHe } },
       physical_progress_pct: pkg.project.physicalProgressPct ?? null,
       schedule: pkg.project.schedule ?? {},
     },

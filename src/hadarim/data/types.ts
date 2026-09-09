@@ -3,12 +3,8 @@
  * the engine keeps integers). Dates are ISO yyyy-mm-dd.
  */
 export type SectionId = "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18";
-/** A building id of the project (`HProject.buildings[].id`) or the shared tag. */
+/** A building id of the project (`HProject.buildings[].id`) or the project's shared bucket id. */
 export type BuildingTag = string;
-/** Invoices and costs that belong to no single building. */
-export const SHARED_BUILDING = "משותף";
-/** The parking bucket of the per-building split (sections with split = parking). */
-export const PARKING_BUCKET = "חניון";
 export type PersonId = "EYAL" | "ROI" | "DANA" | "SARIT";
 
 export interface HBuilding {
@@ -18,11 +14,19 @@ export interface HBuilding {
   unitsPerFloor: number;
 }
 
+/** A cost bucket of the per-building split that is not a building: the id is what invoices carry, the label is what reports show. */
+export interface HCostBucket {
+  id: string;
+  labelHe: string;
+}
+
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
   companyHe: string;
   buildings: HBuilding[];
+  /** The non-building buckets of the split: shared costs, and parking (sections with split = parking). */
+  buckets: { shared: HCostBucket; parking: HCostBucket };
   units: number;
   grossSqm: number;
   startDate: string;

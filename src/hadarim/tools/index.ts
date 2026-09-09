@@ -246,7 +246,7 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
       sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
@@ -681,9 +681,9 @@ define({
 define({
   name: "set_invoice_building",
   title: "Tag an invoice with a building",
-  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report: a building id of the project (get_project → project.buildings) or 'משותף' for shared costs. Attributed and trigger-logged.",
+  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report: a building id of the project (get_project → project.buildings) or the project's shared bucket id (project.buckets.shared.id) for shared costs. Attributed and trigger-logged.",
   kind: "write",
-  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.string().nullable().describe("a building id of the project, 'משותף', or null to clear"), byId: personId },
+  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.string().nullable().describe("a building id of the project, the shared bucket id, or null to clear"), byId: personId },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => updateInvoiceBuilding(s, a.invoiceId, a.building, a.byId as V2State["operatorId"]));
     return outcome(r, { invoice: invoiceView(r.state.erp.invoices.find((i) => i.id === a.invoiceId)!) });

@@ -146,6 +146,10 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     nameHe: p.name_he,
     companyHe: p.company_he,
     buildings,
+    buckets: (() => {
+      const b = (p.buckets ?? {}) as { shared?: { id?: string; label_he?: string }; parking?: { id?: string; label_he?: string } };
+      return { shared: { id: b.shared?.id ?? "shared", labelHe: b.shared?.label_he ?? b.shared?.id ?? "shared" }, parking: { id: b.parking?.id ?? "parking", labelHe: b.parking?.label_he ?? b.parking?.id ?? "parking" } };
+    })(),
     units: p.units ?? 0,
     grossSqm: p.gross_sqm ?? 0,
     startDate: p.start_date ?? "",

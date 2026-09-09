@@ -43,6 +43,7 @@ export const project: HProject = {
     { id: "A", floors: 8, floorsCast: 7, unitsPerFloor: 3 },
     { id: "B", floors: 8, floorsCast: 5, unitsPerFloor: 3 },
   ],
+  buckets: { shared: { id: "משותף", labelHe: "משותף" }, parking: { id: "חניון", labelHe: "חניון" } },
   units: 48,
   grossSqm: 8700,
   startDate: "2025-11-02",
@@ -263,7 +264,7 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
       descriptionHe: trap ? "מנוף צריח — שלד בניין A" : vendor.descHe(MONTH_HE[month]),
       amount: adjusted[i],
       retentionPct: 0,
-      building: "משותף",
+      building: project.buckets.shared.id,
       status: statusFor(date),
       quantity: 1,
       unit: "חודש",
@@ -313,9 +314,9 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
     const month = MONTHS[i];
     const [y, m] = month.split("-").map(Number);
     const date = i === 5 ? "2026-04-20" : lastDayOfMonth(y, m);
-    seeds.push({ supplierId: "SUP-DORON", supplierDocNo: `עפר-${i + 1}`, docType: "חשבון חלקי", partialNo: i + 1, period: month, date, sectionId: "04", contractId: "04-01", poId: null, descriptionHe: `חשבון חלקי מס׳ ${i + 1} — עבודות עפר, דיפון וכלונסאות`, amount, retentionPct: 5, building: "משותף", status: "שולם", cumulative: true });
+    seeds.push({ supplierId: "SUP-DORON", supplierDocNo: `עפר-${i + 1}`, docType: "חשבון חלקי", partialNo: i + 1, period: month, date, sectionId: "04", contractId: "04-01", poId: null, descriptionHe: `חשבון חלקי מס׳ ${i + 1} — עבודות עפר, דיפון וכלונסאות`, amount, retentionPct: 5, building: project.buckets.shared.id, status: "שולם", cumulative: true });
   });
-  seeds.push({ supplierId: "SUP-DORON", supplierDocNo: "עפר-סופי", docType: "חשבון סופי", partialNo: 7, period: "2026-04", date: "2026-04-30", sectionId: "04", contractId: "04-01", poId: null, descriptionHe: "חשבון סופי — עבודות עפר, דיפון וכלונסאות (סגירת חוזה 04-01)", amount: 100_000, retentionPct: 5, building: "משותף", status: "שולם", cumulative: true });
+  seeds.push({ supplierId: "SUP-DORON", supplierDocNo: "עפר-סופי", docType: "חשבון סופי", partialNo: 7, period: "2026-04", date: "2026-04-30", sectionId: "04", contractId: "04-01", poId: null, descriptionHe: "חשבון סופי — עבודות עפר, דיפון וכלונסאות (סגירת חוזה 04-01)", amount: 100_000, retentionPct: 5, building: project.buckets.shared.id, status: "שולם", cumulative: true });
 
   // Section 05: waterproofing partials
   [["2026-06-30", 90_000], ["2026-07-31", 110_000], ["2026-08-28", 120_000]].forEach(([date, amount], i) => {
@@ -345,7 +346,7 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
       descriptionHe: last ? "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳" : `חשבון חלקי מס׳ ${i + 1} — עבודות פיתוח ותשתיות חוץ`,
       amount,
       retentionPct: 5,
-      building: last ? null : "משותף",
+      building: last ? null : project.buckets.shared.id,
       status: statusFor(date),
       cumulative: true,
       attachmentId: last ? "inv_1147_ntb_partial7" : undefined,
@@ -363,13 +364,13 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
   });
 
   // Section 14: elevator advance
-  seeds.push({ supplierId: "SUP-OREN", supplierDocNo: "מק-1", docType: "חשבון מקדמה", partialNo: null, period: "2026-03", date: "2026-03-15", sectionId: "14", contractId: "14-01", poId: null, descriptionHe: "חשבון מקדמה 20% — 4 מעליות (טרם נמדדה כמות בכתב הכמויות)", amount: 260_000, retentionPct: 0, building: "משותף", status: "שולם" });
+  seeds.push({ supplierId: "SUP-OREN", supplierDocNo: "מק-1", docType: "חשבון מקדמה", partialNo: null, period: "2026-03", date: "2026-03-15", sectionId: "14", contractId: "14-01", poId: null, descriptionHe: "חשבון מקדמה 20% — 4 מעליות (טרם נמדדה כמות בכתב הכמויות)", amount: 260_000, retentionPct: 0, building: project.buckets.shared.id, status: "שולם" });
 
   // Section 18: monthly allocations
   MONTHS.forEach((month, i) => {
     const [y, m] = month.split("-").map(Number);
     const date = lastDayOfMonth(y, m);
-    seeds.push({ supplierId: "INTERNAL", supplierDocNo: `הקצאה-${i + 1}`, docType: "חשבונית מס", partialNo: null, period: month, date, sectionId: "18", contractId: null, poId: null, descriptionHe: `הקצאת הנהלה, פיקוח, ביטוח ואגרות — ${MONTH_HE[month]}`, amount: 210_000, retentionPct: 0, building: "משותף", status: statusFor(date) });
+    seeds.push({ supplierId: "INTERNAL", supplierDocNo: `הקצאה-${i + 1}`, docType: "חשבונית מס", partialNo: null, period: month, date, sectionId: "18", contractId: null, poId: null, descriptionHe: `הקצאת הנהלה, פיקוח, ביטוח ואגרות — ${MONTH_HE[month]}`, amount: 210_000, retentionPct: 0, building: project.buckets.shared.id, status: statusFor(date) });
   });
 
   // One more invoice in review (lab)

@@ -1,5 +1,5 @@
 import { priceAppendixAt } from "../data/generate";
-import { PARKING_BUCKET, SHARED_BUILDING, type BuildingTag, type HForecastLine, type HadarimPackage, type SectionId } from "../data/types";
+import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
 import { boqPageFor, documentById, isContingency, quoteFacts, sectionShort } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
@@ -155,7 +155,7 @@ export interface ReportModel {
   header: ReportHeader;
   executive: { paragraphHe: string; keyTable: KeyRow[]; bulletsHe: string[]; decisionsHe: string[] };
   status: { stageHe: string; physicalPct: number | null; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
-  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string }[] };
+  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
   changes: { forecast: ChangeRow[]; forecastTotal: number; corrections: CorrectionRow[] };
   material: MaterialSection[];
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
@@ -189,9 +189,10 @@ function executionOwner(pkg: HadarimPackage, state: V2State): string {
 // Optional secondary split by building (standard §3: same columns; estimates declared as such)
 // ---------------------------------------------------------------------------
 
-/** The building buckets of a project: its buildings, the parking bucket when a section is split that way, and "shared". */
-export function buildingOptions(pkg: HadarimPackage): { id: string; labelHe: string }[] {
-  return [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}` })), { id: SHARED_BUILDING, labelHe: SHARED_BUILDING }];
+/** What an invoice can be tagged with: the project's buildings, or its shared bucket. */
+export function buildingOptions(pkg: HadarimPackage): { id: string; labelHe: string; kind: "building" | "shared" }[] {
+  const shared = pkg.project.buckets.shared;
+  return [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}`, kind: "building" as const })), { id: shared.id, labelHe: shared.labelHe, kind: "shared" as const }];
 }
 
 /** Split `x` among the buildings by `shares` (which sum to 1), whole shekels, the last building taking the rounding. */
@@ -212,9 +213,12 @@ function buildingShares(pkg: HadarimPackage, split: "by_floors" | "by_units" | "
 
 function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): { rows: BuildingRow[]; noteHe: string; changeable: ReportModel["sections"]["byBuildingChangeable"] } {
   const buildings = pkg.project.buildings.map((b) => b.id);
+  const { shared, parking } = pkg.project.buckets;
+  const SHARED_BUILDING = shared.id;
+  const PARKING_BUCKET = parking.id;
   const hasParking = pkg.sections.some((s) => s.split === "parking");
   const keys = [...buildings, ...(hasParking ? [PARKING_BUCKET] : []), SHARED_BUILDING];
-  const labelOf = (key: string) => (buildings.includes(key) ? `בניין ${key}` : key);
+  const labelOf = (key: string) => (key === shared.id ? shared.labelHe : key === parking.id ? parking.labelHe : `בניין ${key}`);
   const blank = (building: string): BuildingRow => ({ building, labelHe: labelOf(building), budget: 0, recorded: 0, committed: 0, remainingCommitment: 0, uncovered: 0, eac: 0, variance: 0, variancePct: 0, basisPct: 0 });
   const rows: Record<string, BuildingRow> = Object.fromEntries(keys.map((k) => [k, blank(k)]));
   const add = (key: string, part: Partial<Pick<BuildingRow, "budget" | "recorded" | "committed" | "remainingCommitment" | "uncovered">>) => {
@@ -269,10 +273,10 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
   const sharedEstimates = state.control.adjustments.filter((a) => pkg.sections.find((s) => s.id === a.sectionId)?.split === "shared");
   const tagged = changeable.filter((c) => c.building && c.building !== SHARED_BUILDING);
   const noteHe = [
-    untagged.length ? `${[...new Set(untagged)].join(", ")} אינו מפולח לפי בניין במקור — שויך ל״${SHARED_BUILDING}״.` : "",
-    unknownTags.length ? `${[...new Set(unknownTags)].join(", ")} מתויג בבניין שאינו בפרויקט — נספר כ״${SHARED_BUILDING}״.` : "",
+    untagged.length ? `${[...new Set(untagged)].join(", ")} אינו מפולח לפי בניין במקור — שויך ל״${shared.labelHe}״.` : "",
+    unknownTags.length ? `${[...new Set(unknownTags)].join(", ")} מתויג בבניין שאינו בפרויקט — נספר כ״${shared.labelHe}״.` : "",
     tagged.length ? tagged.map((t) => `${t.labelHe} שויך לבניין ${t.building} לפי החלטת מנהל הפרויקט (נרשם ביומן השינויים).`).join(" ") : "",
-    sharedEstimates.length ? `${sharedEstimates.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")} נכנס תחת ״${SHARED_BUILDING}״.` : "",
+    sharedEstimates.length ? `${sharedEstimates.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")} נכנס תחת ״${shared.labelHe}״.` : "",
     `הפילוח הפנימי של סעיפים לפי קומות שיוצקו, יח״ד או שווה בין ${num(buildings.length)} הבניינים הוא הערכה ומסומן ככזה; תחזית קודמת ושינוי אינם מפולחים.`,
   ]
     .filter(Boolean)
