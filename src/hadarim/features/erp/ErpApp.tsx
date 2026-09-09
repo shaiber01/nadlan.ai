@@ -59,13 +59,6 @@ export function ErpApp() {
               {n.labelHe}
             </button>
           ))}
-          <div className="erp-nav-title">קיצורים</div>
-          <button type="button" className="erp-nav-item erp-nav-link" onClick={() => store.go("report")} data-testid="erp-nav-report">
-            <span className="erp-nav-icon" aria-hidden="true">
-              ↗
-            </span>
-            דוח הבקרה
-          </button>
         </nav>
         <main className="erp-main">
           {screen === "invoices" && <InvoicesScreen />}

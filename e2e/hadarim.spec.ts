@@ -70,7 +70,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await page.getByTestId("go-erp").click();
     await page.getByTestId("erp-invoice-row-1147").click();
     await moveInvoiceToSheled(page);
-    await page.getByTestId("erp-nav-report").click();
+    await page.getByTestId("go-report").click();
     await expect(page.getByTestId("report-view")).toBeVisible();
     await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
     await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
