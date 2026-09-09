@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, sendReport, setPackage, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, saveConfig, sendReport, setPackage, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
@@ -22,12 +22,11 @@ function runScript(): { afterEdit: V2State; afterControl: V2State; final: V2Stat
   // 1. allocation → yes → update in the ERP
   const alloc = findingByKind(s, "allocation");
   s = decide(s, alloc.id, "yes_target");
-  expect(lastSystem(s).options?.map((o) => o.labelHe)).toEqual(["עדכן", "העבר להנהלת חשבונות", "רק בתחזית"]);
-  s = route(s, alloc.id, "update");
-  // 2. unit → yes 12 tons → refer to Roi
+  // one question, not two: the answer carried the route, so the ERP is already written
+  expect(s.control.decisions[alloc.id]).toMatchObject({ status: "handled", routeId: "update" });
+  // 2. unit → yes 12 tons, but Roi keys it
   const unit = findingByKind(s, "unit");
-  s = decide(s, unit.id, "yes_tons");
-  s = route(s, unit.id, "refer_roi");
+  s = decide(s, unit.id, "yes_refer");
   // 3. price → applies to all remaining
   const price = findingByKind(s, "price");
   s = decide(s, price.id, "all");
@@ -99,8 +98,7 @@ describe("Hadarim v2 engine — ERP edits", () => {
     expect(f.id).toBe(`F-ALLOC-PO-${po.id}`);
     expect(f.people?.some((p) => p.id === "EYAL")).toBe(true);
     s = decide(s, f.id, "yes_target");
-    expect(s.control.decisions[f.id].pending).toEqual({ kind: "route" });
-    s = route(s, f.id, "update");
+    expect(s.control.decisions[f.id].pending).toBeUndefined();
     expect(s.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(po.sectionId);
     expect(s.control.decisions[f.id]).toMatchObject({ status: "handled", routeId: "update" });
     expect(s.control.decisions[f.id].verifiedHe).toContain(`הזמנה ${po.id}`);
@@ -110,7 +108,7 @@ describe("Hadarim v2 engine — ERP edits", () => {
     // the invoices billed against the order were never touched
     expect(s.erp.invoices.filter((i) => i.poId === po.id).map((i) => i.sectionId)).toEqual(seed.erp.invoices.filter((i) => i.poId === po.id).map((i) => i.sectionId));
 
-    const referred = route(decide(open(), f.id, "yes_target"), f.id, "refer_roi");
+    const referred = decide(open(), f.id, "yes_refer");
     expect(referred.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(wrong);
     expect(referred.control.tasks.at(-1)).toMatchObject({ findingId: f.id, status: "pending_execution", sectionId: po.sectionId });
     expect(referred.control.decisions[f.id].status).toBe("pending_execution");
@@ -173,11 +171,10 @@ describe("Hadarim v2 engine — the scripted control", () => {
     expect(task).toMatchObject({ ownerId: "EYAL", dueDate: "2026-09-19", status: "open" });
   });
 
-  it("applies the unit fix in the ERP on the [עדכן] route", () => {
+  it("applies the unit fix in the ERP on the approving answer, with no second question", () => {
     let s = reviewFindings(revealAllSteps(startControl(initialState(), "בקרה")));
     const unit = findingByKind(s, "unit");
     s = decide(s, unit.id, "yes_tons");
-    s = route(s, unit.id, "update");
     expect(s.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4800, amount: 57_600 });
     expect(s.control.decisions[unit.id].verifiedHe).toContain("2291");
   });

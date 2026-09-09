@@ -220,7 +220,7 @@ describe("who to ask, and the report without a control", () => {
     expect(r.openFindings.length).toBe(4);
     expect(r.openFindings.every((f) => f.statusHe === "הבקרה טרם רצה")).toBe(true);
     const alloc = r.openFindings.find((f) => f.kind === "allocation")!;
-    expect(alloc.fixHe).toContain("כן, ל");
+    expect(alloc.fixHe).toContain("כן — לעדכן ל");
     expect(alloc.peopleHe).toContain("שרית");
   });
 });
