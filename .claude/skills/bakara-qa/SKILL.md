@@ -27,14 +27,15 @@ If the control has not been run yet (`get_project.control.status = idle`), say t
 For anything the tools do not return, Supabase `execute_sql` with SELECT only, always `where project_id = '<id>'`. Shapes:
 ```sql
 -- recorded per section up to a cutoff (approved/paid invoices received before it)
-select section_id, sum(amount) from invoices where project_id = 'HADARIM' and status <> 'בבדיקה' and date_received < '2026-09-01' group by 1 order by 1;
+select section_id, sum(amount) from invoices where project_id = '<project id>' and status <> 'בבדיקה' and date_received < '<control date>' group by 1 order by 1;
 -- a supplier's invoices
-select id, date, section_id, amount, description_he from invoices where project_id = 'HADARIM' and supplier_id = 'SUP-NTB' order by date;
+select id, date, section_id, amount, description_he from invoices where project_id = '<project id>' and supplier_id = '<supplier id>' order by date;
 -- the draft forecast lines with their basis
-select section_id, description_he, qty, unit, unit_price, amount, basis, kind from forecast_lines where project_id = 'HADARIM' and control_date = '2026-09-01' order by section_id, position;
+select section_id, description_he, qty, unit, unit_price, amount, basis, kind from forecast_lines where project_id = '<project id>' and control_date = '<control date>' order by section_id, position;
 -- saved control sessions
-select control_date, status, finalized, operator_id, updated_at from controls where project_id = 'HADARIM';
+select control_date, status, finalized, operator_id, updated_at from controls where project_id = '<project id>';
 ```
+Take the project id, the control date and supplier ids from `get_project` / `list_suppliers`.
 Tables: `projects, people, suppliers, sections, contracts, documents, invoices, purchase_orders, boq_lines, forecast_versions, forecast_sections, forecast_lines, open_issues, change_log, controls, decisions, forecast_adjustments, data_corrections, audit, report_versions`. Name the table as the source.
 
 ## 3. Answer shape

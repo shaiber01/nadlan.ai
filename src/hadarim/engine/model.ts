@@ -105,10 +105,10 @@ export interface ChatMessage {
   documentId?: string;
 }
 
-/** A note the controller adds to the control — feeds the report's risks, events, decisions and assumptions. */
+/** A note the controller adds to the control — feeds the report's risks, events, decisions, assumptions, change orders and claims. */
 export interface ControlNote {
   id: string;
-  kind: "risk" | "event" | "decision" | "assumption" | "note";
+  kind: "risk" | "event" | "decision" | "assumption" | "note" | "change_order" | "claim";
   textHe: string;
   sectionId?: SectionId;
   exposureHe?: string;

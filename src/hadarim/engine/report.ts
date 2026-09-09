@@ -617,12 +617,12 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   // executive summary
   const uncontracted = uncovered.lines.filter((l) => l.basis === "estimate" && !pkg.sections.find((s) => s.id === l.sectionId)?.contractIds.length);
   const uncoveredGroupsHe = [
-    uncontracted.length ? `${uncontracted.length === 4 ? "ארבע" : num(uncontracted.length)} חבילות שטרם נחתמו` : "",
+    uncontracted.length ? `${num(uncontracted.length)} חבילות שטרם נחתמו` : "",
     ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${sectionShort(l.sectionId)}`),
     ...uncovered.lines.filter((l) => l.basis === "quote").map((l) => l.descriptionHe.split(" — ")[0]),
     ...uncovered.lines.filter((l) => l.basis === "estimate" && !uncontracted.includes(l)).map((l) => l.descriptionHe.split(" — ")[0]),
   ].filter(Boolean);
-  const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${corrections.length === 2 ? "שני" : corrections.length} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
+  const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${num(corrections.length)} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
   const keyTable: KeyRow[] = [
     { labelHe: "תקציב מעודכן", valueHe: nis(wf.totalBudget), pctHe: "" },
     { labelHe: "תחזית לגמר", valueHe: nis(wf.totalEac), pctHe: "" },
@@ -678,7 +678,15 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
-    contingency: { original: contingencyBudget, used: contingencyBudget - contingencyLeft, remaining: contingencyLeft, pendingChangeOrdersHe: "אין פקודות שינוי ממתינות לאישור", claimsHe: "אין דרישות/תביעות קבלנים פתוחות", decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת" },
+    contingency: {
+      original: contingencyBudget,
+      used: contingencyBudget - contingencyLeft,
+      remaining: contingencyLeft,
+      // change orders and claims are not ERP records in this system: they are what the controller recorded, or "none recorded"
+      pendingChangeOrdersHe: notes.filter((n) => n.kind === "change_order").map((n) => n.textHe).join("; ") || "לא נרשמו פקודות שינוי ממתינות לאישור (מערכת המידע אינה מנהלת פקודות שינוי; המבקר לא רשם)",
+      claimsHe: notes.filter((n) => n.kind === "claim").map((n) => n.textHe).join("; ") || "לא נרשמו דרישות או תביעות קבלנים פתוחות (המבקר לא רשם)",
+      decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת",
+    },
     risks,
     issues: { open: openIssues, closed: closedIssues },
     verified: state.control.positives.map((p) => ({ titleHe: p.titleHe, textHe: p.textHe })),

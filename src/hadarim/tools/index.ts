@@ -778,9 +778,9 @@ define({
 define({
   name: "add_control_note",
   title: "Add a controller note",
-  description: "Record a note that feeds the report: kind 'risk' (§7 — with exposure, likelihood, trigger, owner), 'event' (§2 material events of the period), 'decision' (a decision management must take, §1), 'assumption' (§11), or 'note' (executive-summary bullet).",
+  description: "Record a note that feeds the report: kind 'risk' (§7 — with exposure, likelihood, trigger, owner), 'event' (§2 material events of the period), 'decision' (a decision management must take, §1), 'assumption' (§11), 'note' (executive-summary bullet), 'change_order' (a change order awaiting approval, §6) or 'claim' (a contractor claim or demand, §6). The ERP holds no change orders or claims, so §6 shows what was recorded here.",
   kind: "write",
-  input: { projectId, controlDate, kind: z.enum(["risk", "event", "decision", "assumption", "note"]), textHe: z.string(), sectionId: sectionId.optional(), exposureHe: z.string().optional(), likelihoodHe: z.string().optional(), triggerHe: z.string().optional(), ownerId: personId.optional(), byId: personId.optional() },
+  input: { projectId, controlDate, kind: z.enum(["risk", "event", "decision", "assumption", "note", "change_order", "claim"]), textHe: z.string(), sectionId: sectionId.optional(), exposureHe: z.string().optional(), likelihoodHe: z.string().optional(), triggerHe: z.string().optional(), ownerId: personId.optional(), byId: personId.optional() },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => addNote(s, a, (a.byId as V2State["operatorId"] | undefined) ?? s.operatorId)[0]);
     return outcome(r, { note: r.state.control.notes[r.state.control.notes.length - 1] });
@@ -790,7 +790,7 @@ define({
 define({
   name: "remove_control_note",
   title: "Remove a controller note",
-  description: "Remove a controller note (risk / event / decision / assumption / note) by id when the user withdraws it.",
+  description: "Remove a controller note (risk / event / decision / assumption / note / change_order / claim) by id when the user withdraws it.",
   kind: "write",
   input: { projectId, controlDate, noteId: z.string() },
   run: async (a) => outcome(await write(a.projectId, a.controlDate, (s) => removeNote(s, a.noteId))),

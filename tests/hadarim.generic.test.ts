@@ -133,3 +133,18 @@ describe("generic bucket names", () => {
     expect(buildReport(pkg, state).sections.byBuildingNoteHe).not.toContain("שאינו בפרויקט");
   });
 });
+
+describe("report statements are backed by data or by the controller", () => {
+  it("the contingency section reports change orders and claims only when the controller recorded them", async () => {
+    const { addNote } = await import("../src/hadarim/engine/operations");
+    const seed = initialState();
+    const bare = buildReport(pkg, seed);
+    expect(bare.contingency.pendingChangeOrdersHe).toContain("לא נרשמו");
+    expect(bare.contingency.claimsHe).toContain("לא נרשמו");
+    let s = addNote(seed, { kind: "change_order", textHe: "פקודת שינוי 7 — תוספת מעקות, 85,000 ₪, ממתינה לאישור" })[0];
+    s = addNote(s, { kind: "claim", textHe: "דרישת קבלן השלד להתייקרות בטון" })[0];
+    const r = buildReport(pkg, s);
+    expect(r.contingency.pendingChangeOrdersHe).toBe("פקודת שינוי 7 — תוספת מעקות, 85,000 ₪, ממתינה לאישור");
+    expect(r.contingency.claimsHe).toBe("דרישת קבלן השלד להתייקרות בטון");
+  });
+});
