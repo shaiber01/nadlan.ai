@@ -10,7 +10,7 @@ Before writing, restate what will change and who decides (`byId` = their person 
 ## ERP records
 - `reallocate_invoice` — invoice to another section. Permission-checked (only people who may write allocations; do not work around a refusal). `asCorrection: true` (default) when this is the controller's correction of a wrong allocation — it appears in report §4ב; `asCorrection: false` when the user is doing plain data entry as the ERP's user (e.g. a bookkeeper keying a change) — change log only.
 - `correct_purchase_order` — `qty` / `unit` (the quantity's unit) / `priceUnit` (the unit the price is quoted in) / `unitPrice`. The amount is locked: the quantity converted into `priceUnit`, times `unitPrice`, must still equal it (the tool refuses otherwise). So an order quoted per טון but delivered in ק״ג is recorded as `qty` in ק״ג with `priceUnit` טון — 12,000 ק״ג × 4,800 ₪ לטון = 57,600 ₪. Same `asCorrection` rule.
-- `set_invoice_building` — `A` / `B` / `משותף` / `null` for the per-building split.
+- `set_invoice_building` — one of the project's buildings (`get_project.buildings`), the shared bucket (`get_project.buckets.shared`, e.g. משותף) or `null`, for the per-building split.
 - `create_invoice` — a new supplier invoice (approved, retention per contract, cumulative computed); returns the assigned number.
 
 A correction that came out of a control finding goes through `route_finding` (in `/bakara-control`), not through these, so decision, correction and verification are recorded together.

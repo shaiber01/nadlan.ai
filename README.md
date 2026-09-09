@@ -1,4 +1,11 @@
-# בקרה — Construction Budget Control AI Service, Interactive Demo
+# בקרה — Construction Budget Control AI Service
+
+Two things live in this repository:
+
+1. **The Hadarim prototype** — a shared Supabase database, a simulated contractor ERP in the browser, a Claude Code agent ("בקרה") that is the budget controller through a general-purpose tool server, real documents the agent reads, a heartbeat over everything new, and the control report on its own page. **How it all works: [`docs/system-overview.md`](docs/system-overview.md).** The section "Hadarim — the control prototype" below is the short version.
+2. **The v1 demo** — the earlier, browser-only interactive demo described next (sixteen replayable scenarios, no database, no agent).
+
+## v1 — the interactive demo
 
 A standalone, Hebrew (RTL) interactive demo of an AI-enabled budget-control service for Israeli construction companies. It simulates a control layer around the customer's existing ERP ("זיו — סביבת הדגמה"), with deterministic rules, sixteen replayable scenarios, free exploration, simulated WhatsApp/email delivery, a frozen report archive with real `.xlsx` attachments, and a deterministic Hebrew Q&A assistant.
 
@@ -29,9 +36,9 @@ Node 22 and npm are the only requirements. The build uses a relative base path, 
 
 **התקדם שבוע** advances the simulated clock (starting 07/09/2026 09:00, Asia/Jerusalem) and creates the due weekly report draft for provider review, once per project and period.
 
-## Hadarim — the control prototype (second surface)
+## Hadarim — the control prototype
 
-A second, independent surface: one project (הדרים, 48.0M budget, 18 sections) in a shared database, and two pages — the simulated contractor ERP ("זיו — סביבת הדגמה", `hadarim.html`, hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`) whose edits are written to the database, and **the control report** (`report.html`, hosted at `https://shaiber01.github.io/nadlan.ai/report.html`) — a live, read-only view of the control the Claude agent ("בקרה") runs and of the report it produces per `budgetcontrolreportstandard.md`, with the saved versions and PDF / Word / Excel exports. The ERP never links to the report; the report's source links open ERP records in a new tab. The v1 demo stays at `https://shaiber01.github.io/nadlan.ai/`. There is one budget controller, the agent; the web app does not run controls or take decisions. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
+The full description is `docs/system-overview.md`; this is the short version. An independent surface: one project (הדרים, 48.0M budget, 18 sections) in a shared database, and two pages — the simulated contractor ERP ("זיו — סביבת הדגמה", `hadarim.html`, hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`) whose edits are written to the database, and **the control report** (`report.html`, hosted at `https://shaiber01.github.io/nadlan.ai/report.html`) — a live, read-only view of the control the Claude agent ("בקרה") runs and of the report it produces per `budgetcontrolreportstandard.md`, with the saved versions and PDF / Word / Excel exports. The ERP never links to the report; the report's source links open ERP records in a new tab. The v1 demo stays at `https://shaiber01.github.io/nadlan.ai/`. There is one budget controller, the agent; the web app does not run controls or take decisions. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
 
 The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab following live):
 
@@ -45,11 +52,11 @@ The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab 
 8. "שמרי את התצורה": what is kept (structure) and never kept (data); "סגרי כגרסה סופית" when the control is closed. Saved report versions are listed in the browser next to the live one.
 9. Questions — what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose — answered from the tools with sources.
 
-The presenter strip switches screens, picks the scene-1 variant, toggles offline work and resets to the seed (two-step; online it restores the database snapshot). Offline (`?offline=1`) the browser uses the generator data only. Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, docx), `e2e/hadarim*.spec.ts` (ERP and the viewer offline) and `e2e/hadarim.db.spec.ts` (`RUN_DB_E2E=1`: the whole loop on the live database — browser edit, control through the tools, viewer, saved version, reset — with element screenshots in `e2e/screenshots/hadarim-v-*.png`).
+The presenter strip switches screens, picks the scene-1 variant, toggles offline work and resets to the seed (two-step; online it restores the database snapshot). Offline (`?offline=1`) the browser uses the generator data only. Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, quality, review, generic, units, heartbeat, budget, documents, docx), `e2e/hadarim*.spec.ts` (ERP and the viewer offline) and `e2e/hadarim.db.spec.ts` (`RUN_DB_E2E=1`: the whole loop on the live database — browser edit, control through the tools, viewer, saved version, reset — with element screenshots in `e2e/screenshots/hadarim-v-*.png`).
 
 ### Database (prototype)
 
-The Hadarim data also lives in a Supabase Postgres project shared by local and hosted runs (`src/hadarim/db/config.ts` holds the URL and the publishable key; the secret key is never committed). Schema and triggers are in `supabase/migrations/`; the change log is written by database triggers whenever an invoice or purchase order changes.
+The Hadarim data also lives in a Supabase Postgres project shared by local and hosted runs (`src/hadarim/db/config.ts` holds the URL and the publishable key; the secret key is never committed). Schema and triggers are in `supabase/migrations/`; the change log is written by database triggers whenever an invoice, a purchase order or a budget change is written with an actor; uploaded documents live in the Storage bucket `documents`.
 
 ```bash
 npm run hadarim:seed    # load the deterministic data package and snapshot it as the seed
@@ -72,7 +79,7 @@ claude --agent bakara        # a whole session as the controller (approve the .m
 # or, in a normal session: "use the bakara agent to run the control for הדרים"
 ```
 
-The tools (`src/hadarim/tools/index.ts`, served by `mcp/bakara-server.ts`) are general-purpose over any project in the database — reads (`get_project`, `get_forecast`, `get_section`, `query_invoices`, `query_change_log`, `search_documents`, …), checks (`run_check`, `run_control`), decisions on findings (`decide_finding`, `route_finding`, `confirm_quote`), attributed writes (`reallocate_invoice`, `correct_purchase_order`, `create_invoice`, `add_forecast_adjustment`, `open_task`, `add_control_note`, `set_project_status`) and the report (`set_report_config`, `build_report`, `finalize_control`). The agent never computes numbers itself; every figure it quotes comes from a tool result, every write is attributed to the person who decided, logged by the database triggers and re-read as verification. The same registry is available from a shell:
+The tools (`src/hadarim/tools/index.ts`, served by `mcp/bakara-server.ts`; 52 of them, listed by group in the overview) are general-purpose over any project in the database — reads (`get_project`, `get_forecast`, `get_section`, `query_invoices`, `query_change_log`, `search_documents`, …), checks (`run_check`, `get_heartbeat_work`), the control and its decisions (`run_control`, `decide_finding`, `route_finding`, `confirm_quote`, `raise_finding`, `record_review_pass`), attributed writes (`reallocate_invoice`, `correct_purchase_order`, `create_invoice`, `add_budget_change`, `add_forecast_adjustment`, `open_task`, `add_control_note`, `set_project_status`), documents (`add_document`, `classify_document`, `set_document_facts`), the heartbeat (`record_heartbeat`) and the report (`set_report_config`, `build_report`, `finalize_control`). The agent never computes numbers itself; every figure it quotes comes from a tool result, every write is attributed to the person who decided, logged by the database triggers and re-read as verification. The same registry is available from a shell:
 
 ```bash
 npm run bakara -- tools                                     # list the tools

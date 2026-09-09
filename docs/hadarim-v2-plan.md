@@ -1,5 +1,7 @@
 # Hadarim demo v2 — engineering handoff plan
 
+> Status log and decisions, oldest first. Sections 1–3, 5 and 6 are the original plan of 2026-09-08 (the product surface they describe — one app with a browser chat — was since replaced); §4b–4e record what was built and decided after that, newest at the end. **How the system works today is in `system-overview.md`.**
+
 Written 2026-09-08 after reading the three new specs. Purpose: let a fresh session build v2 without re-deriving the reconciliation below. Read this first, then the three specs, then the code map at the end.
 
 ## 1. Sources and precedence

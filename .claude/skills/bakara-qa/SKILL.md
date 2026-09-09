@@ -20,6 +20,9 @@ Every figure is quoted from a tool result and named for what it is: נרשם (ח
 | Is a record right | `run_check` for that record |
 | A document's content (quote validity, appendix price, exclusion clause) | `search_documents` → `get_document` |
 | The stored report / a saved version | `build_report` (`summary`), `list_report_versions` |
+| The budget itself: original, approved changes, updated | `list_budget_changes`, `get_forecast` (`originalBudget`, `budgetChanges`, `budget` per section) |
+| Documents nobody processed yet; what was new lately | `search_documents` (`unprocessed: true`), `list_heartbeats` |
+| The bill of quantities by Blue Book chapter | `query_boq` (`chapter`, `byChapter`), `get_section.boqByChapter` |
 
 If the control has not been run yet (`get_project.control.status = idle`), say the figures reflect the previous final control plus the live ERP data, and offer `/bakara-control`.
 
@@ -36,7 +39,7 @@ select section_id, description_he, qty, unit, unit_price, amount, basis, kind fr
 select control_date, status, finalized, operator_id, updated_at from controls where project_id = '<project id>';
 ```
 Take the project id, the control date and supplier ids from `get_project` / `list_suppliers`.
-Tables: `projects, people, suppliers, sections, contracts, documents, invoices, purchase_orders, boq_lines, forecast_versions, forecast_sections, forecast_lines, open_issues, change_log, controls, decisions, forecast_adjustments, data_corrections, audit, report_versions`. Name the table as the source.
+Tables: `projects, people, suppliers, sections, contracts, documents, budget_changes, invoices, purchase_orders, boq_lines, forecast_versions, forecast_sections, forecast_lines, open_issues, change_log, controls, decisions, forecast_adjustments, data_corrections, questions, audit, report_versions, heartbeats`. Name the table as the source.
 
 ## 3. Answer shape
 Number first (thousands separators, ₪, before VAT), then its kind, then the source (tool / table / document), then — if the question is really a decision ("should we fund it from contingency?") — the facts and options; the decision is the user's.

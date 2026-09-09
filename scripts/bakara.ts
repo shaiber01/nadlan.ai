@@ -6,7 +6,7 @@
  *   npm run bakara -- reset [--variant A|B]
  *   npm run bakara -- erp set-section <invoiceId> <sectionId> --by SARIT [--note "..."]
  *   npm run bakara -- erp set-po <poId> --qty 12 --unit טון --price 4800 --price-unit טון --by EYAL
- *   npm run bakara -- erp set-building <invoiceId> <A|B|משותף> --by EYAL
+ *   npm run bakara -- erp set-building <invoiceId> <building|משותף> --by EYAL   # a building of the project, or the shared bucket
  *   npm run bakara -- erp new-invoice --supplier SUP-NTB --docno 2026-087 --date 2026-08-31 --amount 180000 --desc "..." --section 02 [--contract 07-01] [--attachment inv_1147_ntb_partial7] --by SARIT
  *   npm run bakara -- control run [--force]        # runs the checks on the live data, opens the session
  *   npm run bakara -- control show

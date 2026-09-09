@@ -1,5 +1,7 @@
 # nadlan.ai — developer guide
 
+How the whole system works — the ERP mock, the database, documents, the budget, the agent, its tools and skills, the heartbeat, the report — is described in `docs/system-overview.md`; read it first. This file is the working conventions.
+
 This repository is a budget-control prototype for construction projects (Hebrew, RTL). A regular Claude Code session here is a **development** session: you write and change code, migrations, tests and docs. The **budget controller is the `bakara` agent** (`.claude/agents/bakara.md`) with its skills (`.claude/skills/bakara-*`) and its tools (the `bakara` MCP server in `.mcp.json`). Delegate to it, or the user runs it, when the task is to *operate* the system — run a control, decide on findings, change the forecast, produce the report, answer questions about project data. Do not act as the controller from a development session.
 
 ## Running the agent
@@ -19,9 +21,9 @@ This repository is a budget-control prototype for construction projects (Hebrew,
   - `tools/index.ts` — **the tool registry**: general-purpose read/check/decision/write tools over the database with zod schemas; the MCP server and the CLI both call it.
   - `documents/` — real files: `mime.ts` (browser-safe), `extract.ts` (Node: pdf.js text extraction; the agent reads PDFs/images itself with `Read` on the local path `get_document` returns). A document with no `facts_source` is unprocessed; only the agent processes (`classify_document`, `set_document_facts`).
   - `engine/heartbeat.ts` — what is new since the last heartbeat, measured on the change-log id (the watermark in `heartbeats`): changed records, the checks' findings on them, pending documents.
-  - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, attributed ERP writes, realtime, project status), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
+  - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, attributed ERP writes, documents and Storage files, budget changes, heartbeats, realtime, project status), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
   - `features/` — React screens: `erp/` (simulated ERP, including תיקיית מסמכים — upload to the Storage bucket `documents`), `report/` (living report, its own page `report.html`). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
-  - `export/` — Word (`docx.ts`) and Markdown (`markdown.ts`) renderers of the report model.
+  - `export/` — Word (`docx.ts`), Markdown (`markdown.ts`) and Excel (`xlsx.ts`) renderers of the report model.
 - `mcp/bakara-server.ts` — the registry as an MCP server over stdio (`npx vite-node mcp/bakara-server.ts`; stdout is protocol-only, log to stderr).
 - `scripts/` — `bakara.ts` (CLI: demo commands, `heartbeat`, plus `tool <name> [json]` passthrough), `heartbeat.sh` (the agent's heartbeat headless), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
 - `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, the Storage bucket `documents` and the `heartbeats` table, grants and permissive RLS policies (prototype: open access through the publishable key).

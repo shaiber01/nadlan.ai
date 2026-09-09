@@ -1,6 +1,6 @@
 ---
 name: bakara-report
-description: Build, enrich, adapt and deliver the budget-control report per the report standard — executive summary, sections table, forecast changes vs data corrections, material sections, risks, issues, trends, CEO page, Word export — and finalize the control. Use when the control is done or the user asks for the report, its structure, or to add risks/events/assumptions.
+description: Build, enrich, adapt and deliver the budget-control report per the report standard — executive summary, sections table, forecast changes vs data corrections, material sections, risks, issues, trends, CEO page, Word and Excel exports — and finalize the control. Use when the control is done or the user asks for the report, its structure, or to add risks/events/assumptions.
 ---
 
 # The living report
@@ -44,4 +44,4 @@ The sections table's "תקציב מאושר / שינויים / תקציב מעו
 `finalize_control` only when the user says the control is closed; the header then reads "גרסה סופית". There is no mailbox: "שלח לדנה" = hand over the Word path (and the CEO version if configured) and say so plainly.
 
 ## Where people read it
-The web app's "דוח הבקרה" tab shows this control live (rebuilt from the session on every change) and lists the saved versions; nothing is edited there. If the user has it open, they see your decisions as you record them — say so when relevant.
+The report page (`report.html`, hosted at `https://shaiber01.github.io/nadlan.ai/report.html`) shows this control live (rebuilt from the session on every change) and lists the saved versions next to it, with PDF, Word and Excel exports; nothing is edited there, and its source links open the ERP record in a new tab. If the user has it open, they see your decisions as you record them — say so when relevant.
