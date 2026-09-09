@@ -40,7 +40,11 @@ export interface HSupplier {
 export interface HSection {
   id: SectionId;
   nameHe: string;
+  /** Short name for prose and labels ("03-ברזל"). */
+  shortHe: string;
   budget: number;
+  /** Reporting kind: works are procured; overhead is an internal allocation; contingency is the reserve, reported on its own. */
+  kind: "works" | "overhead" | "contingency";
   /** How the section is split per building in the optional secondary view. */
   split: "by_floors" | "by_units" | "shared" | "parking" | "per_building";
   contractIds: string[];

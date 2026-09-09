@@ -5,8 +5,8 @@ import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
 import { db, deleteInvoice, listProjects, resetProject, updateProject } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
-import { SECTION_SHORT_HE, checkAllocation, checkCoverage, checkPrices, checkUnits, positives, quoteFacts, sectionLabel, type HFinding } from "../engine/checks";
-import { confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
+import { sectionShort, checkAllocation, checkCoverage, checkPrices, checkUnits, positives, quoteFacts, sectionLabel, type HFinding } from "../engine/checks";
+import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
 import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
@@ -248,7 +248,7 @@ define({
     return {
       project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
-      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: SECTION_SHORT_HE[s.id], budget: s.budget, split: s.split, contractIds: s.contractIds })),
+      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
       forecastVersions: pkg.forecasts.map((f) => ({ controlDate: f.controlDate, status: f.status, totalEac: f.totalEac })),
       control: { controlDate: c.controlDate, status: c.status, finalized: c.finalized, findings: c.findings.length, openFindings: c.findings.filter((f) => !c.decisions[f.id] || c.decisions[f.id].status === "open" || c.decisions[f.id].pending).length, adjustments: c.adjustments.length, corrections: c.corrections.length, openTasks: c.tasks.filter((t) => t.status !== "closed").length },
@@ -318,7 +318,7 @@ define({
     const invoices = state.erp.invoices.filter((i) => i.sectionId === section.id);
     const approved = invoices.filter((i) => i.status !== "בבדיקה" && i.dateReceived < state.control.controlDate);
     return {
-      section: { ...section, shortHe: SECTION_SHORT_HE[section.id] },
+      section: { ...section, shortHe: sectionShort(section.id) },
       forecast: { budget: ws.budget, recorded: ws.recorded, committed: ws.committed, remainingCommitment: ws.remainingCommitment, uncovered: ws.uncovered, eac: ws.eac, variance: ws.variance, previousEac: ws.previousEac, change: ws.change, basisPct: ws.basisPct, lines: ws.lines },
       contracts: pkg.contracts.filter((c) => c.sectionId === section.id).map((c) => ({ ...c, supplierHe: supplierName(c.supplierId) })),
       invoices: { count: invoices.length, recordedBeforeCutoff: approved.reduce((s, i) => s + i.amount, 0), inReview: invoices.filter((i) => i.status === "בבדיקה").length, rows: invoices.map(invoiceView) },
@@ -600,7 +600,7 @@ define({
   title: "Decide on a finding",
   description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. The engine replies with what follows (a route question, a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
   kind: "decision",
-  input: { projectId, controlDate, findingId: z.string().describe("finding id (e.g. F-ALLOC-1147) or kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
+  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
   run: async (a) => {
     if (!a.choiceId && !a.freeTextHe) throw new Error("נדרש choiceId או freeTextHe");
     let f!: HFinding;
@@ -888,16 +888,12 @@ define({
 define({
   name: "reset_project",
   title: "Reset to seed",
-  description: "DESTRUCTIVE: restore the project's ERP data and change log to the seed snapshot and clear the control session, audit and saved report versions. variant B also removes the seed's last invoice so it can be keyed in live. Confirm with the user first.",
+  description: "DESTRUCTIVE: restore the project's ERP data and change log to the seed snapshot and clear the control session, audit and saved report versions. variant B also removes the seed's script invoice (the one the demo re-allocates) so it can be keyed in live. Confirm with the user first.",
   kind: "destructive",
   input: { projectId, variant: z.enum(["A", "B"]).default("A") },
   run: async (a) => {
     await resetProject(a.projectId);
-    if (a.variant === "B") {
-      const state = await loadState(a.projectId);
-      const last = Math.max(...state.erp.invoices.map((i) => i.id));
-      await deleteInvoice(last, a.projectId);
-    }
+    if (a.variant === "B") await deleteInvoice(SCRIPT_INVOICE_ID, a.projectId);
     const state = await loadState(a.projectId);
     return { ok: true, variant: a.variant, invoices: state.erp.invoices.length, controlStatus: state.control.status, headline: headline(state) };
   },

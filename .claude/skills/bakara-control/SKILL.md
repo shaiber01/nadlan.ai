@@ -26,7 +26,7 @@ For the first open finding (`findings` in order, or `get_control.openFindings[0]
 - **המשמעות** — `meaningHe`, then `impact.labelHe` as "השפעה על התחזית"; `detailsTable` rows when present; `notesHe`.
 - **ההחלטה הנדרשת** — `decision.questionHe` and the options as `[id] label`; say free text is allowed when `decision.freeText` is true.
 
-Stop and wait for the decision. Do not recommend an option unless asked; if asked, reason only from the card's sources.
+Wait for the user's decision before applying anything. Do not recommend an option unless asked; if asked, reason only from the card's sources.
 
 ## 4. Apply the decision
 - `decide_finding` with `findingId` and `choiceId` (or `freeTextHe`). Relay `messagesHe` verbatim — the engine may ask a follow-up:

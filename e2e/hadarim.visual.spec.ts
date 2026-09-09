@@ -24,17 +24,25 @@ async function elementShot(page: Page, testId: string, name: string) {
 }
 
 test.describe("Hadarim — ERP variants and screens", () => {
-  test("scene 1 variant B: a new invoice keyed into שלד gets the script's number and shows in the change log", async ({ page }) => {
+  test("scene 1 variant B: a new invoice keyed into שלד gets the next number and shows in the change log", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("scene1-variant").selectOption("B");
     await expect(page.getByTestId("erp-invoice-row-1147")).toHaveCount(0);
     await page.getByTestId("erp-invoice-new").click();
-    await page.getByTestId("erp-new-prefill").click();
+    // the bookkeeper keys the drainage invoice into שלד (the script's scene 1, variant B)
+    await page.getByTestId("erp-new-supplier").selectOption("SUP-NTB");
+    await page.getByTestId("erp-new-docno").fill("2026-087");
+    await page.getByTestId("erp-new-date").fill("2026-08-31");
+    await page.getByTestId("erp-new-amount").fill("180000");
+    await page.getByTestId("erp-new-desc").fill("עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳");
+    await page.getByTestId("erp-new-section").selectOption("02");
+    await page.getByTestId("erp-new-contract").selectOption("07-01");
+    await page.getByTestId("erp-new-by").selectOption("SARIT");
     await elementShot(page, "erp-invoice-new-form", "erp-new-invoice-form");
     await page.getByTestId("erp-new-save").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("02 — שלד");
-    // the script: "המערכת מקצה חשבון 1147" — variant B seeds the ERP without it
-    await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", "1147");
+    // the ERP numbers invoices sequentially: the new one gets the number after the seed's last
+    await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", /^\d+$/);
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("נקלט");
     // the report viewer sees the new invoice in the live recorded amounts
     await page.getByTestId("erp-nav-report").click();

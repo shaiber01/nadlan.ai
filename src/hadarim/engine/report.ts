@@ -1,6 +1,6 @@
-import { CURRENT_CONTROL, EARLIER_CONTROL_TOTALS, priceAppendixAt } from "../data/generate";
+import { priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { SECTION_SHORT_HE, boqPageFor, documentById, quoteFacts } from "./checks";
+import { boqPageFor, documentById, isContingency, quoteFacts, sectionShort } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
@@ -19,7 +19,7 @@ const pct = (v: number, digits = 1) => `${v.toFixed(digits)}%`;
 const dateHe = (iso: string) => iso.slice(0, 10).split("-").reverse().map((p, i) => (i < 2 ? String(Number(p)) : p)).join(".");
 const monthHe = (ym: string) => (ym.length >= 7 ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : ym);
 const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
-const label = (id: SectionId) => `${id}-${SECTION_SHORT_HE[id]}`;
+const label = (id: SectionId) => `${id}-${sectionShort(id)}`;
 const isolate = (s: string) => `⁨${s}⁩`;
 
 export const MATERIALITY = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
@@ -36,6 +36,7 @@ export interface ReportSource {
 }
 
 export interface ReportHeader {
+  projectNameHe: string;
   projectHe: string;
   companyHe: string;
   cutoffHe: string;
@@ -265,7 +266,7 @@ function sourceForLine(pkg: HadarimPackage, l: HForecastLine, state: V2State): R
 function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): MaterialSection[] {
   const out: MaterialSection[] = [];
   for (const s of wf.sections) {
-    if (s.sectionId === "17") continue;
+    if (isContingency(s.sectionId)) continue;
     const reasons = [
       isMaterial(s) ? (s.change !== 0 ? "שינוי מהבקרה הקודמת" : "סטייה מעל סף המהותיות") : "",
       s.budget > (wf.totalBudget * MATERIALITY.budgetSharePct) / 100 ? `מעל ${MATERIALITY.budgetSharePct}% מהתקציב` : "",
@@ -456,7 +457,7 @@ function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, 
     const exposedQty = s.lines.filter((l) => l.kind === "uncovered" && (l.basis === "appendix" || l.basis === "estimate") && l.qty).reduce((a, l) => a + (l.qty ?? 0), 0);
     if (!exposedQty) continue;
     const unit = priceAppendixAt(contract, state.control.controlDate)?.unit ?? "טון";
-    out.push({ topicHe: `עדכון נוסף במחיר ${SECTION_SHORT_HE[s.sectionId]}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * 100)} לכל 100 ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
+    out.push({ topicHe: `עדכון נוסף במחיר ${sectionShort(s.sectionId)}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * 100)} לכל 100 ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
   }
   // issues open for more than two controls with a stated impact
   for (const i of openIssues.filter((x) => x.stale && x.impactHe !== "—")) {
@@ -491,7 +492,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const variance = wf.totalEac - wf.totalBudget;
   const change = wf.totalEac - wf.previousTotalEac;
   const uncovered: UncoveredBreakdown = uncoveredByBasis(wf);
-  const contingency = wf.sections.find((s) => s.sectionId === "17");
+  const contingency = wf.sections.find((s) => isContingency(s.sectionId));
   const contingencyBudget = contingency?.budget ?? 0;
   const contingencyLeft = contingency?.eac ?? 0;
   const physicalPct = pkg.project.physicalProgressPct ?? null;
@@ -519,8 +520,8 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     previousEac: s.previousEac,
     change: s.change,
     basisPct: s.basisPct,
-    highlighted: s.sectionId !== "17" && (isMaterial(s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
-    isContingency: s.sectionId === "17",
+    highlighted: !isContingency(s.sectionId) && (isMaterial(s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
+    isContingency: isContingency(s.sectionId),
   }));
   const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalBudget, changes: 0, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
 
@@ -537,7 +538,9 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const events = periodEvents(pkg, state, previous.controlDate, controlDate);
 
   // trends
-  const eacSeries = [...Object.entries(EARLIER_CONTROL_TOTALS).map(([d, v]) => ({ labelHe: dateHe(d), value: v })), { labelHe: dateHe(previous.controlDate), value: previous.totalEac }, { labelHe: dateHe(controlDate), value: wf.totalEac }];
+  // every final control before this one (the early ones carry totals only), then the working total
+  const earlier = pkg.forecasts.filter((f) => f.status === "final" && f.controlDate < controlDate).sort((a, b) => a.controlDate.localeCompare(b.controlDate));
+  const eacSeries = [...earlier.map((f) => ({ labelHe: dateHe(f.controlDate), value: f.totalEac })), { labelHe: dateHe(controlDate), value: wf.totalEac }];
   const firstOverrun = eacSeries.filter((p) => p.value > wf.totalBudget).length === 1 && wf.totalEac > wf.totalBudget;
   const priceDriven = state.control.adjustments.some((a) => a.changeType === "price") && !state.control.adjustments.some((a) => a.changeType === "quantity");
   const prevUncovered = uncoveredAt(previous);
@@ -546,7 +549,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     { labelHe: dateHe(controlDate), value: uncovered.total },
   ];
   const uncoveredDeltas = wf.sections
-    .filter((s) => s.sectionId !== "17")
+    .filter((s) => !isContingency(s.sectionId))
     .map((s) => {
       const prevSection = previous.sections!.find((p) => p.sectionId === s.sectionId)!;
       const before = prevSection.lines.filter((l) => l.kind === "uncovered" && l.basis !== "allocation").reduce((a, l) => a + l.amount, 0);
@@ -561,13 +564,13 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
         ["", `בקרה ${dateHe(previous.controlDate)}`, `בקרה ${dateHe(controlDate)}`, "שינוי"],
         ["תחזית כוללת", mil(previous.totalEac), mil(wf.totalEac), `${change >= 0 ? "+" : "−"}${mil(Math.abs(change))}`],
         ...wf.sections
-          .filter((s) => s.change !== 0 && s.sectionId !== "17")
-          .map((s) => [`${SECTION_SHORT_HE[s.sectionId]} — תחזית סעיף`, mil(s.previousEac), mil(s.eac), `${s.change >= 0 ? "+" : "−"}${pct((Math.abs(s.change) / s.previousEac) * 100, 0)}`]),
+          .filter((s) => s.change !== 0 && !isContingency(s.sectionId))
+          .map((s) => [`${sectionShort(s.sectionId)} — תחזית סעיף`, mil(s.previousEac), mil(s.eac), `${s.change >= 0 ? "+" : "−"}${pct((Math.abs(s.change) / s.previousEac) * 100, 0)}`]),
         ...wf.sections
           .filter((s) => state.control.corrections.some((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)))
           .map((s) => {
             const prevRecorded = previous.sections!.find((p) => p.sectionId === s.sectionId)!.recorded;
-            return [`${SECTION_SHORT_HE[s.sectionId]} — נרשם`, mil(prevRecorded), mil(s.recorded), `${s.recorded - prevRecorded >= 0 ? "+" : "−"}${nis(Math.abs(s.recorded - prevRecorded))} (העברה)`];
+            return [`${sectionShort(s.sectionId)} — נרשם`, mil(prevRecorded), mil(s.recorded), `${s.recorded - prevRecorded >= 0 ? "+" : "−"}${nis(Math.abs(s.recorded - prevRecorded))} (העברה)`];
           }),
         ["יתרה לא מכוסה (אומדנים)", mil(prevUncovered), mil(uncovered.total), `${uncovered.total - prevUncovered >= 0 ? "+" : "−"}${mil(Math.abs(uncovered.total - prevUncovered))}`],
         ["נושאים פתוחים", String(previous.openIssues.length), String(openIssues.length), String(openIssues.length - previous.openIssues.length)],
@@ -578,7 +581,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const uncontracted = uncovered.lines.filter((l) => l.basis === "estimate" && !pkg.sections.find((s) => s.id === l.sectionId)?.contractIds.length);
   const uncoveredGroupsHe = [
     uncontracted.length ? `${uncontracted.length === 4 ? "ארבע" : num(uncontracted.length)} חבילות שטרם נחתמו` : "",
-    ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${SECTION_SHORT_HE[l.sectionId]}`),
+    ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${sectionShort(l.sectionId)}`),
     ...uncovered.lines.filter((l) => l.basis === "quote").map((l) => l.descriptionHe.split(" — ")[0]),
     ...uncovered.lines.filter((l) => l.basis === "estimate" && !uncontracted.includes(l)).map((l) => l.descriptionHe.split(" — ")[0]),
   ].filter(Boolean);
@@ -620,6 +623,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
 
   return {
     header: {
+      projectNameHe: pkg.project.nameHe,
       projectHe: `${pkg.project.nameHe} — ${pkg.project.buildings.length} בניינים, ${pkg.project.units} יח״ד`,
       companyHe: pkg.project.companyHe,
       cutoffHe: `נתונים עד ${dateHe(controlDate)} (חשבונות שהתקבלו לפני מועד החתך)`,
@@ -674,4 +678,3 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   };
 }
 
-export { CURRENT_CONTROL };

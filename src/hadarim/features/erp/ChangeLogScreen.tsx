@@ -28,7 +28,7 @@ export function ChangeLogScreen() {
       <div className="erp-filters">
         <label>
           מס׳ רשומה
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="למשל 1147" data-testid="erp-changelog-filter" />
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="מזהה רשומה" data-testid="erp-changelog-filter" />
         </label>
         <span className="erp-count">{num(rows.length)} רשומות</span>
       </div>

@@ -1,13 +1,15 @@
 import { Button } from "../../../components/primitives";
 import { store, useV2State } from "../../app/store";
-import { CURRENT_CONTROL, recordedBySection } from "../../data/generate";
 import { pkg } from "../../engine/commands";
-import { dateHe, nis, sectionShort } from "./format";
+import { recordedBySection } from "../../engine/forecast";
+import { dateHe, nis } from "./format";
 
 /** The ERP's own budget view: approved budget, live recorded amounts, commitments and the LAST APPROVED forecast. */
 export function BudgetScreen() {
   const state = useV2State();
-  const recorded = recordedBySection(state.erp.invoices, CURRENT_CONTROL);
+  const CURRENT_CONTROL = pkg.project.currentControlDate;
+  const recorded = recordedBySection(pkg.sections, state.erp.invoices, CURRENT_CONTROL);
+  const contingency = pkg.sections.find((s) => s.kind === "contingency");
   const lastFinal = [...pkg.forecasts].filter((f) => f.status === "final" && f.sections).sort((a, b) => (a.controlDate < b.controlDate ? 1 : -1))[0];
   const rows = pkg.sections.map((s) => {
     const fc = lastFinal.sections!.find((x) => x.sectionId === s.id)!;
@@ -76,7 +78,7 @@ export function BudgetScreen() {
         </table>
       </div>
       <p className="erp-muted">
-        {sectionShort("17")}: יתרת בלתי צפוי מוצגת כתחזית ללא שימוש. תחזיות קודמות: {pkg.forecasts.filter((f) => f.status === "final").map((f) => `${dateHe(f.controlDate)} — ${nis(f.totalEac)}`).join(" · ")}
+        {contingency ? `${contingency.shortHe}: יתרת הרזרבה מוצגת כתחזית ללא שימוש. ` : ""}תחזיות קודמות: {pkg.forecasts.filter((f) => f.status === "final").map((f) => `${dateHe(f.controlDate)} — ${nis(f.totalEac)}`).join(" · ")}
       </p>
     </div>
   );

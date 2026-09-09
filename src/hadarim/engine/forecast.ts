@@ -1,6 +1,17 @@
-import type { HForecastLine, HForecastVersion, HSectionForecast, HadarimPackage, SectionId } from "../data/types";
-import { recordedBySection } from "../data/generate";
+import type { HForecastLine, HForecastVersion, HInvoice, HSection, HSectionForecast, HadarimPackage, SectionId } from "../data/types";
+import { isContingency } from "./checks";
 import type { ErpState, ForecastAdjustment } from "./model";
+
+/** Recorded cost per section: approved/paid invoices received before the cutoff date, from the live ERP rows. */
+export function recordedBySection(sections: HSection[], invoices: HInvoice[], throughDate: string): Record<SectionId, number> {
+  const out = Object.fromEntries(sections.map((s) => [s.id, 0])) as Record<SectionId, number>;
+  for (const inv of invoices) {
+    if (inv.status === "בבדיקה") continue;
+    if (inv.dateReceived >= throughDate) continue;
+    out[inv.sectionId] = (out[inv.sectionId] ?? 0) + inv.amount;
+  }
+  return out;
+}
 
 /**
  * The working forecast of the current control = the rolled draft, with recorded amounts re-read from the
@@ -33,7 +44,7 @@ const num = (v: number) => v.toLocaleString("he-IL");
 export function workingForecast(pkg: HadarimPackage, erp: ErpState, adjustments: ForecastAdjustment[], controlDate: string): WorkingForecast {
   const draft = pkg.forecasts.find((f) => f.controlDate === controlDate && f.sections)!;
   const previous = pkg.forecasts.filter((f) => f.status === "final" && f.sections && f.controlDate < controlDate).sort((a, b) => (a.controlDate < b.controlDate ? 1 : -1))[0] as HForecastVersion;
-  const recorded = recordedBySection(erp.invoices, controlDate);
+  const recorded = recordedBySection(pkg.sections, erp.invoices, controlDate);
   const sections: WorkingSection[] = draft.sections!.map((s) => {
     const rec = recorded[s.sectionId];
     let lines = s.lines.map((l) => ({ ...l }));
@@ -109,9 +120,9 @@ export interface UncoveredBreakdown {
   allocationTotal: number;
 }
 
-/** Uncovered remainder by basis (standard §1 principle 2). Contingency (17) is reported on its own and excluded here. */
+/** Uncovered remainder by basis (standard §1 principle 2). The contingency section is reported on its own and excluded here. */
 export function uncoveredByBasis(wf: WorkingForecast): UncoveredBreakdown {
-  const all = wf.sections.flatMap((s) => s.lines.filter((l) => l.kind === "uncovered" && l.amount > 0 && s.sectionId !== "17"));
+  const all = wf.sections.flatMap((s) => s.lines.filter((l) => l.kind === "uncovered" && l.amount > 0 && !isContingency(s.sectionId)));
   const lines = all.filter((l) => l.basis !== "allocation");
   const allocations = all.filter((l) => l.basis === "allocation");
   const by = (b: string) => lines.filter((l) => l.basis === b).reduce((a, l) => a + l.amount, 0);
@@ -121,5 +132,5 @@ export function uncoveredByBasis(wf: WorkingForecast): UncoveredBreakdown {
 /** Uncovered procurement at an earlier final control (for the trend), same classification. */
 export function uncoveredAt(version: HForecastVersion): number {
   if (!version.sections) return 0;
-  return version.sections.filter((s) => s.sectionId !== "17").flatMap((s) => s.lines).filter((l) => l.kind === "uncovered" && l.basis !== "allocation" && l.amount > 0).reduce((a, l) => a + l.amount, 0);
+  return version.sections.filter((s) => !isContingency(s.sectionId)).flatMap((s) => s.lines).filter((l) => l.kind === "uncovered" && l.basis !== "allocation" && l.amount > 0).reduce((a, l) => a + l.amount, 0);
 }

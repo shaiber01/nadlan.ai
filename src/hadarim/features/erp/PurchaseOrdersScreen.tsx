@@ -4,7 +4,7 @@ import { store, useUi, useV2State } from "../../app/store";
 import type { HPurchaseOrder, PersonId } from "../../data/types";
 import { pkg, updatePurchaseOrder } from "../../engine/commands";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
-import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName } from "./format";
+import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
 const UNITS = ["ק״ג", "טון", "יח׳", "מ׳", "מ״ר", "מ״ק", "קומפ׳", "חודש", "שעה"];
 
@@ -223,7 +223,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
   const [qty, setQty] = useState(String(po.qty));
   const [unit, setUnit] = useState(po.unit);
   const [unitPrice, setUnitPrice] = useState(String(po.unitPrice));
-  const [byId, setById] = useState<PersonId>("EYAL");
+  const [byId, setById] = useState<PersonId>(defaultActor("פרויקט"));
   const [error, setError] = useState<string | null>(null);
   const q = Number(qty.replace(/[^\d.]/g, ""));
   const p = Number(unitPrice.replace(/[^\d.]/g, ""));

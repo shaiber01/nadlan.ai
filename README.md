@@ -35,7 +35,7 @@ A second, independent surface lives at `hadarim.html` (locally `http://localhost
 
 The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab following live):
 
-1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row (written by a database trigger) appears on the record. (Variant B, chosen in the presenter strip: the ERP starts without 1147; חשבון חדש → מילוי לדוגמה → שמור assigns that number.)
+1. **ERP** → חשבונות ספקים → invoice 1147 → עריכה → סעיף תקציבי 02-שלד, מבצע שרית → שמור. The change-log row (written by a database trigger) appears on the record. (Variant B, chosen in the presenter strip: the ERP starts without 1147; חשבון חדש → key in the invoice → שמור assigns the next number.)
 2. **Agent** (`claude --agent bakara`): "תכיני בקרה תקציבית להדרים". It runs the checks on the live data and brings the first card: "נמצאו 4 ממצאים … אחד מהם ברשומה ששונתה היום".
 3. Allocation (1147): כן, לפיתוח → עדכן. The tool checks permission, writes the ERP, re-reads the record and quotes the verification.
 4. Unit (PO 2291, 12,000 "tons" at 4.8): כן, 12 טון → עדכן or העבר לרועי לביצוע.

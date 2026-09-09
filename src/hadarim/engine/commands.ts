@@ -1,6 +1,7 @@
-import { CURRENT_CONTROL, DEMO_DAY, generateHadarimPackage, priceAppendixAt } from "../data/generate";
-import type { BuildingTag, HInvoice, HadarimPackage, PersonId, SectionId } from "../data/types";
-import { CHECK_STEPS_HE, SECTION_SHORT_HE, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
+import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
+import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
+import { pkg, setPackage } from "./package";
+import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
 import { workingForecast } from "./forecast";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
 
@@ -9,15 +10,16 @@ import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type
  * The package (static data) is passed in so commands stay pure and testable.
  */
 
-/**
- * The project package the engine works on. Starts as the deterministic generator output (offline mode,
- * tests) and is replaced by the database load when the app or the CLI connects — importers see the
- * new value because ES module bindings are live.
- */
-export let pkg: HadarimPackage = generateHadarimPackage();
+export { pkg, setPackage, SCRIPT_INVOICE_ID };
 
-export function setPackage(next: HadarimPackage): void {
-  pkg = next;
+/** Who operates the control by default: the project manager if there is one, else the first person of the project. */
+export function defaultOperatorId(): PersonId {
+  return pkg.people.find((p) => p.roleHe.includes("פרויקט"))?.id ?? pkg.people[0].id;
+}
+
+/** The person who handles bookkeeping referrals: the accounting role if there is one, else someone who may write allocations. */
+function accountantId(): PersonId {
+  return pkg.people.find((p) => p.roleHe.includes("חשבונות"))?.id ?? pkg.people.find((p) => p.canWriteAllocation)?.id ?? pkg.people[0].id;
 }
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
@@ -47,20 +49,23 @@ function audit(state: V2State, byId: PersonId, textHe: string, recordRef?: { typ
   return { ...s, audit: [...s.audit, { id, at: s.clock, byId, textHe, recordRef }] };
 }
 
-/** The script's invoice: exists in the seed for variant A; keyed in live (and given this number) in variant B. */
-export const SCRIPT_INVOICE_ID = 1147;
-
+/**
+ * The offline starting state: the package's ERP rows, no control yet, the project's current control date.
+ * Variant B removes the seed's script invoice so it can be keyed in live. The clock is the seed's demo
+ * day; connected to the database the session gets the real time.
+ */
 export function initialState(variant: Scene1Variant = "A"): V2State {
   const invoices = variant === "B" ? pkg.invoices.filter((i) => i.id !== SCRIPT_INVOICE_ID) : pkg.invoices;
   const changeLog = variant === "B" ? pkg.changeLog.filter((c) => !(c.recordType === "invoice" && c.recordId === String(SCRIPT_INVOICE_ID))) : pkg.changeLog;
+  const controlDate = pkg.project.currentControlDate;
   return {
     version: 1,
     variant,
     clock: `${DEMO_DAY}T09:00`,
-    operatorId: "EYAL",
+    operatorId: defaultOperatorId(),
     erp: { invoices, purchaseOrders: pkg.purchaseOrders, changeLog },
     // issues carried from the previous control live in the session's task list (the database holds them in the same table)
-    control: { ...emptySession(CURRENT_CONTROL), tasks: carriedIssues(pkg, CURRENT_CONTROL) },
+    control: { ...emptySession(controlDate), tasks: carriedIssues(pkg, controlDate) },
     savedConfig: null,
     audit: [],
     counters: {},
@@ -97,9 +102,8 @@ export interface NewInvoiceInput {
 
 export function createInvoice(state: V2State, input: NewInvoiceInput): [V2State, HInvoice] {
   if (!(input.amount > 0)) throw new Error("סכום החשבון חייב להיות חיובי");
-  const ids = new Set(state.erp.invoices.map((i) => i.id));
-  // the script's number is reused when the seed was prepared without it (variant B); otherwise the next free number
-  const id = ids.has(SCRIPT_INVOICE_ID) ? Math.max(...ids) + 1 : SCRIPT_INVOICE_ID;
+  // the ERP numbers invoices sequentially
+  const id = state.erp.invoices.reduce((max, i) => Math.max(max, i.id), 0) + 1;
   const contract = input.contractId ? pkg.contracts.find((c) => c.id === input.contractId) : undefined;
   const prev = contract ? state.erp.invoices.filter((i) => i.contractId === contract.id && i.status !== "בבדיקה").reduce((a, i) => Math.max(a, i.cumulativeNow ?? 0), 0) : null;
   const retentionPct = contract?.retentionPct ?? 0;
@@ -267,7 +271,7 @@ function decideAllocation(state: V2State, f: HFinding, choiceId: string | null, 
     return nextFinding(s);
   }
   if (!yes) {
-    let s = setDecision(state, f.id, { status: "referred", ownerId: "SARIT", auditHe: "הועבר לבירור" });
+    let s = setDecision(state, f.id, { status: "referred", ownerId: accountantId(), auditHe: "הועבר לבירור" });
     s = push(s, { role: "system", kind: "text", textHe: `נרשם כ״לא בטוח״. הממצא יישאר פתוח ויועבר להנהלת חשבונות לבירור; הדוח יציג את ${nis(invoice.amount)} כ״בבירור״ בין ${sectionLabel(invoice.sectionId)} ל-${sectionLabel(contract.sectionId)}.` });
     return nextFinding(s);
   }
@@ -330,7 +334,7 @@ function decidePrice(state: V2State, f: HFinding, choiceId: string | null): V2St
   const contract = contractWithAppendices(pkg, f.sectionId)!;
   const appendix = priceAppendixAt(contract, state.control.controlDate)!;
   const unit = appendixUnit(appendix);
-  const short = SECTION_SHORT_HE[f.sectionId];
+  const short = sectionShort(f.sectionId);
   const qty = line.qty ?? 0;
   if (choiceId === "partial") {
     let s = setDecision(state, f.id, { status: "referred", ownerId: state.operatorId, auditHe: "נדרש פירוט הכמות במחיר הישן" });
@@ -467,7 +471,7 @@ export function confirmQuote(state: V2State, findingId: string, accept: boolean)
   const wf = workingForecast(pkg, s.erp, s.control.adjustments, s.control.controlDate);
   s = push(s, { role: "system", kind: "text", textHe: `נוסף לתחזית: ${nis(quote.amount)} · אומדן · טרם הוזמן. לא מוצג כהתחייבות. נפתח נושא לטיפול: ״${task.titleHe}״ · אחראי: ${personName(s.operatorId)}${validUntil ? ` · יעד: לפני פקיעת ההצעה (${dateHe(validUntil)})` : ""}.` });
   s = push(s, { role: "system", kind: "log", textHe: `תחזית בכותרת: ${mil(wf.totalEac)}` });
-  s = audit(s, s.operatorId, `תחזית ${SECTION_SHORT_HE[f.sectionId]}: נוסף אומדן ${nis(quote.amount)} ל${item} לפי הצעת ${supplierHe}`, { type: "forecast", id: f.record.id });
+  s = audit(s, s.operatorId, `תחזית ${sectionShort(f.sectionId)}: נוסף אומדן ${nis(quote.amount)} ל${item} לפי הצעת ${supplierHe}`, { type: "forecast", id: f.record.id });
   return nextFinding(tick(s));
 }
 
@@ -533,7 +537,7 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
     const [s2, taskId] = nextId(s, "TASK");
     s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון כמות ויחידה בהזמנה ${po.id}`, sectionId: po.sectionId, ownerId: executor, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }], corrections: [...s2.control.corrections, { id: `COR-${po.id}`, recordType: "po", recordId: String(po.id), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: "ללא השפעה בין סעיפים — ממתין לביצוע", findingId, at: s.clock, status: "pending_execution" }] } };
     s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: executor, auditHe: `הועבר ל${personName(executor)} לביצוע: ${before} → ${after}` });
-    s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(executor)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע.${remainder ? ` לתחזית: הזמנה ${po.id} היא חלק מיתרת ה${SECTION_SHORT_HE[po.sectionId]} (${num(remainder.qty ?? 0)} ${proposed.unit}) שכבר בתחזית — לא נספרת פעמיים.` : ""}` });
+    s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(executor)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע.${remainder ? ` לתחזית: הזמנה ${po.id} היא חלק מיתרת ה${sectionShort(po.sectionId)} (${num(remainder.qty ?? 0)} ${proposed.unit}) שכבר בתחזית — לא נספרת פעמיים.` : ""}` });
     return nextFinding(s);
   }
   return s;
@@ -590,7 +594,7 @@ export function setReportConfig(state: V2State, patch: Partial<V2State["control"
 /** Scene 7: "[שלח לדנה]" — a simulated hand-off; the demo has no mailbox, so the send is logged and audited. */
 export function sendReport(state: V2State, toId: PersonId): V2State {
   const to = pkg.people.find((p) => p.id === toId)!;
-  const version = state.control.reportConfig.ceoVersion && toId === "DANA" ? "הגרסה למנכ״לית" : "הדוח המלא";
+  const version = state.control.reportConfig.ceoVersion && /^מנכ/.test(to.roleHe) ? "הגרסה למנכ״לית" : "הדוח המלא";
   // a button action, not a chat turn: the exports on the same message stay available afterwards
   const month = `${state.control.controlDate.slice(5, 7)}/${state.control.controlDate.slice(0, 4)}`;
   const s = push(state, { role: "system", kind: "log", textHe: `נשלח ל${to.nameHe} (${to.roleHe}): ${version} של בקרה ${month}, ${state.control.finalized ? "גרסה סופית" : "טיוטה"} · קישור לאותה גרסת בקרה · ${dateHe(state.clock)} ${state.clock.slice(11, 16)}` });

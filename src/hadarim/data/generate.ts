@@ -111,25 +111,28 @@ export const suppliers: HSupplier[] = [
 ];
 
 export const sections: HSection[] = [
-  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", budget: 1_900_000, split: "shared", contractIds: [] },
-  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", budget: 12_600_000, split: "by_floors", contractIds: ["02-01"] },
-  { id: "03", nameHe: "אספקת ברזל זיון", budget: 3_000_000, split: "by_floors", contractIds: ["03-F"] },
-  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", budget: 2_900_000, split: "shared", contractIds: ["04-01"] },
-  { id: "05", nameHe: "איטום", budget: 900_000, split: "per_building", contractIds: ["05-01"] },
-  { id: "06", nameHe: "בנייה (בלוקים) וטיח", budget: 2_400_000, split: "by_floors", contractIds: ["06-01"] },
-  { id: "07", nameHe: "פיתוח ותשתיות חוץ", budget: 3_200_000, split: "shared", contractIds: ["07-01"] },
-  { id: "08", nameHe: "אינסטלציה ותברואה", budget: 2_300_000, split: "by_units", contractIds: ["08-01"] },
-  { id: "09", nameHe: "חשמל ותקשורת", budget: 2_600_000, split: "by_units", contractIds: ["09-01"] },
-  { id: "10", nameHe: "מיזוג אוויר", budget: 1_500_000, split: "by_units", contractIds: ["10-01"] },
-  { id: "11", nameHe: "אלומיניום", budget: 2_000_000, split: "by_units", contractIds: ["11-01"] },
-  { id: "12", nameHe: "ריצוף וחיפוי", budget: 2_700_000, split: "by_units", contractIds: [] },
-  { id: "13", nameHe: "נגרות, מסגרות ומעקות", budget: 1_700_000, split: "by_units", contractIds: [] },
-  { id: "14", nameHe: "מעליות", budget: 1_300_000, split: "per_building", contractIds: ["14-01"] },
-  { id: "15", nameHe: "צבע וגבס", budget: 1_100_000, split: "by_units", contractIds: [] },
-  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", budget: 1_200_000, split: "parking", contractIds: [] },
-  { id: "17", nameHe: "בלתי צפוי", budget: 1_500_000, split: "shared", contractIds: [] },
-  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", budget: 3_200_000, split: "shared", contractIds: [] },
+  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", shortHe: "ארגון אתר", budget: 1_900_000, kind: "works", split: "shared", contractIds: [] },
+  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", shortHe: "שלד", budget: 12_600_000, kind: "works", split: "by_floors", contractIds: ["02-01"] },
+  { id: "03", nameHe: "אספקת ברזל זיון", shortHe: "ברזל", budget: 3_000_000, kind: "works", split: "by_floors", contractIds: ["03-F"] },
+  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", shortHe: "עפר ודיפון", budget: 2_900_000, kind: "works", split: "shared", contractIds: ["04-01"] },
+  { id: "05", nameHe: "איטום", shortHe: "איטום", budget: 900_000, kind: "works", split: "per_building", contractIds: ["05-01"] },
+  { id: "06", nameHe: "בנייה (בלוקים) וטיח", shortHe: "בנייה וטיח", budget: 2_400_000, kind: "works", split: "by_floors", contractIds: ["06-01"] },
+  { id: "07", nameHe: "פיתוח ותשתיות חוץ", shortHe: "פיתוח", budget: 3_200_000, kind: "works", split: "shared", contractIds: ["07-01"] },
+  { id: "08", nameHe: "אינסטלציה ותברואה", shortHe: "אינסטלציה", budget: 2_300_000, kind: "works", split: "by_units", contractIds: ["08-01"] },
+  { id: "09", nameHe: "חשמל ותקשורת", shortHe: "חשמל", budget: 2_600_000, kind: "works", split: "by_units", contractIds: ["09-01"] },
+  { id: "10", nameHe: "מיזוג אוויר", shortHe: "מיזוג", budget: 1_500_000, kind: "works", split: "by_units", contractIds: ["10-01"] },
+  { id: "11", nameHe: "אלומיניום", shortHe: "אלומיניום", budget: 2_000_000, kind: "works", split: "by_units", contractIds: ["11-01"] },
+  { id: "12", nameHe: "ריצוף וחיפוי", shortHe: "ריצוף", budget: 2_700_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "13", nameHe: "נגרות, מסגרות ומעקות", shortHe: "נגרות", budget: 1_700_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "14", nameHe: "מעליות", shortHe: "מעליות", budget: 1_300_000, kind: "works", split: "per_building", contractIds: ["14-01"] },
+  { id: "15", nameHe: "צבע וגבס", shortHe: "צבע וגבס", budget: 1_100_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", shortHe: "מערכות חניון", budget: 1_200_000, kind: "works", split: "parking", contractIds: [] },
+  { id: "17", nameHe: "בלתי צפוי", shortHe: "בלתי צפוי", budget: 1_500_000, kind: "contingency", split: "shared", contractIds: [] },
+  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", shortHe: "הנהלה", budget: 3_200_000, kind: "overhead", split: "shared", contractIds: [] },
 ];
+
+/** The seed's "script invoice": present in variant A (re-allocated live in the demo), removed in variant B (keyed in live). */
+export const SCRIPT_INVOICE_ID = 1147;
 
 export const contracts: HContract[] = [
   {

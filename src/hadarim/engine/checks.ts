@@ -1,6 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
 import type { HBoqLine, HContract, HDocument, HForecastVersion, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, QuoteFacts, SectionId } from "../data/types";
 import type { ErpState } from "./model";
+import { pkg } from "./package";
 
 /**
  * The control checks: generic rules over any project's data. Each finding carries its sources (records
@@ -54,29 +55,19 @@ export interface CheckResult {
   checkedHe: string[];
 }
 
-export const SECTION_SHORT_HE: Record<SectionId, string> = {
-  "01": "ארגון אתר",
-  "02": "שלד",
-  "03": "ברזל",
-  "04": "עפר ודיפון",
-  "05": "איטום",
-  "06": "בנייה וטיח",
-  "07": "פיתוח",
-  "08": "אינסטלציה",
-  "09": "חשמל",
-  "10": "מיזוג",
-  "11": "אלומיניום",
-  "12": "ריצוף",
-  "13": "נגרות",
-  "14": "מעליות",
-  "15": "צבע וגבס",
-  "16": "מערכות חניון",
-  "17": "בלתי צפוי",
-  "18": "הנהלה",
-};
+/** Short name of a section from the project's data ("ברזל"); the id when the section is unknown. */
+export function sectionShort(id: SectionId, p: HadarimPackage = pkg): string {
+  return p.sections.find((s) => s.id === id)?.shortHe ?? id;
+}
 
-export function sectionLabel(id: SectionId): string {
-  return `${id}-${SECTION_SHORT_HE[id]}`;
+/** "03-ברזל" */
+export function sectionLabel(id: SectionId, p: HadarimPackage = pkg): string {
+  return `${id}-${sectionShort(id, p)}`;
+}
+
+/** The reserve section (kind = contingency): reported on its own, never counted as an estimate. */
+export function isContingency(id: SectionId, p: HadarimPackage = pkg): boolean {
+  return p.sections.find((s) => s.id === id)?.kind === "contingency";
 }
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
@@ -172,13 +163,13 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
     const log = erp.changeLog.filter((c) => c.recordType === "invoice" && c.recordId === String(inv.id));
     const sources: HSource[] = [
       { kind: "invoice", refId: String(inv.id), labelHe: `חשבון ${inv.id} · ${supplier?.nameHe} · ${nis(inv.amount)} · סעיף: ${sectionLabel(wrong)} · תיאור: ״${inv.descriptionHe}״`, fieldHe: "סעיף תקציבי", valueHe: sectionLabel(wrong), documentId: inv.attachmentId ?? undefined, anchor: "description" },
-      { kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${SECTION_SHORT_HE[wrong]}`, documentId: contract.documentId, anchor: "included" },
+      { kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${sectionShort(wrong)}`, documentId: contract.documentId, anchor: "included" },
     ];
     if (wrongMainContract) {
       const mainSupplier = pkg.suppliers.find((s) => s.id === wrongMainContract.supplierId);
-      sources.push({ kind: "contract", refId: wrongMainContract.id, labelHe: `חוזה ${SECTION_SHORT_HE[wrong]} (${mainSupplier?.nameHe}, חוזה ${wrongMainContract.id}) · ${supplier?.nameHe} אינו קבלן משנה מאושר` });
+      sources.push({ kind: "contract", refId: wrongMainContract.id, labelHe: `חוזה ${sectionShort(wrong)} (${mainSupplier?.nameHe}, חוזה ${wrongMainContract.id}) · ${supplier?.nameHe} אינו קבלן משנה מאושר` });
     }
-    if (history.length) sources.push({ kind: "history", refId: inv.supplierId, labelHe: `${num(history.length)} חשבונות קודמים של ${supplier?.nameHe} — כולם שויכו ל-${historySections.map(sectionLabel).join(", ")}` });
+    if (history.length) sources.push({ kind: "history", refId: inv.supplierId, labelHe: `${num(history.length)} חשבונות קודמים של ${supplier?.nameHe} — כולם שויכו ל-${historySections.map((id) => sectionLabel(id, pkg)).join(", ")}` });
     for (const entry of log) sources.push({ kind: "changelog", refId: entry.id, labelHe: `יומן שינויים: ${entry.field} · ${entry.after} · ${dateHe(entry.at)} ${entry.at.slice(11, 16)} · ${pkg.people.find((p) => p.id === entry.byId)?.nameHe ?? entry.byId}` });
     out.push({
       id: `F-ALLOC-${inv.id}`,
@@ -186,9 +177,9 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       titleHe: `שיוך חשבון ${inv.id} — ${supplier?.nameHe}`,
       problemHe: `חשבון ${inv.id} של ${supplier?.nameHe}, ${nis(inv.amount)}, שויך לסעיף ${sectionLabel(wrong)}. תיאור החשבון והחוזה מצביעים על ${sectionLabel(right)}.`,
       sources,
-      meaningHe: `${SECTION_SHORT_HE[wrong]} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${SECTION_SHORT_HE[right]} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
+      meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם העבודה שייכת ל${SECTION_SHORT_HE[right]}?`, options: [{ id: "yes_target", labelHe: `כן, ל${SECTION_SHORT_HE[right]}` }, { id: "no_stay", labelHe: `לא, נשאר ב${SECTION_SHORT_HE[wrong]}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן, ל${sectionShort(right)}` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
       sectionId: wrong,
       record: { type: "invoice", id: String(inv.id) },
     });
@@ -289,11 +280,11 @@ export function checkPrices(pkg: HadarimPackage, erp: ErpState, draft: HForecast
       out.push({
         id: `F-PRICE-${line.id}`,
         kind: "price",
-        titleHe: `מחיר יתרת ${SECTION_SHORT_HE[line.sectionId]} בתחזית`,
-        problemHe: `יתרת ה${SECTION_SHORT_HE[line.sectionId]} בתחזית (${num(line.qty)} ${unit}) מתומחרת לפי ${num(line.unitPrice)} ₪/${unit}. נספח המחיר העדכני של ${supplier?.nameHe} קובע ${num(current.pricePerTon)} ₪/${unit} מ-${dateHe(current.validFrom)}.`,
+        titleHe: `מחיר יתרת ${sectionShort(line.sectionId)} בתחזית`,
+        problemHe: `יתרת ה${sectionShort(line.sectionId)} בתחזית (${num(line.qty)} ${unit}) מתומחרת לפי ${num(line.unitPrice)} ₪/${unit}. נספח המחיר העדכני של ${supplier?.nameHe} קובע ${num(current.pricePerTon)} ₪/${unit} מ-${dateHe(current.validFrom)}.`,
         sources,
         checkHe,
-        meaningHe: `תחזית סעיף ${SECTION_SHORT_HE[line.sectionId]}: ${nis(recorded)} + ${nis(newCost)} = ${nis(recorded + newCost)} · תוספת ${nis(impact)} · חריגה של ${(((recorded + newCost - section.budget) / section.budget) * 100).toFixed(0)}% מתקציב הסעיף.`,
+        meaningHe: `תחזית סעיף ${sectionShort(line.sectionId)}: ${nis(recorded)} + ${nis(newCost)} = ${nis(recorded + newCost)} · תוספת ${nis(impact)} · חריגה של ${(((recorded + newCost - section.budget) / section.budget) * 100).toFixed(0)}% מתקציב הסעיף.`,
         impact: { kind: "amount", amount: impact, labelHe: `+${nis(impact)}` },
         decision: { questionHe: "המחיר החדש חל על כל היתרה?", options: [{ id: "all", labelHe: `כן, על כל ${num(line.qty)} ה${unit}` }, { id: "partial", labelHe: "לא — חלק במחיר ישן" }], freeText: false },
         sectionId: line.sectionId,
@@ -332,11 +323,11 @@ export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, only
       id: `F-COV-${line.id}`,
       kind: "coverage",
       titleHe: `${item} — לא מכוסה בחוזה`,
-      problemHe: `בכתב הכמויות (גרסה ${pkg.project.boqVersion.number}) מופיע ${item}, ${num(line.qty)} ${line.unit}. ${contract ? `בחוזה ${supplier?.nameHe} העבודה מוחרגת במפורש${exclusion ? ` (סעיף ${exclusion.clause})` : ""}.` : "אין חוזה לסעיף."} ${previousSection ? `בתחזית הקודמת חבילת ה${SECTION_SHORT_HE[line.sectionId]} סומנה ״${previousSection.coverageNoteHe ?? "מכוסה בחוזה"}״ ואין אומדן נפרד.` : "אין אומדן נפרד בתחזית."}`,
+      problemHe: `בכתב הכמויות (גרסה ${pkg.project.boqVersion.number}) מופיע ${item}, ${num(line.qty)} ${line.unit}. ${contract ? `בחוזה ${supplier?.nameHe} העבודה מוחרגת במפורש${exclusion ? ` (סעיף ${exclusion.clause})` : ""}.` : "אין חוזה לסעיף."} ${previousSection ? `בתחזית הקודמת חבילת ה${sectionShort(line.sectionId)} סומנה ״${previousSection.coverageNoteHe ?? "מכוסה בחוזה"}״ ואין אומדן נפרד.` : "אין אומדן נפרד בתחזית."}`,
       sources: [
         { kind: "boq", refId: line.id, labelHe: `כתב כמויות גרסה ${pkg.project.boqVersion.number} · פרק ${line.chapter} · ״${line.descriptionHe} — ${num(line.qty)} ${line.unit}״`, documentId: page?.id, anchor: page ? "line" : undefined },
         ...(contract ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${supplier?.nameHe}${exclusion ? ` · סעיף ${exclusion.clause}: ״${exclusion.textHe}״` : ""}`, documentId: contract.documentId, anchor: "exclusion" }] : []),
-        ...(previous ? [{ kind: "forecast" as const, refId: `${previous.controlDate}-${line.sectionId}`, labelHe: `תחזית ${dateHe(previous.controlDate)} · חבילת ${SECTION_SHORT_HE[line.sectionId]} · ״${previousSection?.coverageNoteHe ?? "מכוסה בחוזה"}״ · אומדן נוסף: 0` }] : []),
+        ...(previous ? [{ kind: "forecast" as const, refId: `${previous.controlDate}-${line.sectionId}`, labelHe: `תחזית ${dateHe(previous.controlDate)} · חבילת ${sectionShort(line.sectionId)} · ״${previousSection?.coverageNoteHe ?? "מכוסה בחוזה"}״ · אומדן נוסף: 0` }] : []),
       ],
       meaningHe: "יש עבודה בכתב הכמויות שאין לה חוזה ואין לה אומדן.",
       impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },

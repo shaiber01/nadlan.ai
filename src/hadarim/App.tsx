@@ -3,7 +3,7 @@ import { Surface } from "../components/Drawer";
 import { Button } from "../components/primitives";
 import { store, useUi, useV2State } from "./app/store";
 import { DocumentView } from "./components/DocumentView";
-import { pkg } from "./engine/commands";
+import { SCRIPT_INVOICE_ID, pkg } from "./engine/commands";
 import { ErpApp } from "./features/erp/ErpApp";
 import { RecordModal } from "./features/report/RecordModal";
 import { ReportView } from "./features/report/ReportView";
@@ -59,8 +59,8 @@ export function HadarimApp() {
             <label className="h2-presenter-toggle">
               סצנה 1:
               <select value={state.variant} onChange={(e) => chooseVariant(e.target.value as "A" | "B")} data-testid="scene1-variant">
-                <option value="A">א — שינוי שיוך (1147 קיים)</option>
-                <option value="B">ב — קליטת חשבון 1147</option>
+                <option value="A">א — שינוי שיוך (חשבון {SCRIPT_INVOICE_ID} קיים)</option>
+                <option value="B">ב — קליטת החשבון מחדש (ללא {SCRIPT_INVOICE_ID})</option>
               </select>
             </label>
             {pendingVariant ? (

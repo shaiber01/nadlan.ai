@@ -179,7 +179,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     ...(c.note_he ? { noteHe: c.note_he } : {}),
     ...(c.boq_match_verified ? { boqMatchVerified: true } : {}),
   }));
-  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, budget: Number(s.budget), split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
+  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
   const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}) }));

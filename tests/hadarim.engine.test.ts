@@ -43,16 +43,17 @@ describe("Hadarim v2 engine — ERP edits", () => {
     expect(() => updateInvoiceSection(initialState(), 1147, "02", "DANA")).toThrow(/אינו מורשה/);
   });
 
-  it("variant B: the seed has no invoice 1147 and the keyed-in invoice gets that number", () => {
+  it("variant B: the seed has no invoice 1147; the keyed-in invoice gets the next sequential number and the same finding", () => {
     const seed = initialState("B");
     expect(seed.erp.invoices.some((i) => i.id === 1147)).toBe(false);
     expect(seed.erp.changeLog.some((c) => c.recordId === "1147")).toBe(false);
     expect(seed.erp.invoices).toHaveLength(initialState("A").erp.invoices.length - 1);
+    const nextNumber = Math.max(...seed.erp.invoices.map((i) => i.id)) + 1;
     const [s, invoice] = createInvoice(seed, { supplierId: "SUP-NTB", supplierDocNo: "2026-087", date: "2026-08-31", amount: 180_000, descriptionHe: "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳", sectionId: "02", contractId: "07-01", attachmentId: "inv_1147_ntb_partial7", byId: "SARIT" });
-    expect(invoice).toMatchObject({ id: 1147, partialNo: 7, cumulativePrev: 2_100_000, cumulativeNow: 2_280_000, retentionAmt: 9_000, sectionId: "02" });
+    expect(invoice).toMatchObject({ id: nextNumber, partialNo: 7, cumulativePrev: 2_100_000, cumulativeNow: 2_280_000, retentionAmt: 9_000, sectionId: "02" });
     expect(startControl(s, "בקרה").control.findings.map((f) => f.kind).sort()).toEqual(["allocation", "coverage", "price", "unit"]);
-    // variant A keeps numbering sequential for any extra invoice
-    expect(createInvoice(initialState("A"), { supplierId: "SUP-NTB", supplierDocNo: "x", date: "2026-08-31", amount: 1, descriptionHe: "x", sectionId: "07", contractId: null, attachmentId: null, byId: "SARIT" })[1].id).toBeGreaterThan(1147);
+    // numbering is sequential in variant A too
+    expect(createInvoice(initialState("A"), { supplierId: "SUP-NTB", supplierDocNo: "x", date: "2026-08-31", amount: 1, descriptionHe: "x", sectionId: "07", contractId: null, attachmentId: null, byId: "SARIT" })[1].id).toBe(Math.max(...initialState("A").erp.invoices.map((i) => i.id)) + 1);
   });
 
   it("keeps the PO amount fixed when correcting quantity and unit", () => {

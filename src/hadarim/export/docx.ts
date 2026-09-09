@@ -256,7 +256,7 @@ export function buildReportDocument(report: ReportModel, tab: "full" | "ceo"): D
   const sections = (tab === "ceo" ? ceoSections(report) : fullReportSections(report)).map((s) => ({ ...s, footers: { default: footer() } }));
   return new Document({
     creator: "מערכת הבקרה — הדגמה",
-    title: `בקרה תקציבית — הדרים — ${report.header.controlLabelHe}`,
+    title: `בקרה תקציבית — ${report.header.projectNameHe} — ${report.header.controlLabelHe}`,
     description: DEMO_FOOTER,
     styles: {
       default: {

@@ -29,7 +29,7 @@ import { DEFAULT_PROJECT_ID } from "../src/hadarim/db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../src/hadarim/db/session";
 import type { HFinding } from "../src/hadarim/engine/checks";
 import { sectionLabel } from "../src/hadarim/engine/checks";
-import { confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
+import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, defaultOperatorId, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { ChatMessage, RouteId, V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -151,7 +151,7 @@ async function apply(state: V2State, fn: (s: V2State) => V2State): Promise<V2Sta
 }
 
 function by(): PersonId {
-  return ((opts.by as string | undefined) ?? "EYAL") as PersonId;
+  return ((opts.by as string | undefined) ?? defaultOperatorId()) as PersonId;
 }
 
 async function main() {
@@ -169,8 +169,8 @@ async function main() {
   } else if (command === "reset") {
     await resetProject(projectId);
     const variant = ((opts.variant as string | undefined) ?? "A").toUpperCase();
-    if (variant === "B") await deleteInvoice(1147, projectId);
-    say(`✓ הפרויקט ${projectId} אופס לנתוני הבסיס${variant === "B" ? " (גרסה ב׳: חשבון 1147 הוסר לקליטה חיה)" : ""}`);
+    if (variant === "B") await deleteInvoice(SCRIPT_INVOICE_ID, projectId);
+    say(`✓ הפרויקט ${projectId} אופס לנתוני הבסיס${variant === "B" ? ` (גרסה ב׳: חשבון ${SCRIPT_INVOICE_ID} הוסר לקליטה חיה)` : ""}`);
     result = { ok: true, variant };
   } else if (command === "status") {
     const state = await loadState(projectId);

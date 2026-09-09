@@ -5,7 +5,7 @@ description: Answer questions about a project's budget, forecast, findings, cont
 
 # Answering questions with sources
 
-Every figure is quoted from a tool result and named for what it is: נרשם (חשבונות מאושרים), התחייבות (חוזה חתום / הזמנה מאושרת), אומדן (הצעת מחיר / אומדן פנימי / נספח מחיר). Never derive a total yourself — take it from a tool (`totalAmount`, `totals`, `recorded`) or ask the database for the sum.
+Every figure is quoted from a tool result and named for what it is: נרשם (חשבונות מאושרים), התחייבות (חוזה חתום / הזמנה מאושרת), אומדן (הצעת מחיר / אומדן פנימי / נספח מחיר). The tools recalculate from the live database on every call; take totals from them (`totalAmount`, `totals`, `recorded`) or ask the database for the sum rather than adding numbers up yourself.
 
 ## 1. Pick the tool
 | Question | Tool |

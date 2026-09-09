@@ -18,7 +18,7 @@ function table(head: string[], rows: (string | number)[][]): string {
 export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "full"): string {
   const h = report.header;
   const out: string[] = [];
-  const title = tab === "ceo" ? "בקרה תקציבית — הדרים · גרסה למנכ״לית" : "דוח בקרה תקציבית — הדרים";
+  const title = tab === "ceo" ? `בקרה תקציבית — ${report.header.projectNameHe} · גרסה למנכ״לית` : `דוח בקרה תקציבית — ${report.header.projectNameHe}`;
   out.push(`# ${title}`, "", `${h.controlLabelHe} · ${h.cutoffHe} · ${h.previousControlHe}`, `${h.budgetVersionHe} · ${h.boqVersionHe}`, `${h.preparedByHe} · ${h.approvedByHe} · ${h.distributionHe}`, h.sourcesHe, "");
 
   const exec = report.executive;

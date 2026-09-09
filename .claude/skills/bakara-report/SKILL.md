@@ -5,7 +5,7 @@ description: Build, enrich, adapt and deliver the budget-control report per the 
 
 # The living report
 
-The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`. You deliver it, explain it and shape it; you never restate a number that is not in it, and never recompute.
+The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`; every call rebuilds it from the live database, so call it again whenever something changed. You deliver it, explain it and shape it; you never restate a number that is not in it, and you do not redo its arithmetic by hand.
 
 ## Build and deliver
 1. `build_report` (default `format: "summary"`). Give the user:
@@ -17,7 +17,7 @@ The report is produced by `build_report` from the current state per `budgetcontr
 2. The full text: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
 3. To hand over: `build_report` with `format: "docx"`, a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` — the Word file path is in `path`, the stored version id in `versionId`. `list_report_versions` lists what was saved.
 
-If the user disputes a figure, point to the report section and its source; the underlying data is in `get_forecast` / `get_section`. Do not compute.
+If the user disputes a figure, point to the report section and its source and pull the underlying data with `get_forecast` / `get_section` (which recalculate from the database); do not work the number out by hand.
 
 ## Enrich before delivering
 What the data cannot know, the controller records — each note lands in the right section of the report:

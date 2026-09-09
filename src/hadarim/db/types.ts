@@ -1143,6 +1143,7 @@ export type Database = {
         Row: {
           budget: number
           id: string
+          kind: string
           name_he: string
           position: number
           project_id: string
@@ -1152,6 +1153,7 @@ export type Database = {
         Insert: {
           budget: number
           id: string
+          kind?: string
           name_he: string
           position: number
           project_id: string
@@ -1161,6 +1163,7 @@ export type Database = {
         Update: {
           budget?: number
           id?: string
+          kind?: string
           name_he?: string
           position?: number
           project_id?: string
