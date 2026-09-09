@@ -56,17 +56,19 @@ describe("Hadarim v2 engine — ERP edits", () => {
     expect(createInvoice(initialState("A"), { supplierId: "SUP-NTB", supplierDocNo: "x", date: "2026-08-31", amount: 1, descriptionHe: "x", sectionId: "07", contractId: null, attachmentId: null, byId: "SARIT" })[1].id).toBe(Math.max(...initialState("A").erp.invoices.map((i) => i.id)) + 1);
   });
 
-  it("keeps the PO amount fixed when correcting quantity and unit", () => {
+  it("recomputes the PO amount from quantity, unit and price", () => {
     const s = updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון", unitPrice: 4800 }, "EYAL");
     expect(s.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4800, amount: 57_600 });
-    expect(() => updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון" }, "EYAL")).toThrow(/57,600/);
   });
 
-  it("the ERP's manual edit can opt out of the amount check to record an inconsistent correction — an injected data-entry fault", () => {
-    const s = updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון" }, "EYAL", undefined, false);
+  it("saves the recomputed amount even when it no longer matches the original order — the amount is derived, not its own field", () => {
+    const s = updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון" }, "EYAL");
     const po = s.erp.purchaseOrders.find((p) => p.id === 2291)!;
-    expect(po).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4.8, amount: 57_600 });
-    expect(Math.round(po.qty * po.unitPrice)).not.toBe(po.amount);
+    expect(po).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4.8, amount: 58 });
+  });
+
+  it("still rejects units that do not convert into one another", () => {
+    expect(() => updatePurchaseOrder(initialState(), 2291, { unit: "מ׳", priceUnit: "טון" }, "EYAL")).toThrow(/אינן ניתנות להמרה/);
   });
 
   it("the ERP can move an order to another budget section; the invoices against it keep theirs, and the change is logged", () => {

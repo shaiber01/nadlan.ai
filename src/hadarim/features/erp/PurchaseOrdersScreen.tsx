@@ -255,7 +255,6 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
   const draft = { qty: q, unit, priceUnit, unitPrice: p };
   const value = Number.isFinite(q) && Number.isFinite(p) ? lineValue(draft) : null;
   const computed = value?.amount ?? null;
-  const mismatch = computed !== po.amount;
   const units = [...new Set([po.unit, po.priceUnit, ...ORDER_UNITS])];
   const sectionChanged = sectionId !== po.sectionId;
   const lineChanged = q !== po.qty || unit !== po.unit || priceUnit !== po.priceUnit || p !== po.unitPrice;
@@ -266,8 +265,8 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
     try {
       store.dispatch((s) => {
         let next = sectionChanged ? updatePurchaseOrderSection(s, po.id, sectionId, byId) : s;
-        // a manual ERP correction may leave the amount inconsistent with the line's own arithmetic (unlike the controller's own correction tool, which stays guarded)
-        if (lineChanged) next = updatePurchaseOrder(next, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId, undefined, false);
+        // the amount is derived: it is recomputed from quantity/unit/price on every save, even when that no longer matches the original order
+        if (lineChanged) next = updatePurchaseOrder(next, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId);
         return next;
       });
       const notes = [sectionChanged ? `סעיף תקציבי: ${sectionShort(po.sectionId)} ← ${sectionShort(sectionId)}` : "", lineChanged ? `${orderLineHe(po)} ← ${orderLineHe(draft)}` : ""].filter(Boolean);
@@ -318,13 +317,9 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
             ))}
           </select>
         </label>
-        <label className="erp-field">
-          <span>סכום ההזמנה (קבוע)</span>
-          <input value={nis(po.amount)} readOnly />
-        </label>
         <label className="erp-field erp-field-wide">
-          <span>הכמות ביחידת המחיר × מחיר היחידה</span>
-          <input value={computed == null ? "—" : `${num(value!.pricedQty!)} ${priceUnit} × ${pricePerUnitHe(p, priceUnit)} = ${nis(computed)}`} readOnly className={mismatch ? "erp-input-warn" : ""} data-testid="erp-po-computed" />
+          <span>סכום ההזמנה (מחושב)</span>
+          <input value={computed == null ? "—" : `${num(value!.pricedQty!)} ${priceUnit} × ${pricePerUnitHe(p, priceUnit)} = ${nis(computed)}`} readOnly data-testid="erp-po-computed" />
         </label>
         <label className="erp-field">
           <span>מבצע השינוי</span>
@@ -337,12 +332,8 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
           </select>
         </label>
       </div>
-      {mismatch && !error && (
-        <p className="erp-warn">
-          {computed == null
-            ? `יחידת הכמות (${unit}) ויחידת המחיר (${priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום. השמירה תידחה.`
-            : `הכמות המומרת ליחידת המחיר × מחיר היחידה (${nis(computed)}) אינם שווים לסכום ההזמנה (${nis(po.amount)}). הסכום ההזמנה יישאר ${nis(po.amount)} ולא יתעדכן אוטומטית לפי החישוב.`}
-        </p>
+      {computed == null && !error && (
+        <p className="erp-warn">{`יחידת הכמות (${unit}) ויחידת המחיר (${priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום. השמירה תידחה.`}</p>
       )}
       {sectionChanged && invoicesAgainst.length > 0 && (
         <p className="erp-warn" data-testid="erp-po-section-warn">
@@ -361,7 +352,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
         <Button size="sm" variant="ghost" onClick={onCancel}>
           ביטול
         </Button>
-        <span className="erp-muted">סכום ההזמנה נעול לאחר אישור; ניתן לשנות את הסעיף התקציבי ולתקן כמות, יחידת הכמות, מחיר יחידה והיחידה שהמחיר נקוב לה. הכמות מומרת ליחידת המחיר לפני הכפל.</span>
+        <span className="erp-muted">ניתן לשנות את הסעיף התקציבי, ולתקן כמות, יחידת הכמות, מחיר יחידה והיחידה שהמחיר נקוב לה — הכמות מומרת ליחידת המחיר לפני הכפל, וסכום ההזמנה מחושב מחדש מהערכים האלה בכל שמירה, גם אם אינו תואם עוד להזמנה המקורית.</span>
       </div>
     </div>
   );
