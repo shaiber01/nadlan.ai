@@ -51,6 +51,27 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     expect(errors).toEqual([]);
   });
 
+  test("the documents folder lists the seed's pages as processed, opens them, and uploads only with the database", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await fresh(page);
+    await page.getByTestId("erp-nav-documents").click();
+    await expect(page.getByTestId("erp-documents")).toBeVisible();
+    await expect(page.getByTestId("erp-doc-pending")).toHaveText("כל המסמכים עובדו");
+    const rows = page.locator("[data-testid^='erp-doc-row-']");
+    expect(await rows.count()).toBeGreaterThan(3);
+    await expect(rows.first()).toHaveAttribute("data-status", "done");
+    await shot(page, "07-documents-folder");
+    await rows.first().click();
+    await expect(page.getByTestId("document-view")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("erp-doc-upload-toggle").click();
+    await expect(page.getByTestId("erp-doc-upload-form")).toBeVisible();
+    await expect(page.getByTestId("erp-doc-upload-form")).toContainText("דורשת חיבור למסד הנתונים");
+    await expect(page.getByTestId("erp-doc-submit")).toBeDisabled();
+    expect(errors).toEqual([]);
+  });
+
   test("the report tab is a read-only viewer: draft before any control, live ERP data, exports, no controls", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));

@@ -69,7 +69,8 @@ export function initialState(variant: Scene1Variant = "A"): V2State {
     control: { ...emptySession(controlDate), tasks: carriedIssues(pkg, controlDate) },
     savedConfig: null,
     audit: [],
-    counters: {},
+    // offline change-log ids continue the seed's numbering, so "newer than" works on the id like it does on the database's identity column
+    counters: { CL: changeLog.reduce((m, c) => Math.max(m, Number(String(c.id).replace(/^\D+/, "")) || 0), 0) },
   };
 }
 

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { HInvoice, HPurchaseOrder } from "../data/types";
-import { deleteInvoice, getReportVersion, listReportVersions, loadErp, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, type ReportVersionSummary } from "../db/client";
+import { addDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
+import { mimeTypeFor } from "../documents/mime";
+import type { HDocument } from "../data/types";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState } from "../db/session";
 import { SCRIPT_INVOICE_ID, initialState } from "../engine/commands";
@@ -16,7 +18,7 @@ import type { Scene1Variant, V2State } from "../engine/model";
  * the generator data in the browser only.
  */
 
-export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" | "change_log";
+export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" | "change_log" | "documents";
 export type DbStatus = "offline" | "loading" | "online" | "error";
 
 export interface UiState {
@@ -95,7 +97,7 @@ function requestedErp(): Partial<UiState["erp"]> | null {
     const q = new URLSearchParams(location.search);
     const screen = q.get("screen") as ErpScreen | null;
     const out: Partial<UiState["erp"]> = {};
-    if (screen && ["invoices", "purchase_orders", "contracts", "budget", "change_log"].includes(screen)) out.screen = screen;
+    if (screen && ["invoices", "purchase_orders", "contracts", "budget", "change_log", "documents"].includes(screen)) out.screen = screen;
     if (q.get("invoice")) out.invoiceId = Number(q.get("invoice"));
     if (q.get("po")) out.poId = Number(q.get("po"));
     if (q.get("contract")) out.contractId = q.get("contract");
@@ -175,6 +177,30 @@ class HadarimStore {
       await this.loadFromDb();
     } catch (e) {
       this.setDb({ error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  /**
+   * Upload a real document to the project folder (Storage + a folder row). The row stays unprocessed until the
+   * agent reads it; the browser never extracts or interprets anything. Needs the database.
+   */
+  uploadDocument = async (file: File, meta: { kind: HDocument["kind"]; titleHe: string; date: string; supplierId: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null; byId: string }): Promise<HDocument> => {
+    if (this.ui.db.status !== "online") throw new Error("העלאת מסמכים דורשת חיבור למסד הנתונים (כבה ״עבודה מקומית״).");
+    this.writesInFlight += 1;
+    this.setDb({ syncing: true });
+    try {
+      const id = await nextDocumentId(this.projectId);
+      const mimeType = mimeTypeFor(file.name, file.type);
+      const filePath = await uploadDocumentFile(documentFilePath(this.projectId, id, file.name), file, mimeType);
+      const doc = await addDocument(this.projectId, { id, kind: meta.kind, titleHe: meta.titleHe || file.name, date: meta.date, supplierId: meta.supplierId, fileName: file.name, filePath, mimeType, sizeBytes: file.size, uploadedById: meta.byId, recordRef: meta.recordRef });
+      this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
+      await this.loadFromDb();
+      return doc;
+    } catch (e) {
+      this.setDb({ syncing: false });
+      throw e;
+    } finally {
+      this.writesInFlight -= 1;
     }
   };
 

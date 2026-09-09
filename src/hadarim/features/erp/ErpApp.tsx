@@ -3,6 +3,7 @@ import { pkg } from "../../engine/commands";
 import { BudgetScreen } from "./BudgetScreen";
 import { ChangeLogScreen } from "./ChangeLogScreen";
 import { ContractsScreen } from "./ContractsScreen";
+import { DocumentsScreen } from "./DocumentsScreen";
 import { InvoicesScreen } from "./InvoicesScreen";
 import { PurchaseOrdersScreen } from "./PurchaseOrdersScreen";
 import { dateTimeHe, personName } from "./format";
@@ -14,6 +15,7 @@ const NAV: { id: ErpScreen; labelHe: string; icon: string }[] = [
   { id: "contracts", labelHe: "חוזי קבלני משנה", icon: "📑" },
   { id: "budget", labelHe: "תקציב ותחזית", icon: "📊" },
   { id: "change_log", labelHe: "יומן שינויים", icon: "🕘" },
+  { id: "documents", labelHe: "תיקיית מסמכים", icon: "📁" },
 ];
 
 /** The simulated ERP ("זיו — סביבת הדגמה"): a dense, classic contractor-ERP look, deliberately unlike the control system. */
@@ -66,6 +68,7 @@ export function ErpApp() {
           {screen === "contracts" && <ContractsScreen />}
           {screen === "budget" && <BudgetScreen />}
           {screen === "change_log" && <ChangeLogScreen />}
+          {screen === "documents" && <DocumentsScreen />}
         </main>
       </div>
       <footer className="erp-footer">סביבת הדגמה — נתונים בדויים · זיו אינה מערכת אמיתית; המסכים מדמים מערכת מידע קבלנית</footer>

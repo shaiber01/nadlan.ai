@@ -680,9 +680,10 @@ export function generateHadarimPackage(): HadarimPackage {
     buildForecast("2026-08-01", invoices, purchaseOrders, "final", openIssuesAtAugust),
     buildForecast(CURRENT_CONTROL, invoices, purchaseOrders, "draft", openIssuesAtAugust),
   ];
+  // the seed's documents were typed in with their facts: all of them count as processed (method "seed")
   const documents = hadarimDocuments.map((d) => {
     const facts = (documentFacts as Record<string, Record<string, unknown> | undefined>)[d.id];
-    return facts ? { ...d, facts } : d;
+    return { ...d, ...(facts ? { facts } : {}), factsSource: { method: "seed" as const } };
   });
   return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents };
 }

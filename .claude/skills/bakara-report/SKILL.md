@@ -7,7 +7,9 @@ description: Build, enrich, adapt and deliver the budget-control report per the 
 
 The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`; every call rebuilds it from the live database, so call it again whenever something changed. You deliver it, explain it and shape it; you never restate a number that is not in it, and you do not redo its arithmetic by hand.
 
-## Before delivering: the checks
+## Before delivering: the heartbeat, then the checks
+First `/bakara-heartbeat`: it processes the documents nobody read yet and walks the ERP records inserted or changed since the last pass, so the report starts from data that was read. `build_report.attentionHe` says when documents are still pending or changes happened after the last heartbeat.
+
 `build_report` runs all the checks on the current data by itself. Its result carries `attentionHe` and `summary.openFindings` when something needs a decision: findings of the session nobody decided on, and findings the checks raise beyond the session ("הבקרה טרם רצה" / "חדש מאז הרצת הבקרה"). Walk them before delivering: for each, the recommended fix (`fixHe`) and the people involved (`peopleHe`); get the decision through `/bakara-control` (`run_control` first if the control has not run, so decisions can be recorded), then build again. A report delivered with open findings is delivered as not final, and you say so.
 
 `attentionHe` also says when the review pass was not done for this control (`/bakara-control` step 5): do it before delivering — the report's sources line states whether the agent's review was done.

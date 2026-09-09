@@ -510,3 +510,16 @@ table.erp-table.compact td {
     flex-basis: 160px;
   }
 }
+
+/* --- תיקיית מסמכים --- */
+.erp-doc-status { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 12px; white-space: nowrap; }
+.erp-doc-status.is-pending { background: #fff3cd; color: #7a5200; border: 1px solid #f0d58c; }
+.erp-doc-status.is-done { background: #e6f4ea; color: #1d5c34; border: 1px solid #bfe0c9; }
+.erp-count-pending { color: #7a5200; font-weight: 600; }
+.erp-notice { margin: 8px 0; padding: 8px 12px; border-radius: 4px; font-size: 13px; }
+.erp-notice-ok { background: #e6f4ea; color: #1d5c34; border: 1px solid #bfe0c9; }
+.erp-notice-error { background: #fdecea; color: #8a1c1c; border: 1px solid #f3c2bd; }
+.erp-field-row { display: flex; gap: 6px; }
+.erp-field-row input { flex: 1; min-width: 0; }
+.erp-doc-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.erp-doc-links li { display: flex; gap: 8px; align-items: center; }

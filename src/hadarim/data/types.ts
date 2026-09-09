@@ -277,17 +277,34 @@ export interface HDocumentBlock {
   highlight?: boolean;
 }
 
+export type DocumentKind = "invoice" | "quote" | "appendix" | "contract_excerpt" | "boq_page" | "delivery_note" | "letter" | "other";
+
+export const DOCUMENT_KIND_HE: Record<DocumentKind, string> = { invoice: "חשבון", quote: "הצעת מחיר", appendix: "נספח מחיר", contract_excerpt: "קטע מחוזה", boq_page: "עמוד מכתב כמויות", delivery_note: "תעודת משלוח", letter: "מכתב", other: "אחר" };
+
 export interface HDocument {
   id: string;
-  kind: "invoice" | "quote" | "appendix" | "contract_excerpt" | "boq_page";
+  kind: DocumentKind;
   titleHe: string;
   date: string;
   supplierId: string | null;
   fileName: string;
+  /** The seed's simulated pages; empty for a real file. */
   blocks: HDocumentBlock[];
   footerHe: string;
   /** Anchor ids for highlighting a specific block from a finding source. */
   anchors: Record<string, number>;
+  /** A real file in Storage (bucket `documents`, path <project>/<document>/<file>); absent for the seed's pages. */
+  filePath?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  /** Text extracted from the file by the tools (pdf.js / decoded text); absent until extracted or when the file has none. */
+  text?: string;
+  uploadedById?: string;
+  uploadedAt?: string;
+  /** The ERP record the document belongs to, when known (set at upload or by the agent when classifying). */
+  recordRef?: { type: "invoice" | "po" | "contract"; id: string };
+  /** One-line description the agent wrote after reading. */
+  summaryHe?: string;
   /**
    * Structured facts extracted from the document (what an OCR/extraction step would produce), e.g. for a
    * quote: qty, unit, unitPrice, amount, validUntil, boqLineId; for a price appendix: pricePerTon, validFrom.

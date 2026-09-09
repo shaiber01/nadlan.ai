@@ -101,6 +101,30 @@ export function rowToPurchaseOrder(r: Row<"purchase_orders">): HPurchaseOrder {
   };
 }
 
+export function rowToDocument(d: Row<"documents">): HDocument {
+  return {
+    id: d.id,
+    kind: d.kind as HDocument["kind"],
+    titleHe: d.title_he,
+    date: d.date,
+    supplierId: d.supplier_id,
+    fileName: d.file_name,
+    blocks: d.blocks as unknown as HDocument["blocks"],
+    footerHe: d.footer_he,
+    anchors: d.anchors as Record<string, number>,
+    ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}),
+    ...(d.facts_source ? { factsSource: d.facts_source as HDocument["factsSource"] } : {}),
+    ...(d.file_path ? { filePath: d.file_path } : {}),
+    ...(d.mime_type ? { mimeType: d.mime_type } : {}),
+    ...(d.size_bytes != null ? { sizeBytes: d.size_bytes } : {}),
+    ...(d.text ? { text: d.text } : {}),
+    ...(d.uploaded_by ? { uploadedById: d.uploaded_by } : {}),
+    ...(d.uploaded_at ? { uploadedAt: d.uploaded_at } : {}),
+    ...(d.record_type && d.record_id ? { recordRef: { type: d.record_type as "invoice" | "po" | "contract", id: d.record_id } } : {}),
+    ...(d.summary_he ? { summaryHe: d.summary_he } : {}),
+  };
+}
+
 export function rowToChangeLog(r: Row<"change_log">): HChangeLogEntry {
   return { id: String(r.id), recordType: r.record_type as HChangeLogEntry["recordType"], recordId: r.record_id, field: r.field, before: r.before, after: r.after, at: toStamp(r.at), byId: r.by_id as PersonId, noteHe: r.note_he ?? "" };
 }
@@ -200,7 +224,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation, ...(x.channel ? { channel: x.channel as HPerson["channel"] } : {}) }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
-  const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}), ...(d.facts_source ? { factsSource: d.facts_source as HDocument["factsSource"] } : {}) }));
+  const documentsOut: HDocument[] = documents.map(rowToDocument);
   const boqOut: HBoqLine[] = boq.map((l) => ({ id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) }));
   const issuesOut = issues.map(rowToOpenIssue);
   const forecasts: HForecastVersion[] = versions.map((v) => ({
@@ -311,6 +335,163 @@ export async function deleteInvoice(id: number, projectId = DEFAULT_PROJECT_ID, 
 export async function resetProject(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<void> {
   const { error } = await supabase.rpc("reset_project", { p_project_id: projectId });
   if (error) throw new Error(`reset_project: ${error.message}`);
+  await deleteProjectFiles(projectId, supabase);
+}
+
+// ---------------------------------------------------------------------------
+// Real documents (Storage bucket `documents`) and the heartbeat
+// ---------------------------------------------------------------------------
+
+export const DOCUMENTS_BUCKET = "documents";
+
+export interface NewDocument {
+  id: string;
+  kind: HDocument["kind"];
+  titleHe: string;
+  date: string;
+  supplierId: string | null;
+  fileName: string;
+  filePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedById: string;
+  recordRef?: { type: "invoice" | "po" | "contract"; id: string } | null;
+  text?: string | null;
+}
+
+export type DocumentPatch = Partial<Pick<NewDocument, "kind" | "titleHe" | "date" | "supplierId" | "recordRef" | "text">> & { summaryHe?: string | null };
+
+/** Object path of a document's file in the bucket: one folder per project and document, the original file name kept. */
+export function documentFilePath(projectId: string, documentId: string, fileName: string): string {
+  const safe = fileName.replace(/[\\/]+/g, "_").replace(/[\u0000-\u001f]/g, "").trim() || "file";
+  return `${projectId}/${documentId}/${safe}`;
+}
+
+/** Upload a file to the bucket (browser File/Blob or Node bytes). Returns the object path. */
+export async function uploadDocumentFile(path: string, body: Blob | Uint8Array | ArrayBuffer, contentType: string, supabase: Db = db()): Promise<string> {
+  const { error } = await supabase.storage.from(DOCUMENTS_BUCKET).upload(path, body as Blob, { contentType, upsert: true });
+  if (error) throw new Error(`upload ${path}: ${error.message}`);
+  return path;
+}
+
+/** Public URL of a stored file (the bucket is public-read in the prototype). */
+export function documentFileUrl(path: string, supabase: Db = db()): string {
+  return supabase.storage.from(DOCUMENTS_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+export async function downloadDocumentFile(path: string, supabase: Db = db()): Promise<Uint8Array> {
+  const { data, error } = await supabase.storage.from(DOCUMENTS_BUCKET).download(path);
+  if (error || !data) throw new Error(`download ${path}: ${error?.message ?? "no data"}`);
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+/** Remove every stored file of a project (the seed's documents have no files, so all of them are uploads). */
+export async function deleteProjectFiles(projectId: string, supabase: Db = db()): Promise<number> {
+  const bucket = supabase.storage.from(DOCUMENTS_BUCKET);
+  const { data: folders, error } = await bucket.list(projectId, { limit: 1000 });
+  if (error) throw new Error(`list ${projectId}: ${error.message}`);
+  const paths: string[] = [];
+  for (const folder of folders ?? []) {
+    const { data: files } = await bucket.list(`${projectId}/${folder.name}`, { limit: 1000 });
+    for (const f of files ?? []) paths.push(`${projectId}/${folder.name}/${f.name}`);
+  }
+  if (paths.length) {
+    const { error: removeError } = await bucket.remove(paths);
+    if (removeError) throw new Error(`remove files: ${removeError.message}`);
+  }
+  return paths.length;
+}
+
+/** Insert the folder row of an uploaded file. Unprocessed until the agent records its facts (`facts_source` stays null). */
+export async function addDocument(projectId: string, doc: NewDocument, supabase: Db = db()): Promise<HDocument> {
+  const row: TablesInsert<"documents"> = {
+    project_id: projectId,
+    id: doc.id,
+    kind: doc.kind,
+    title_he: doc.titleHe,
+    date: doc.date,
+    supplier_id: doc.supplierId,
+    file_name: doc.fileName,
+    blocks: [],
+    footer_he: "",
+    anchors: {},
+    facts: {},
+    facts_source: null,
+    file_path: doc.filePath,
+    mime_type: doc.mimeType,
+    size_bytes: doc.sizeBytes,
+    text: doc.text ?? null,
+    uploaded_by: doc.uploadedById,
+    uploaded_at: new Date().toISOString(),
+    record_type: doc.recordRef?.type ?? null,
+    record_id: doc.recordRef?.id ?? null,
+  };
+  const { data, error } = await supabase.from("documents").insert(row).select("*").single();
+  if (error) throw new Error(`documents ${doc.id}: ${error.message}`);
+  return rowToDocument(data);
+}
+
+/** Change a document's description (kind, title, date, supplier, linked record, summary) or store its extracted text. */
+export async function updateDocument(projectId: string, documentId: string, patch: DocumentPatch, supabase: Db = db()): Promise<HDocument> {
+  const row: Partial<TablesInsert<"documents">> = {};
+  if (patch.kind !== undefined) row.kind = patch.kind;
+  if (patch.titleHe !== undefined) row.title_he = patch.titleHe;
+  if (patch.date !== undefined) row.date = patch.date;
+  if (patch.supplierId !== undefined) row.supplier_id = patch.supplierId;
+  if (patch.text !== undefined) row.text = patch.text;
+  if (patch.summaryHe !== undefined) row.summary_he = patch.summaryHe;
+  if (patch.recordRef !== undefined) {
+    row.record_type = patch.recordRef?.type ?? null;
+    row.record_id = patch.recordRef?.id ?? null;
+  }
+  const { data, error } = await supabase.from("documents").update(row).eq("project_id", projectId).eq("id", documentId).select("*").single();
+  if (error) throw new Error(`documents ${documentId}: ${error.message}`);
+  return rowToDocument(data);
+}
+
+export async function nextDocumentId(projectId: string, supabase: Db = db()): Promise<string> {
+  const rows = await all(supabase.from("documents").select("id").eq("project_id", projectId).like("id", "doc_%"), "documents");
+  const max = rows.reduce((m, r) => Math.max(m, Number(r.id.replace(/^doc_/, "")) || 0), 0);
+  return `doc_${String(max + 1).padStart(4, "0")}`;
+}
+
+export interface HeartbeatRow {
+  id: number;
+  at: string;
+  byId: string;
+  sinceChangeLogId: number;
+  untilChangeLogId: number;
+  documentsPending: number;
+  documentsProcessed: number;
+  recordsChanged: number;
+  findings: number;
+  summaryHe: string;
+  details: Record<string, unknown>;
+}
+
+function rowToHeartbeat(r: Row<"heartbeats">): HeartbeatRow {
+  return { id: r.id, at: r.at, byId: r.by_id, sinceChangeLogId: r.since_change_log_id, untilChangeLogId: r.until_change_log_id, documentsPending: r.documents_pending, documentsProcessed: r.documents_processed, recordsChanged: r.records_changed, findings: r.findings, summaryHe: r.summary_he, details: (r.details ?? {}) as Record<string, unknown> };
+}
+
+export async function listHeartbeats(projectId = DEFAULT_PROJECT_ID, limit = 20, supabase: Db = db()): Promise<HeartbeatRow[]> {
+  const rows = await all(supabase.from("heartbeats").select("*").eq("project_id", projectId).order("id", { ascending: false }).limit(limit), "heartbeats");
+  return rows.map(rowToHeartbeat);
+}
+
+export async function recordHeartbeat(projectId: string, h: Omit<HeartbeatRow, "id" | "at">, supabase: Db = db()): Promise<HeartbeatRow> {
+  const { data, error } = await supabase
+    .from("heartbeats")
+    .insert({ project_id: projectId, by_id: h.byId, since_change_log_id: h.sinceChangeLogId, until_change_log_id: h.untilChangeLogId, documents_pending: h.documentsPending, documents_processed: h.documentsProcessed, records_changed: h.recordsChanged, findings: h.findings, summary_he: h.summaryHe, details: h.details as Json })
+    .select("*")
+    .single();
+  if (error) throw new Error(`heartbeats: ${error.message}`);
+  return rowToHeartbeat(data);
+}
+
+/** The highest change-log id of the project (the heartbeat watermark), 0 when the log is empty. */
+export async function latestChangeLogId(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<number> {
+  const rows = await all(supabase.from("change_log").select("id").eq("project_id", projectId).order("id", { ascending: false }).limit(1), "change_log");
+  return rows[0]?.id ?? 0;
 }
 
 /** Record the facts extracted from a document (what an extraction step or the agent read in it) with their provenance. */
@@ -377,7 +558,7 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
 }
 
 /** Tables whose changes the web app follows: the ERP, the control session the agent writes, saved reports, the project row. */
-const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions", "questions"] as const;
+const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions", "questions", "documents", "heartbeats"] as const;
 
 /** Calls `onChange` (debounced) whenever the project's ERP data, control session or saved reports change. Returns an unsubscribe. */
 export function subscribeProject(projectId: string, onChange: () => void, supabase: Db = db()): () => void {

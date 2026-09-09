@@ -3,6 +3,7 @@ import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HPurchaseOrder, PersonId } from "../../data/types";
 import { orderLineHe, pkg, updatePurchaseOrder } from "../../engine/commands";
+import { AttachedDocuments, linkedDocuments } from "./AttachedDocuments";
 import { ORDER_UNITS, lineValue, pricePerUnitHe } from "../../engine/units";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
 import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
@@ -200,15 +201,7 @@ function PurchaseOrderView({ poId }: { poId: number }) {
           <RecordSection title="מסמכים">
             <Fieldv
               label="קובץ מצורף"
-              value={
-                attachment ? (
-                  <button type="button" className="erp-link" onClick={() => store.openDocument(attachment.id)}>
-                    📎 {attachment.fileName}
-                  </button>
-                ) : (
-                  "—"
-                )
-              }
+              value={<AttachedDocuments attachment={attachment} linked={linkedDocuments("po", String(po.id))} />}
             />
           </RecordSection>
         </div>

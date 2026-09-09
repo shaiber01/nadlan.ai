@@ -23,6 +23,7 @@
     "@supabase/supabase-js": "^2.116.0",
     "docx": "^9.7.1",
     "fflate": "^0.8.2",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^3.25.76"

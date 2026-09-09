@@ -1,10 +1,13 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
-import { db, deleteInvoice, listProjects, resetProject, updateDocumentFacts, updateProject } from "../db/client";
+import { DOCUMENT_KIND_HE, type DocumentKind, type HDocument, type HInvoice, type HPurchaseOrder } from "../data/types";
+import { addDocument, db, deleteInvoice, documentFilePath, documentFileUrl, downloadDocumentFile, latestChangeLogId, listHeartbeats, listProjects, nextDocumentId, recordHeartbeat, resetProject, updateDocument, updateDocumentFacts, updateProject, uploadDocumentFile } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
+import { extractText, isImage, mimeTypeFor } from "../documents/extract";
+import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed } from "../engine/heartbeat";
 import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
@@ -159,7 +162,13 @@ function resolveFinding(state: V2State, ref: string): HFinding {
   throw new Error(`ממצא ${ref} לא נמצא. ממצאים בבקרה: ${state.control.findings.map((f) => `${f.id} (${f.kind})`).join(", ") || "אין — הרץ run_control"}`);
 }
 
+const DOCUMENT_KINDS = Object.keys(DOCUMENT_KIND_HE) as [DocumentKind, ...DocumentKind[]];
+const documentKind = z.enum(DOCUMENT_KINDS);
+const recordType = z.enum(["invoice", "po", "contract"]);
+
+/** The text of a document: the extracted text of a real file, or the seed's simulated page rendered as text. */
 function documentText(d: HDocument): string {
+  if (d.text) return d.text;
   return d.blocks
     .map((b) => {
       switch (b.kind) {
@@ -174,6 +183,47 @@ function documentText(d: HDocument): string {
       }
     })
     .join("\n");
+}
+
+function documentView(d: HDocument) {
+  return { id: d.id, kind: d.kind, kindHe: DOCUMENT_KIND_HE[d.kind] ?? d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, processed: !isUnprocessed(d), facts: d.facts ?? null, factsSource: d.factsSource ?? null, recordRef: d.recordRef ?? null, summaryHe: d.summaryHe ?? null, hasFile: !!d.filePath, mimeType: d.mimeType ?? null, uploadedById: d.uploadedById ?? null, uploadedByHe: personName(d.uploadedById), uploadedAt: d.uploadedAt ?? null };
+}
+
+/** Local cache of a real file, so the agent can Read it (PDFs and images) — one folder per project and document. */
+function documentCachePath(projectId: string, d: HDocument): string {
+  return join(tmpdir(), "bakara-documents", projectId, d.id, basename(d.filePath ?? d.fileName));
+}
+
+/**
+ * A real file made readable: downloaded to the local cache and, on first use, its text extracted and stored on the
+ * row. Returns null for the seed's simulated pages (their text comes from `blocks`).
+ */
+async function materializeDocument(projectId: string, d: HDocument): Promise<{ localPath: string; fileUrl: string; text: string | null; readHintHe: string } | null> {
+  if (!d.filePath) return null;
+  const localPath = documentCachePath(projectId, d);
+  let bytes: Uint8Array | null = null;
+  if (!existsSync(localPath)) {
+    bytes = await downloadDocumentFile(d.filePath);
+    mkdirSync(dirname(localPath), { recursive: true });
+    writeFileSync(localPath, bytes);
+  }
+  let text = d.text ?? null;
+  const mime = d.mimeType ?? mimeTypeFor(d.fileName);
+  if (!text && !isImage(mime)) {
+    const r = await extractText(bytes ?? new Uint8Array(readFileSync(localPath)), mime);
+    if (r.text) {
+      text = r.text;
+      await updateDocument(projectId, d.id, { text });
+    }
+  }
+  const readHintHe = isImage(mime) ? `תמונה — קרא אותה בעצמך עם Read על ${localPath}.` : mime === "application/pdf" ? `PDF — הטקסט החולץ עשוי להיות משובש (עברית); קרא את הקובץ בעצמך עם Read על ${localPath} כשהטקסט אינו ברור או חסר.` : `קובץ מקומי: ${localPath}.`;
+  return { localPath, fileUrl: documentFileUrl(d.filePath), text, readHintHe };
+}
+
+function findRecord(state: V2State, type: "invoice" | "po" | "contract", id: string): boolean {
+  if (type === "invoice") return state.erp.invoices.some((i) => String(i.id) === id);
+  if (type === "po") return state.erp.purchaseOrders.some((p) => String(p.id) === id);
+  return pkg.contracts.some((k) => k.id === id);
 }
 
 function controlView(state: V2State) {
@@ -504,27 +554,28 @@ define({
 define({
   name: "search_documents",
   title: "Project folder",
-  description: "Search the project folder (invoices, quotes, price appendices, contract excerpts, BOQ pages) by text, kind, supplier or BOQ line; returns titles, dates and the extracted facts (quantity, unit, unit price, amount, validity).",
+  description: "Search the project folder — the seed's pages and the real files people uploaded (invoices, quotes, price appendices, contract excerpts, BOQ pages, delivery notes, letters) — by text, kind, supplier, BOQ line or the record they belong to. unprocessed=true lists the documents nobody read yet (no facts recorded): those are yours to process (get_document → classify_document → set_document_facts). Returns titles, dates, the record, whether processed and the extracted facts.",
   kind: "read",
-  input: { projectId, query: z.string().optional().describe("text in the title or body"), kind: z.enum(["invoice", "quote", "appendix", "contract_excerpt", "boq_page"]).optional(), supplierId: z.string().optional(), boqLineId: z.string().optional() },
+  input: { projectId, query: z.string().optional().describe("text in the title or body"), kind: documentKind.optional(), supplierId: z.string().optional(), boqLineId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional().describe("with recordType: the invoice/order number or contract id the document belongs to"), unprocessed: z.boolean().optional().describe("true: only documents not processed yet; false: only processed") },
   run: async (a) => {
     await loadState(a.projectId);
-    const rows = pkg.documents.filter((d) => (!a.kind || d.kind === a.kind) && (!a.supplierId || d.supplierId === a.supplierId) && (!a.boqLineId || quoteFacts(d)?.boqLineId === a.boqLineId || JSON.stringify(d.blocks).includes(a.boqLineId)) && (!a.query || d.titleHe.includes(a.query) || documentText(d).includes(a.query)));
-    return { total: rows.length, documents: rows.map((d) => ({ id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, facts: d.facts ?? null })) };
+    const rows = pkg.documents.filter((d) => (!a.kind || d.kind === a.kind) && (!a.supplierId || d.supplierId === a.supplierId) && (!a.boqLineId || quoteFacts(d)?.boqLineId === a.boqLineId || JSON.stringify(d.blocks).includes(a.boqLineId)) && (!a.recordType || d.recordRef?.type === a.recordType) && (!a.recordId || d.recordRef?.id === a.recordId) && (a.unprocessed === undefined || isUnprocessed(d) === a.unprocessed) && (!a.query || d.titleHe.includes(a.query) || documentText(d).includes(a.query)));
+    return { total: rows.length, unprocessed: pkg.documents.filter(isUnprocessed).length, documents: rows.map(documentView) };
   },
 });
 
 define({
   name: "get_document",
   title: "Document",
-  description: "The text of one document from the project folder (as an extraction step would read it), its anchors and extracted facts.",
+  description: "One document of the project folder to read: its text (a real file's extracted text, or the seed page), its recorded facts and their provenance, and for a real file the local path — Read that path yourself for a PDF or an image; the model reading the document is the point, the extracted text is a convenience and Hebrew PDFs often extract poorly.",
   kind: "read",
   input: { projectId, documentId: z.string() },
   run: async (a) => {
     await loadState(a.projectId);
     const d = pkg.documents.find((x) => x.id === a.documentId);
     if (!d) throw new Error(`מסמך ${a.documentId} לא נמצא`);
-    return { id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, text: documentText(d), anchors: d.anchors, facts: d.facts ?? null, factsSource: d.factsSource ?? null, footerHe: d.footerHe };
+    const file = await materializeDocument(a.projectId, d);
+    return { ...documentView(d), text: file ? file.text : documentText(d), anchors: d.anchors, footerHe: d.footerHe, ...(file ? { localPath: file.localPath, fileUrl: file.fileUrl, readHintHe: file.readHintHe } : {}), ...(isUnprocessed(d) ? { processHintHe: "המסמך טרם עובד: קרא אותו, תאר אותו (classify_document — סוג, כותרת, תאריך, ספק, הרשומה שאליה הוא שייך) ורשום את העובדות שהוא מציין (set_document_facts; אם אין עובדות לבדיקות — {} עם הערה). זה מסמן אותו כמעובד." } : {}) };
   },
 });
 
@@ -886,7 +937,7 @@ define({
       contracts,
       invoicesWithoutContract: period.filter((i) => !i.contractId).map(brief),
       boq,
-      documents: pkg.documents.map((d) => ({ id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierHe: supplierName(d.supplierId), facts: d.facts ?? null, factsSource: d.factsSource ?? null, text: documentText(d) })),
+      documents: pkg.documents.map((d) => ({ id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierHe: supplierName(d.supplierId), processed: !isUnprocessed(d), recordRef: d.recordRef ?? null, facts: d.facts ?? null, factsSource: d.factsSource ?? null, text: documentText(d) })),
       reviewPassHe: state.control.notes.find((n) => n.kind === "review_pass")?.textHe ?? null,
     };
   },
@@ -946,7 +997,132 @@ define({
     await updateDocumentFacts(a.projectId, a.documentId, a.facts, { method: "agent", byId: a.byId ?? state.operatorId, ...(a.noteHe ? { noteHe: a.noteHe } : {}) });
     await loadState(a.projectId);
     const fresh = pkg.documents.find((d) => d.id === a.documentId)!;
-    return { ok: true, document: { id: fresh.id, titleHe: fresh.titleHe, facts: fresh.facts ?? null, factsSource: fresh.factsSource ?? null, quoteFacts: quoteFacts(fresh) }, hintHe: "העובדות נרשמו; הבדיקות הדטרמיניסטיות ירוצו עליהן בהרצה הבאה (run_check / run_control / build_report)." };
+    return { ok: true, document: { id: fresh.id, titleHe: fresh.titleHe, facts: fresh.facts ?? null, factsSource: fresh.factsSource ?? null, quoteFacts: quoteFacts(fresh), processed: !isUnprocessed(fresh) }, hintHe: "העובדות נרשמו והמסמך מסומן כמעובד; הבדיקות הדטרמיניסטיות ירוצו עליהן בהרצה הבאה (run_check / run_control / build_report)." };
+  },
+});
+
+define({
+  name: "add_document",
+  title: "Add a real document to the folder",
+  description: "Put a file the user handed you (a path on this machine: PDF, image, text) into the project folder: uploads it to storage, opens its folder row (unprocessed), extracts what text it has and caches it locally. Give what you already know — kind, title, date, supplier, the invoice/order/contract it belongs to — and process it afterwards (get_document → classify_document → set_document_facts). The ERP users upload from the web app's תיקיית מסמכים screen; this is the same operation from the session.",
+  kind: "write",
+  input: { projectId, path: z.string().describe("local file path"), fileName: z.string().optional().describe("name to keep (default: the file's name)"), kind: documentKind.default("other"), titleHe: z.string().optional(), date: isoDate.optional().describe("the document's date (default: today)"), supplierId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional(), byId: personId.optional().describe("who adds it (default: the operator)") },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const source = resolve(a.path);
+    if (!existsSync(source)) throw new Error(`הקובץ לא נמצא: ${source}`);
+    if (a.supplierId && !pkg.suppliers.some((x) => x.id === a.supplierId)) throw new Error(`ספק ${a.supplierId} לא נמצא`);
+    if ((a.recordType && !a.recordId) || (!a.recordType && a.recordId)) throw new Error("recordType ו-recordId באים יחד");
+    if (a.recordType && a.recordId && !findRecord(state, a.recordType, a.recordId)) throw new Error(`רשומה ${a.recordType} ${a.recordId} לא נמצאה`);
+    const fileName = a.fileName ?? basename(source);
+    const bytes = new Uint8Array(readFileSync(source));
+    const mimeType = mimeTypeFor(fileName);
+    const id = await nextDocumentId(a.projectId);
+    const filePath = await uploadDocumentFile(documentFilePath(a.projectId, id, fileName), bytes, mimeType);
+    const extracted = isImage(mimeType) ? { text: null } : await extractText(bytes, mimeType);
+    const created = await addDocument(a.projectId, { id, kind: a.kind, titleHe: a.titleHe ?? fileName, date: a.date ?? nowStamp().slice(0, 10), supplierId: a.supplierId ?? null, fileName, filePath, mimeType, sizeBytes: bytes.byteLength, uploadedById: a.byId ?? state.operatorId, recordRef: a.recordType && a.recordId ? { type: a.recordType, id: a.recordId } : null, text: extracted.text });
+    const localPath = documentCachePath(a.projectId, created);
+    mkdirSync(dirname(localPath), { recursive: true });
+    writeFileSync(localPath, bytes);
+    return { ok: true, document: documentView(created), localPath, fileUrl: documentFileUrl(filePath), text: extracted.text, hintHe: `המסמך ${id} נוסף לתיקייה וטרם עובד: קרא אותו (Read ${localPath} ל-PDF/תמונה), תאר אותו ורשום את עובדותיו.` };
+  },
+});
+
+define({
+  name: "classify_document",
+  title: "Describe a document after reading it",
+  description: "Record what you determined by reading a document: its kind, a proper Hebrew title, its date, the supplier, the invoice/order/contract it belongs to, and a one-line summary. Metadata only — the facts the checks use go through set_document_facts, which is what marks the document processed.",
+  kind: "write",
+  input: { projectId, documentId: z.string(), kind: documentKind.optional(), titleHe: z.string().optional(), date: isoDate.optional(), supplierId: z.string().nullable().optional(), recordType: recordType.nullable().optional(), recordId: z.string().nullable().optional(), summaryHe: z.string().optional().describe("one line: what the document is and says") },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const doc = pkg.documents.find((d) => d.id === a.documentId);
+    if (!doc) throw new Error(`מסמך ${a.documentId} לא נמצא`);
+    if (a.supplierId && !pkg.suppliers.some((x) => x.id === a.supplierId)) throw new Error(`ספק ${a.supplierId} לא נמצא`);
+    const patch: Parameters<typeof updateDocument>[2] = {};
+    if (a.kind !== undefined) patch.kind = a.kind;
+    if (a.titleHe !== undefined) patch.titleHe = a.titleHe;
+    if (a.date !== undefined) patch.date = a.date;
+    if (a.supplierId !== undefined) patch.supplierId = a.supplierId;
+    if (a.summaryHe !== undefined) patch.summaryHe = a.summaryHe;
+    if (a.recordType !== undefined || a.recordId !== undefined) {
+      if (a.recordType && a.recordId) {
+        if (!findRecord(state, a.recordType, a.recordId)) throw new Error(`רשומה ${a.recordType} ${a.recordId} לא נמצאה`);
+        patch.recordRef = { type: a.recordType, id: a.recordId };
+      } else patch.recordRef = null;
+    }
+    const updated = await updateDocument(a.projectId, a.documentId, patch);
+    return { ok: true, document: documentView(updated), ...(isUnprocessed(updated) ? { hintHe: "המסמך עדיין לא מסומן כמעובד — רשום את עובדותיו עם set_document_facts (גם {} עם הערה כשאין עובדות לבדיקות)." } : {}) };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// The heartbeat — everything new since the last pass
+// ---------------------------------------------------------------------------
+
+define({
+  name: "get_heartbeat_work",
+  title: "What is new since the last heartbeat",
+  description: "The deterministic part of a heartbeat: the documents nobody processed yet (with their text and local path, so you can read them), the records inserted or changed in the ERP since the last heartbeat's watermark (grouped per invoice/order, with who changed what), the checks' findings that touch those records or that neither the control session nor an earlier heartbeat knows, and the control's undecided findings for context. Process the documents, read the changed records against their contracts, present or raise findings, then record_heartbeat with the untilChangeLogId returned here.",
+  kind: "check",
+  input: { projectId, sinceChangeLogId: z.number().int().optional().describe("start after this change-log id (default: the last heartbeat's watermark; 0 = everything)"), sinceDate: isoDate.optional().describe("alternatively: changes on/after this date"), extract: z.boolean().default(true).describe("download pending files and extract their text (false: list only)") },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const history = await listHeartbeats(a.projectId, 200);
+    const last = history[0] ?? null;
+    let since = a.sinceChangeLogId ?? last?.untilChangeLogId ?? 0;
+    if (a.sinceDate) {
+      const before = state.erp.changeLog.filter((e) => e.at.slice(0, 10) < a.sinceDate!).reduce((m, e) => Math.max(m, changeLogId(e)), 0);
+      since = before;
+    }
+    const reported = new Set<string>();
+    for (const h of history) for (const id of ((h.details.findingIds as string[] | undefined) ?? [])) reported.add(id);
+    const work = heartbeatWork(pkg, state, since, reported, nowStamp().slice(0, 10));
+    const pending = [];
+    for (const d of work.pendingDocuments) {
+      const file = a.extract ? await materializeDocument(a.projectId, d) : null;
+      pending.push({ ...documentView(d), text: file ? file.text : documentText(d) || null, ...(file ? { localPath: file.localPath, fileUrl: file.fileUrl, readHintHe: file.readHintHe } : {}) });
+    }
+    const records = work.changedRecords.map((r) => {
+      const inv = r.type === "invoice" ? state.erp.invoices.find((i) => String(i.id) === r.id) : undefined;
+      const po = r.type === "po" ? state.erp.purchaseOrders.find((p) => String(p.id) === r.id) : undefined;
+      const contract = inv?.contractId ? pkg.contracts.find((k) => k.id === inv.contractId) : po?.contractId ? pkg.contracts.find((k) => k.id === po.contractId) : undefined;
+      return { type: r.type, id: r.id, isNew: r.isNew, byHe: r.byIds.map((id) => personName(id) ?? id).join(", "), fieldsHe: r.fieldsHe, firstAt: r.firstAt, lastAt: r.lastAt, changes: r.entries.map((e) => ({ id: e.id, at: e.at, fieldHe: e.field, beforeHe: e.before, afterHe: e.after, byHe: personName(e.byId) ?? e.byId, noteHe: e.noteHe || null })), record: inv ? invoiceView(inv) : po ? poView(po) : null, contract: contract ? { id: contract.id, scopeHe: contract.scopeHe, inclusionsHe: contract.inclusionsHe, exclusions: contract.exclusions } : null, documents: pkg.documents.filter((d) => d.recordRef?.type === r.type && d.recordRef.id === r.id).map(documentView) };
+    });
+    const findings = work.findings.map((f) => findingView(f, state));
+    const summaryHe = heartbeatSummaryHe(work);
+    const steps = [pending.length ? `עבד ${pending.length} מסמכים: קרא כל אחד (Read על localPath כשיש קובץ), classify_document, set_document_facts, ואם הוא שייך לרשומה — run_check עליה.` : "", records.length ? `קרא ${records.length} רשומות שהשתנו מול החוזה והתיאור שלהן; מה שלא מתאים — ממצא.` : "", findings.length ? `${findings.length} ממצאים מהבדיקות: הצג כל אחד עם התיקון המומלץ ומי מעורב; כשיש בקרה פעילה — raise_finding לממצאי קריאה; החלטות דרך /bakara-control.` : "", `סיים ב-record_heartbeat (untilChangeLogId=${work.untilChangeLogId}, findingIds של מה שהוצג, summaryHe).`].filter(Boolean);
+    return { ok: true, sinceChangeLogId: work.sinceChangeLogId, untilChangeLogId: work.untilChangeLogId, previousHeartbeat: last ? { id: last.id, at: last.at, byHe: personName(last.byId) ?? last.byId, summaryHe: last.summaryHe } : null, controlStatus: state.control.status, summaryHe, documents: { pendingCount: pending.length, pending }, changes: { recordCount: records.length, entryCount: work.changedRecords.reduce((n, r) => n + r.entries.length, 0), records }, findings, findingIds: work.findings.map((f) => f.id), sessionOpenFindings: work.sessionOpenFindings.map((f) => ({ id: f.id, titleHe: f.titleHe })), stepsHe: steps, nothingNew: !pending.length && !records.length && !findings.length };
+  },
+});
+
+define({
+  name: "record_heartbeat",
+  title: "Record a heartbeat",
+  description: "Close a heartbeat pass: store its watermark (the untilChangeLogId from get_heartbeat_work, so nothing that happened meanwhile is skipped next time), the counts, the finding ids you presented (the next heartbeat will not repeat them unless their record changes again) and a Hebrew summary of what was processed, what was found and what awaits the user.",
+  kind: "write",
+  input: { projectId, untilChangeLogId: z.number().int().optional().describe("from get_heartbeat_work (default: the latest change-log id)"), sinceChangeLogId: z.number().int().optional(), summaryHe: z.string().describe("what was processed, what was found, what needs the user"), documentsProcessed: z.number().int().default(0), documentsPending: z.number().int().default(0), recordsChanged: z.number().int().default(0), findingIds: z.array(z.string()).default([]).describe("finding ids presented in this pass"), documentIds: z.array(z.string()).default([]).describe("documents processed in this pass"), byId: personId.optional() },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const history = await listHeartbeats(a.projectId, 1);
+    const until = a.untilChangeLogId ?? (await latestChangeLogId(a.projectId));
+    const since = a.sinceChangeLogId ?? history[0]?.untilChangeLogId ?? 0;
+    const row = await recordHeartbeat(a.projectId, { byId: a.byId ?? state.operatorId, sinceChangeLogId: since, untilChangeLogId: until, documentsPending: a.documentsPending, documentsProcessed: a.documentsProcessed, recordsChanged: a.recordsChanged, findings: a.findingIds.length, summaryHe: a.summaryHe, details: { findingIds: a.findingIds, documentIds: a.documentIds } });
+    return { ok: true, heartbeat: { ...row, byHe: personName(row.byId) ?? row.byId }, messageHe: `פעימת לב #${row.id} נרשמה (יומן שינויים ${since}→${until}): ${a.summaryHe}` };
+  },
+});
+
+define({
+  name: "list_heartbeats",
+  title: "Heartbeat history",
+  description: "The recorded heartbeats of the project, newest first: when, by whom, the change-log range covered, counts and the summary — and how many changes happened since the last one.",
+  kind: "read",
+  input: { projectId, limit: z.number().int().min(1).max(200).default(20) },
+  run: async (a) => {
+    const [rows, latest] = await Promise.all([listHeartbeats(a.projectId, a.limit), latestChangeLogId(a.projectId)]);
+    await loadState(a.projectId);
+    const last = rows[0] ?? null;
+    return { total: rows.length, latestChangeLogId: latest, changesSinceLast: last ? Math.max(0, latest - last.untilChangeLogId) : null, pendingDocuments: pkg.documents.filter(isUnprocessed).length, heartbeats: rows.map((r) => ({ ...r, byHe: personName(r.byId) ?? r.byId })) };
   },
 });
 
@@ -1049,7 +1225,16 @@ define({
     };
     const unreviewed = report.openFindings.filter((f) => f.statusHe !== "טרם הוכרע" && f.statusHe !== "בהחלטה").length;
     const reviewMissing = !report.header.reviewPassHe;
-    const parts = [report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : "", reviewMissing ? "סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass." : ""].filter(Boolean);
+    const [lastHeartbeat] = await listHeartbeats(a.projectId, 1);
+    const latestLog = await latestChangeLogId(a.projectId);
+    const pendingDocs = pkg.documents.filter(isUnprocessed).length;
+    const sinceHeartbeat = lastHeartbeat ? latestLog - lastHeartbeat.untilChangeLogId : null;
+    const parts = [
+      pendingDocs ? `${pendingDocs} מסמכים בתיקייה טרם עובדו — עבד אותם לפני הדוח (/bakara-heartbeat).` : "",
+      sinceHeartbeat === null ? (latestLog ? "לא נרשמה פעימת לב לפרויקט: הרץ /bakara-heartbeat לפני הדוח." : "") : sinceHeartbeat > 0 ? `${sinceHeartbeat} שינויים במערכת המידע מאז פעימת הלב האחרונה — הרץ /bakara-heartbeat לפני הדוח.` : "",
+      report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : "",
+      reviewMissing ? "סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass." : "",
+    ].filter(Boolean);
     const attentionHe = parts.length ? parts.join(" ") : null;
     return { ok: true, tab: a.tab, format: a.format, path, versionId, ...(attentionHe ? { attentionHe } : {}), ...(a.format === "json" ? { report } : a.format === "markdown" ? { markdown: text } : {}), summary };
   },

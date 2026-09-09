@@ -1,15 +1,17 @@
 ---
 name: bakara-extract
-description: Read a document of the project folder (quote, order confirmation, price appendix, invoice, contract excerpt, BOQ page) and record the structured facts it states, so the deterministic checks run on what the document says. Use when a document has no facts, when its facts look wrong against its text, or when a check needs a value the record lacks.
+description: Read a document of the project folder — a real file someone uploaded or handed you, or a seed page — describe it and record the structured facts it states, so the deterministic checks run on what the document says. Use when a document is unprocessed, when its facts look wrong against its text, when a check needs a value the record lacks, or when the user gives you a file to add.
 ---
 
 # Facts from documents
 
-The checks compare structured fields; a document's facts are those fields for the folder (a quote's quantity, unit, unit price, amount, validity and the BOQ line it prices; an appendix's price and start date). In the seed they were typed in; in the operational system an extraction service would read the PDF. Here you read.
+The checks compare structured fields; a document's facts are those fields for the folder (a quote's quantity, unit, unit price, amount, validity and the BOQ line it prices; an appendix's price and start date). The seed's were typed in; real files are read by you — the ERP users only upload, and a document with no `factsSource` is unprocessed until you record its facts.
 
-1. `search_documents` (filter by `kind`, `supplierId` or `boqLineId`) — documents with `facts: null`, or whose `factsSource.method` is `seed` when you doubt them.
-2. `get_document` — read `text` (headings, paragraphs, table rows) and `anchors`.
-3. `set_document_facts` with what the text states, keys the checks use:
+0. A file the user hands you (a path): `add_document` (kind, title, date, supplier and the record it belongs to when known) — it uploads, opens the folder row and gives you `localPath`.
+1. `search_documents` (`unprocessed: true`; or filter by `kind`, `supplierId`, `boqLineId`, `recordType`/`recordId`) — the documents to process, or whose `factsSource.method` is `seed` when you doubt them.
+2. `get_document` — a real file: `Read` its `localPath` yourself (PDF or image); its `text` is pdf.js's extraction and Hebrew often comes out scrambled. A seed page: read `text` (headings, paragraphs, table rows) and `anchors`.
+2a. `classify_document` — what you determined: kind, a proper Hebrew title, date, supplier, the invoice/order/contract it belongs to (find it: `query_invoices` by the supplier's document number, `query_purchase_orders`, `list_contracts`), a one-line `summaryHe`.
+3. `set_document_facts` with what the text states, keys the checks use (this marks the document processed; `{}` with a `noteHe` when it holds nothing the checks use):
    - quote / order confirmation: `qty`, `unit`, `unitPrice`, `amount`, `validUntil` (yyyy-mm-dd), `boqLineId` (when the quote names the BOQ line or the work unmistakably matches one), `supplierId`; a steel quote in kilograms: `qtyKg` and `qtyTon`, `pricePerTon`;
    - price appendix: `pricePerTon` (price per the appendix's unit), `validFrom`;
    - invoice: `amount`, `qty`, `unit`, `unitPrice` when stated;

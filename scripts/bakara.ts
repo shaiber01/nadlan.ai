@@ -16,6 +16,7 @@
  *   npm run bakara -- config [--trends on|off] [--by-building on|off] [--ceo on|off] [--save]
  *   npm run bakara -- report [--ceo] [--md path] [--docx path] [--label "..."] [--no-save]
  *   npm run bakara -- finalize
+ *   npm run bakara -- heartbeat [--since <changeLogId>]   # the deterministic work list: pending documents, changed records, findings (the agent's /bakara-heartbeat does the reading)
  *   npm run bakara -- tool <name> ['{"json":"args"}']   # any tool of the MCP registry (src/hadarim/tools), e.g. tool get_forecast '{"sectionId":"03"}'
  *   npm run bakara -- tools                            # list the registry
  *   Global: --project HADARIM  --json  --by <personId>
@@ -49,6 +50,7 @@ const { values: opts, positionals } = parseArgs({
     text: { type: "string" },
     force: { type: "boolean" },
     variant: { type: "string" },
+    since: { type: "string" },
     qty: { type: "string" },
     unit: { type: "string" },
     "price-unit": { type: "string" },
@@ -307,8 +309,17 @@ async function main() {
       say(`✓ גרסת דוח נשמרה במסד הנתונים (report_versions #${id})`);
     }
     result = { ok: true, tab, report, markdown: md, docxPath };
+  } else if (command === "heartbeat") {
+    const work = (await callTool("get_heartbeat_work", { projectId, ...(opts.since ? { sinceChangeLogId: Number(opts.since) } : {}) })) as { summaryHe: string; sinceChangeLogId: number; untilChangeLogId: number; documents: { pending: { id: string; titleHe: string; fileName: string; localPath?: string }[] }; changes: { records: { type: string; id: string; isNew: boolean; byHe: string; fieldsHe: string[] }[] }; findings: { id: string; titleHe: string }[]; stepsHe: string[]; nothingNew: boolean };
+    say(`פעימת לב · יומן שינויים ${work.sinceChangeLogId}→${work.untilChangeLogId} · ${work.summaryHe}`);
+    for (const d of work.documents.pending) say(`  מסמך ${d.id} · ${d.titleHe} · ${d.fileName}${d.localPath ? ` · ${d.localPath}` : ""}`);
+    for (const r of work.changes.records) say(`  ${r.type} ${r.id} · ${r.isNew ? "חדש" : "שונה"} · ${r.fieldsHe.join(", ")} · ${r.byHe}`);
+    for (const f of work.findings) say(`  ממצא ${f.id} · ${f.titleHe}`);
+    for (const step of work.stepsHe) say(`→ ${step}`);
+    if (work.nothingNew) say("אין חדש מאז פעימת הלב האחרונה.");
+    result = work;
   } else {
-    fail("פקודות: status · reset · erp … · control run|show · decide · route · quote · config · report · finalize · tools · tool <name> [json]");
+    fail("פקודות: status · reset · erp … · control run|show · decide · route · quote · config · report · finalize · heartbeat · tools · tool <name> [json]");
   }
 
   if (asJson) console.log(JSON.stringify(result, null, 2));

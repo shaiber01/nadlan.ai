@@ -61,7 +61,9 @@ Access is open through the publishable key for now (a prototype decision); RLS i
 
 ### The agent ("בקרה")
 
-The budget controller is a Claude Code agent defined in this repository, not the default session: `.claude/agents/bakara.md` holds the role and rules, the skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset` the procedures, and the `bakara` MCP server in `.mcp.json` the tools. A plain `claude` session here is a development session (see `CLAUDE.md`).
+The budget controller is a Claude Code agent defined in this repository, not the default session: `.claude/agents/bakara.md` holds the role and rules, the skills `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`, `/bakara-extract`, `/bakara-heartbeat` the procedures, and the `bakara` MCP server in `.mcp.json` the tools. A plain `claude` session here is a development session (see `CLAUDE.md`).
+
+**Real documents and the heartbeat.** The ERP's תיקיית מסמכים screen uploads real files (PDF, image, text) to the project folder (Supabase Storage); the agent can also take a file from the session (`add_document`). Uploading only stores the file: a document is *unprocessed* until the agent reads it — a PDF or image with its own eyes (`Read` on the local path `get_document` returns; the extracted text is a convenience) — describes it (`classify_document`) and records the facts the checks use (`set_document_facts`). `/bakara-heartbeat` is one pass over everything new since the previous one: pending documents, the ERP records inserted or changed since the last watermark (the change log), the checks' findings on them; it ends with a recorded heartbeat and a Hebrew summary. The report skill runs it first; `scripts/heartbeat.sh` runs it headless for a cron job (nothing is decided without a user); `npm run bakara -- heartbeat` prints the deterministic work list.
 
 ```bash
 claude --agent bakara        # a whole session as the controller (approve the .mcp.json servers on first use)

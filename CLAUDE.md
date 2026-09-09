@@ -6,7 +6,8 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 
 - Whole session as the controller: `claude --agent bakara` from this folder (the `.mcp.json` servers load; approve them on first use).
 - From a normal session: "use the bakara agent to …" delegates one task to it.
-- `claude agents` lists the agents; the skills are `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`.
+- `claude agents` lists the agents; the skills are `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`, `/bakara-extract` (read a document, record its facts), `/bakara-heartbeat` (everything new since the last pass: pending documents, changed records, the checks on them).
+- Headless, for cron/launchd: `scripts/heartbeat.sh` runs `/bakara-heartbeat` with `claude -p` (nothing is decided without a user; the summary is what the user reads next).
 - Two pages (`npm run dev`): `hadarim.html` is the simulated ERP, `report.html` the live, read-only view of the agent's report with the saved versions. Neither links to the other; the report's source links open ERP records in a new tab by URL (`hadarim.html?screen=invoices&invoice=1147`). Open the report next to the agent to watch the control take shape.
 - The same tools from a shell: `npm run bakara -- tools`, `npm run bakara -- tool get_forecast '{"sectionId":"03"}'`.
 
@@ -16,12 +17,14 @@ This repository is a budget-control prototype for construction projects (Hebrew,
   - `data/` — deterministic generator of the seed package (`generate.ts`), document pages (`documents.ts`), types. Used for seeding and for offline/tests; the live data is in Supabase.
   - `engine/` — the deterministic core, general over any project's data: `checks.ts` (control checks → findings), `forecast.ts` (working forecast: recorded, committed, remaining, uncovered, EAC per section), `commands.ts` (pure state commands: ERP edits, control run, decisions on findings, report config), `operations.ts` (free-standing operations: forecast adjustments, tasks, controller notes, instructed corrections), `report.ts` (report model per `budgetcontrolreportstandard.md`, everything derived from data and notes), `units.ts` (unit families and conversion — a purchase-order line carries a unit for the quantity and one for the price, and is worth the quantity converted into the priced unit times the price), `model.ts` (session types). There is no scripted conversation: free text is the agent's job; the web app has buttons, cards and toggles only.
   - `tools/index.ts` — **the tool registry**: general-purpose read/check/decision/write tools over the database with zod schemas; the MCP server and the CLI both call it.
+  - `documents/` — real files: `mime.ts` (browser-safe), `extract.ts` (Node: pdf.js text extraction; the agent reads PDFs/images itself with `Read` on the local path `get_document` returns). A document with no `facts_source` is unprocessed; only the agent processes (`classify_document`, `set_document_facts`).
+  - `engine/heartbeat.ts` — what is new since the last heartbeat, measured on the change-log id (the watermark in `heartbeats`): changed records, the checks' findings on them, pending documents.
   - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, attributed ERP writes, realtime, project status), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
-  - `features/` — React screens: `erp/` (simulated ERP; its edits are the only writes the browser makes) and `report/` (read-only live view of the agent's control session and the saved report versions; record and document modals). `app/store.ts` loads the whole session from the database and follows it over Realtime (offline via `?offline=1`); the browser never changes the control.
+  - `features/` — React screens: `erp/` (simulated ERP, including תיקיית מסמכים — upload to the Storage bucket `documents`), `report/` (living report, its own page `report.html`). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
   - `export/` — Word (`docx.ts`) and Markdown (`markdown.ts`) renderers of the report model.
 - `mcp/bakara-server.ts` — the registry as an MCP server over stdio (`npx vite-node mcp/bakara-server.ts`; stdout is protocol-only, log to stderr).
-- `scripts/` — `bakara.ts` (CLI: demo commands plus `tool <name> [json]` passthrough), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
-- `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, grants and permissive RLS policies (prototype: open access through the publishable key).
+- `scripts/` — `bakara.ts` (CLI: demo commands, `heartbeat`, plus `tool <name> [json]` passthrough), `heartbeat.sh` (the agent's heartbeat headless), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
+- `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, the Storage bucket `documents` and the `heartbeats` table, grants and permissive RLS policies (prototype: open access through the publishable key).
 - `src/` (rest), `index.html` — the earlier v1 sixteen-scenario demo; leave it alone unless asked.
 - Specs: `hadarimdataspec.md` (data, numbers win), `hadarimdemoscript.md` (demo flow and copy), `budgetcontrolreportstandard.md` (report standard). Status and decisions: `docs/hadarim-v2-plan.md`.
 
@@ -43,6 +46,7 @@ npm test                    # vitest (RUN_DB_TESTS=1 adds the live round trip an
 npm run test:e2e            # Playwright (offline data; RUN_DB_E2E=1 adds the live browser test)
 npm run build               # both entries; GitHub Pages deploys main
 npm run bakara -- tools     # the tool registry; `tool <name> '{...}'` calls one
+npm run bakara -- heartbeat # the deterministic heartbeat work list (the agent's /bakara-heartbeat does the reading)
 npm run hadarim:seed        # load the generator package into Supabase and snapshot it as the seed
 npm run hadarim:reset       # restore the seed
 ```

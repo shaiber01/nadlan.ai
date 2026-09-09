@@ -429,12 +429,21 @@ export type Database = {
           facts: Json
           facts_source: Json | null
           file_name: string
+          file_path: string | null
           footer_he: string
           id: string
           kind: string
+          mime_type: string | null
           project_id: string
+          record_id: string | null
+          record_type: string | null
+          size_bytes: number | null
+          summary_he: string | null
           supplier_id: string | null
+          text: string | null
           title_he: string
+          uploaded_at: string | null
+          uploaded_by: string | null
         }
         Insert: {
           anchors?: Json
@@ -443,12 +452,21 @@ export type Database = {
           facts?: Json
           facts_source?: Json | null
           file_name: string
+          file_path?: string | null
           footer_he?: string
           id: string
           kind: string
+          mime_type?: string | null
           project_id: string
+          record_id?: string | null
+          record_type?: string | null
+          size_bytes?: number | null
+          summary_he?: string | null
           supplier_id?: string | null
+          text?: string | null
           title_he: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
         }
         Update: {
           anchors?: Json
@@ -457,12 +475,21 @@ export type Database = {
           facts?: Json
           facts_source?: Json | null
           file_name?: string
+          file_path?: string | null
           footer_he?: string
           id?: string
           kind?: string
+          mime_type?: string | null
           project_id?: string
+          record_id?: string | null
+          record_type?: string | null
+          size_bytes?: number | null
+          summary_he?: string | null
           supplier_id?: string | null
+          text?: string | null
           title_he?: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
         }
         Relationships: [
           {
@@ -697,6 +724,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "forecast_versions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      heartbeats: {
+        Row: {
+          at: string
+          by_id: string
+          details: Json
+          documents_pending: number
+          documents_processed: number
+          findings: number
+          id: number
+          project_id: string
+          records_changed: number
+          since_change_log_id: number
+          summary_he: string
+          until_change_log_id: number
+        }
+        Insert: {
+          at?: string
+          by_id: string
+          details?: Json
+          documents_pending?: number
+          documents_processed?: number
+          findings?: number
+          id?: never
+          project_id: string
+          records_changed?: number
+          since_change_log_id?: number
+          summary_he?: string
+          until_change_log_id?: number
+        }
+        Update: {
+          at?: string
+          by_id?: string
+          details?: Json
+          documents_pending?: number
+          documents_processed?: number
+          findings?: number
+          id?: never
+          project_id?: string
+          records_changed?: number
+          since_change_log_id?: number
+          summary_he?: string
+          until_change_log_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "heartbeats_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
