@@ -200,7 +200,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation, ...(x.channel ? { channel: x.channel as HPerson["channel"] } : {}) }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
-  const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}) }));
+  const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}), ...(d.facts_source ? { factsSource: d.facts_source as HDocument["factsSource"] } : {}) }));
   const boqOut: HBoqLine[] = boq.map((l) => ({ id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) }));
   const issuesOut = issues.map(rowToOpenIssue);
   const forecasts: HForecastVersion[] = versions.map((v) => ({
@@ -311,6 +311,12 @@ export async function deleteInvoice(id: number, projectId = DEFAULT_PROJECT_ID, 
 export async function resetProject(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<void> {
   const { error } = await supabase.rpc("reset_project", { p_project_id: projectId });
   if (error) throw new Error(`reset_project: ${error.message}`);
+}
+
+/** Record the facts extracted from a document (what an extraction step or the agent read in it) with their provenance. */
+export async function updateDocumentFacts(projectId: string, documentId: string, facts: Record<string, unknown>, source: { method: "seed" | "agent" | "extraction"; byId?: string; noteHe?: string }, supabase: Db = db()): Promise<void> {
+  const { error } = await supabase.from("documents").update({ facts: facts as Json, facts_source: { ...source, at: new Date().toISOString() } as Json }).eq("project_id", projectId).eq("id", documentId);
+  if (error) throw new Error(`documents ${documentId}: ${error.message}`);
 }
 
 export interface ProjectSummary {

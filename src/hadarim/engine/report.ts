@@ -33,6 +33,8 @@ export interface ReportSource {
 }
 
 export interface ReportHeader {
+  /** The agent's review pass over the control's data, or null when it has not been done. */
+  reviewPassHe: string | null;
   projectNameHe: string;
   projectHe: string;
   companyHe: string;
@@ -690,6 +692,10 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
 
   return {
     header: {
+      reviewPassHe: (() => {
+        const rp = notes.find((n) => n.kind === "review_pass");
+        return rp ? `סקירת הסוכן ${dateHe(rp.at)} ${rp.at.slice(11, 16)}: ${rp.textHe}` : null;
+      })(),
       projectNameHe: pkg.project.nameHe,
       projectHe: `${pkg.project.nameHe} — ${pkg.project.buildings.length} בניינים, ${pkg.project.units} יח״ד`,
       companyHe: pkg.project.companyHe,
@@ -701,7 +707,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
       preparedByHe: "מכין: מערכת הבקרה",
       approvedByHe: `מאשר: ${approver}${approverRole ? `, ${approverRole}` : ""}`,
       distributionHe: `תפוצה: ${distribution}`,
-      sourcesHe: `מקורות: מערכת המידע (משיכה ${dateHe(state.clock)} ${state.clock.slice(11, 16)}) · תיקיית הפרויקט (${num(pkg.documents.length)} מסמכים) · ${physicalPct != null ? "דוח התקדמות מהאתר (מדידת ביצוע פיזי)" : "ללא דוח התקדמות מהאתר"}`,
+      sourcesHe: `מקורות: מערכת המידע (משיכה ${dateHe(state.clock)} ${state.clock.slice(11, 16)}) · תיקיית הפרויקט (${num(pkg.documents.length)} מסמכים) · ${physicalPct != null ? "דוח התקדמות מהאתר (מדידת ביצוע פיזי)" : "ללא דוח התקדמות מהאתר"} · ${notes.some((n) => n.kind === "review_pass") ? "סקירת הסוכן בוצעה" : "סקירת הסוכן טרם בוצעה"}`,
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
     status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },

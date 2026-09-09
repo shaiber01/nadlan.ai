@@ -39,5 +39,14 @@ Wait for the user's decision before applying anything. Do not recommend an optio
 
 Continue until `controlStatus` is `report` ("כל N הממצאים טופלו").
 
-## 5. Hand over
+## 5. The review pass — what the checks cannot judge
+After the cards from the checks, read for what code cannot see. `get_review_material` returns, for the period: each contract's scope, inclusions and exclusions with the invoices billed against it; invoices without a contract; the BOQ lines not covered and the quotes that may price them; every document's text with its recorded facts. Read, and for each thing that does not fit raise a finding with `raise_finding` — the record, the sources you read, one sentence of the problem with the numbers, what it means, your reasoning, the decision and its options (`apply` only when you can give an invoice `proposedFix`; `refer` with `referToId`; `accept`):
+- an invoice whose description is work the contract excludes, or work of another section (compare words and quantities, not only section ids);
+- an invoice without a contract whose description belongs to a section that has one;
+- a quote attached to a BOQ line that prices a different scope, quantity or unit;
+- facts recorded on a document that the document's text does not say (then also `set_document_facts` with what it does say, see `/bakara-extract`);
+- anything a person would notice reading these records side by side.
+Present each raised finding as a card (step 3) and decide it (step 4). When done, `record_review_pass` with a one-line summary (what was read, how many findings, what was consistent). The report says whether this pass was done.
+
+## 6. Hand over
 Offer the report (`/bakara-report`). Mid-way questions: `/bakara-qa`, then return to the open card (`get_control.openFindings`).

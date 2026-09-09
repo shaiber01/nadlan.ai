@@ -293,6 +293,8 @@ export interface HDocument {
    * quote: qty, unit, unitPrice, amount, validUntil, boqLineId; for a price appendix: pricePerTon, validFrom.
    */
   facts?: Record<string, unknown>;
+  /** Where the facts came from: the seed, the agent reading the document, or an extraction service. */
+  factsSource?: { method: "seed" | "agent" | "extraction"; byId?: string; at?: string; noteHe?: string };
 }
 
 /** Normalised quote/order facts used by the checks; derived from `HDocument.facts`. */

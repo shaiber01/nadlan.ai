@@ -334,9 +334,9 @@ function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null,
     return nextFinding(audit(s, s.operatorId, `חוזה ${f.record.id}: פקודת שינוי ${nis(f.impact.amount)} נרשמה (ממצא ${f.id})`));
   }
   // refer the fix to whoever keys the ERP (bookkeeping), or to execution for a contract dispute
-  const ownerId = f.kind === "contract_overrun" ? executionOwnerId(state) : accountantId();
+  const ownerId = f.referToId ?? (f.kind === "contract_overrun" ? executionOwnerId(state) : accountantId());
   const [s1, taskId] = nextId(state, "TASK");
-  const task: ControlTask = { id: taskId, titleHe: f.kind === "contract_overrun" ? `בירור מול הקבלן — ${f.titleHe}` : `תיקון במערכת המידע — ${f.titleHe}`, sectionId: f.sectionId, ownerId, dueDate: null, openedInControl: s1.control.controlDate, status: "pending_execution", closedAt: null, findingId: f.id, impactIfIgnoredHe: f.impact.labelHe };
+  const task: ControlTask = { id: taskId, titleHe: f.kind === "contract_overrun" ? `בירור מול הקבלן — ${f.titleHe}` : f.kind === "review" ? `טיפול — ${f.titleHe}` : `תיקון במערכת המידע — ${f.titleHe}`, sectionId: f.sectionId, ownerId, dueDate: null, openedInControl: s1.control.controlDate, status: "pending_execution", closedAt: null, findingId: f.id, impactIfIgnoredHe: f.impact.labelHe };
   let s: V2State = { ...s1, control: { ...s1.control, tasks: [...s1.control.tasks, task] } };
   s = setDecision(s, f.id, { status: "pending_execution", ownerId, auditHe: `הועבר ל${personName(ownerId)} לביצוע${reason}` });
   s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(ownerId)}: ״${task.titleHe}״. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון ייראה במערכת המידע; הנתונים בתחזית ללא שינוי בינתיים.` });

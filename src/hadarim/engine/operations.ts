@@ -1,5 +1,5 @@
 import type { BuildingTag, ContactChannel, PersonId, SectionId } from "../data/types";
-import { sectionLabel } from "./checks";
+import { peopleInvolved, sectionLabel, type HFinding, type HSource, type InvoiceFixPatch } from "./checks";
 import { orderLineHe, pkg, updateInvoiceSection, updatePurchaseOrder } from "./commands";
 import type { ChangeType, ControlNote, ControlQuestion, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
 
@@ -203,6 +203,75 @@ export function answerQuestion(state: V2State, id: string, answerHe: string, byI
   const answered: ControlQuestion = { ...q, status: "answered", answerHe: answerHe.trim(), answeredAt: state.clock, answeredById };
   const s: V2State = { ...state, control: { ...state.control, questions: state.control.questions.map((x) => (x.id === id ? answered : x)) } };
   return audit(s, answeredById, `תשובה מ${person(answeredById)} לשאלה ${id}: ${answered.answerHe}`);
+}
+
+// ---------------------------------------------------------------------------
+// Findings the agent raises from reading (the deterministic checks are the floor; this is the second pass)
+// ---------------------------------------------------------------------------
+
+export interface RaisedFindingInput {
+  titleHe: string;
+  problemHe: string;
+  meaningHe: string;
+  sectionId: string;
+  record: HFinding["record"];
+  sources?: HSource[];
+  /** The agent's reasoning: what it read, what does not fit. Shown on the card as notes. */
+  reasoningHe?: string;
+  questionHe?: string;
+  options?: { id: "apply" | "refer" | "accept"; labelHe: string }[];
+  impact?: { kind: "none" | "amount" | "unknown"; amount?: number; labelHe?: string };
+  proposedFix?: { labelHe: string; patch: InvoiceFixPatch };
+  referToId?: string;
+}
+
+/** Record a finding the agent raised; it enters the session like a check's finding and takes the same decisions. */
+export function raiseFinding(state: V2State, input: RaisedFindingInput): [V2State, HFinding] {
+  if (state.control.status === "idle") throw new Error("אין בקרה פעילה — הרץ run_control תחילה, ואז ניתן להוסיף ממצאים");
+  const sectionId = requireSection(input.sectionId);
+  const r = input.record;
+  const exists =
+    r.type === "invoice" ? state.erp.invoices.some((i) => String(i.id) === r.id)
+    : r.type === "po" ? state.erp.purchaseOrders.some((p) => String(p.id) === r.id)
+    : r.type === "contract" ? pkg.contracts.some((c) => c.id === r.id)
+    : r.type === "boq_line" ? pkg.boq.some((l) => l.id === r.id)
+    : r.type === "document" ? pkg.documents.some((d) => d.id === r.id)
+    : pkg.forecasts.some((f) => f.sections?.some((s) => s.lines.some((l) => l.id === r.id)));
+  if (!exists) throw new Error(`הרשומה ${r.type} ${r.id} לא נמצאה`);
+  if (input.proposedFix && r.type !== "invoice") throw new Error("תיקון מוצע אפשרי רק על חשבון");
+  const referToId = input.referToId ? requirePerson(input.referToId) : undefined;
+  if (!input.titleHe.trim() || !input.problemHe.trim()) throw new Error("נדרשים כותרת ותיאור הבעיה");
+  const options = input.options?.length ? input.options : [...(input.proposedFix ? [{ id: "apply" as const, labelHe: `לתקן — ${input.proposedFix.labelHe}` }] : []), { id: "refer" as const, labelHe: referToId ? `להעביר ל${person(referToId)}` : "להעביר לתיקון" }, { id: "accept" as const, labelHe: "תקין — לא נדרש תיקון" }];
+  const [s1, n] = nextId(state, "REV");
+  const finding: HFinding = {
+    id: `F-${n}`,
+    kind: "review",
+    origin: "review",
+    titleHe: input.titleHe.trim(),
+    problemHe: input.problemHe.trim(),
+    sources: input.sources ?? [],
+    meaningHe: input.meaningHe.trim() || "—",
+    impact: { kind: input.impact?.kind ?? "unknown", amount: input.impact?.amount ?? 0, labelHe: input.impact?.labelHe ?? (input.impact?.kind === "none" ? "ללא שינוי בסה״כ" : "טרם הוערך") },
+    decision: { questionHe: input.questionHe?.trim() || "מה לעשות?", options, freeText: true },
+    sectionId,
+    record: r,
+    ...(input.reasoningHe ? { notesHe: [`נימוק הסוכן: ${input.reasoningHe.trim()}`] } : {}),
+    ...(input.proposedFix ? { proposedFix: input.proposedFix } : {}),
+    ...(referToId ? { referToId } : {}),
+  };
+  finding.people = peopleInvolved(pkg, s1.erp, finding.record);
+  const status = s1.control.status === "report" ? "reviewing" : s1.control.status;
+  const s: V2State = { ...s1, control: { ...s1.control, status, findings: [...s1.control.findings, finding] } };
+  return [audit(s, s.operatorId, `ממצא מסקירת הסוכן ${finding.id}: ${finding.titleHe}`, r.type === "invoice" || r.type === "po" ? { type: r.type, id: r.id } : undefined), finding];
+}
+
+/** Close the agent's review pass over the control's data with a summary (the report states it). */
+export function recordReviewPass(state: V2State, summaryHe: string, byId: PersonId = state.operatorId): [V2State, ControlNote] {
+  if (!summaryHe.trim()) throw new Error("נדרש סיכום הסקירה");
+  const [s1, id] = nextId(state, "NOTE");
+  const note: ControlNote = { id, kind: "review_pass", textHe: summaryHe.trim(), at: s1.clock, byId };
+  const s: V2State = { ...s1, control: { ...s1.control, notes: [...s1.control.notes.filter((n) => n.kind !== "review_pass"), note] } };
+  return [audit(s, byId, `סקירת הסוכן הושלמה: ${note.textHe}`), note];
 }
 
 // ---------------------------------------------------------------------------

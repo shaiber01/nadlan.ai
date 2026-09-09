@@ -2,14 +2,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
-import { db, deleteInvoice, listProjects, resetProject, updateProject } from "../db/client";
+import { db, deleteInvoice, listProjects, resetProject, updateDocumentFacts, updateProject } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
-import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
+import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, raiseFinding, reallocateInvoice, recordReviewPass, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { lineValue } from "../engine/units";
 import { buildReport } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
@@ -193,6 +193,7 @@ function controlView(state: V2State) {
     corrections: c.corrections,
     tasks: c.tasks.map((t) => ({ ...t, ownerHe: personName(t.ownerId), sectionHe: t.sectionId ? sectionLabel(t.sectionId) : null })),
     notes: c.notes,
+    reviewPassHe: c.notes.find((n) => n.kind === "review_pass")?.textHe ?? null,
     questions: c.questions.map((q) => ({ ...q, toHe: personName(q.toId), channelHe: CHANNEL_HE[q.channel] })),
     reportConfig: c.reportConfig,
     savedConfig: state.savedConfig,
@@ -523,7 +524,7 @@ define({
     await loadState(a.projectId);
     const d = pkg.documents.find((x) => x.id === a.documentId);
     if (!d) throw new Error(`מסמך ${a.documentId} לא נמצא`);
-    return { id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, text: documentText(d), anchors: d.anchors, facts: d.facts ?? null, footerHe: d.footerHe };
+    return { id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, text: documentText(d), anchors: d.anchors, facts: d.facts ?? null, factsSource: d.factsSource ?? null, footerHe: d.footerHe };
   },
 });
 
@@ -853,6 +854,103 @@ define({
 });
 
 // ---------------------------------------------------------------------------
+// The agent's review: material to read, findings it raises, the pass it closes, facts it extracts
+// ---------------------------------------------------------------------------
+
+const recordRef = z.object({ type: z.enum(["invoice", "po", "contract", "boq_line", "document", "forecast_line"]), id: z.string() });
+const sourceRef = z.object({ kind: z.enum(["invoice", "po", "contract", "document", "forecast", "boq", "changelog", "history", "section"]), refId: z.string(), labelHe: z.string(), documentId: z.string().optional(), anchor: z.string().optional() });
+
+define({
+  name: "get_review_material",
+  title: "Material for the review pass",
+  description: "What the deterministic checks cannot judge, gathered for reading: each contract's scope, inclusions and exclusions with the invoices billed against it in the period (descriptions, amounts, sections), invoices without a contract, BOQ lines that are not covered with the quotes that may price them (with their extracted facts), and every document's text next to its recorded facts and their provenance. Read it and raise findings with raise_finding for what does not fit; then record_review_pass.",
+  kind: "read",
+  input: { projectId, controlDate, since: isoDate.optional().describe("invoices received on/after this date (default: the previous control date)"), sectionId: sectionId.optional() },
+  run: async (a) => {
+    const state = await loadState(a.projectId, a.controlDate);
+    const c = state.control.controlDate;
+    const previous = pkg.forecasts.filter((f) => f.status === "final" && f.controlDate < c).sort((x, y) => (x.controlDate < y.controlDate ? 1 : -1))[0];
+    const since = a.since ?? previous?.controlDate ?? "0000-00-00";
+    const sec = a.sectionId as HInvoice["sectionId"] | undefined;
+    const period = state.erp.invoices.filter((i) => i.dateReceived >= since && (!sec || i.sectionId === sec));
+    const brief = (i: HInvoice) => ({ id: i.id, date: i.date, dateReceived: i.dateReceived, docType: i.docType, partialNo: i.partialNo, descriptionHe: i.descriptionHe, amount: i.amount, sectionId: i.sectionId, sectionHe: sectionLabel(i.sectionId), status: i.status, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, attachmentId: i.attachmentId, enteredBy: i.enteredBy });
+    const contracts = pkg.contracts
+      .filter((k) => !sec || k.sectionId === sec)
+      .map((k) => ({ id: k.id, supplierHe: supplierName(k.supplierId), sectionId: k.sectionId, sectionHe: sectionLabel(k.sectionId), amount: k.amount, scopeHe: k.scopeHe, inclusionsHe: k.inclusionsHe, exclusions: k.exclusions, priceAppendices: k.priceAppendices ?? [], closed: k.closed ?? null, invoices: period.filter((i) => i.contractId === k.id).map(brief) }));
+    const keywords = (t: string) => t.split(/[\s,()״"]+/).filter((w) => w.length >= 4);
+    const boq = pkg.boq
+      .filter((l) => (!sec || l.sectionId === sec) && l.coverage !== "covered")
+      .map((l) => ({ ...l, sectionHe: sectionLabel(l.sectionId), candidateQuotes: pkg.documents.filter((d) => d.kind === "quote" && (quoteFacts(d)?.boqLineId === l.id || keywords(l.descriptionHe).some((w) => d.titleHe.includes(w)))).map((d) => ({ id: d.id, titleHe: d.titleHe, date: d.date, supplierHe: supplierName(d.supplierId), facts: d.facts ?? null })) }));
+    return {
+      period: { from: since, to: c },
+      contracts,
+      invoicesWithoutContract: period.filter((i) => !i.contractId).map(brief),
+      boq,
+      documents: pkg.documents.map((d) => ({ id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierHe: supplierName(d.supplierId), facts: d.facts ?? null, factsSource: d.factsSource ?? null, text: documentText(d) })),
+      reviewPassHe: state.control.notes.find((n) => n.kind === "review_pass")?.textHe ?? null,
+    };
+  },
+});
+
+define({
+  name: "raise_finding",
+  title: "Raise a finding from reading",
+  description: "Record a finding you found by reading — an invoice whose description does not match its contract's scope or lands on an exclusion, a quote that does not price the BOQ line it is attached to, facts that differ from the document — with the record, the sources you read, your reasoning and the decision needed. It joins the control like a check's finding: a card, the same decisions (apply when you give a proposedFix on an invoice, refer, accept), the report's open-findings table. Requires a running control.",
+  kind: "write",
+  input: {
+    projectId,
+    controlDate,
+    titleHe: z.string(),
+    problemHe: z.string().describe("one sentence: what does not fit, with the numbers"),
+    meaningHe: z.string().describe("what it means for the forecast or the payments"),
+    sectionId,
+    record: recordRef,
+    sources: z.array(sourceRef).optional(),
+    reasoningHe: z.string().optional().describe("what you read and why it does not fit"),
+    questionHe: z.string().optional(),
+    options: z.array(z.object({ id: z.enum(["apply", "refer", "accept"]), labelHe: z.string() })).optional(),
+    impact: z.object({ kind: z.enum(["none", "amount", "unknown"]), amount: z.number().optional(), labelHe: z.string().optional() }).optional(),
+    proposedFix: z.object({ labelHe: z.string(), patch: z.object({ retentionPct: z.number().optional(), retentionAmt: z.number().optional(), netPayable: z.number().optional(), cumulativePrev: z.number().nullable().optional(), cumulativeNow: z.number().nullable().optional(), date: isoDate.optional(), dateReceived: isoDate.optional(), status: z.enum(["אושר", "בבדיקה", "שולם"]).optional() }) }).optional(),
+    referToId: personId.optional().describe("who a 'refer' decision goes to (default: bookkeeping)"),
+  },
+  run: async (a) => {
+    let raised!: HFinding;
+    const r = await write(a.projectId, a.controlDate, (s) => {
+      const [next, f] = raiseFinding(s, a as never);
+      raised = f;
+      return next;
+    });
+    return outcome(r, { finding: findingView(r.state.control.findings.find((f) => f.id === raised.id)!, r.state), openFindings: controlView(r.state).openFindings });
+  },
+});
+
+define({
+  name: "record_review_pass",
+  title: "Close the review pass",
+  description: "Record that you read the review material for this control and what came of it (how many findings raised, what was checked and found consistent). The report states it in its sources line; without it the report says the review was not done.",
+  kind: "write",
+  input: { projectId, controlDate, summaryHe: z.string(), byId: personId.optional() },
+  run: async (a) => outcome(await write(a.projectId, a.controlDate, (s) => recordReviewPass(s, a.summaryHe, (a.byId as V2State["operatorId"] | undefined) ?? s.operatorId)[0])),
+});
+
+define({
+  name: "set_document_facts",
+  title: "Record facts extracted from a document",
+  description: "Write the structured facts you read in a document (get_document gives its text) so the checks run on them: for a quote or order confirmation — qty, unit, unitPrice, amount, validUntil (yyyy-mm-dd), boqLineId, supplierId; for a price appendix — pricePerTon (per unit), validFrom; for an invoice — amount, qty, unit; anything else you read that a check may need. Replaces the document's facts and records the provenance (agent, by whom, when). In the operational system an extraction service would do this from the PDF; the checks and the agent do not change.",
+  kind: "write",
+  input: { projectId, documentId: z.string(), facts: z.record(z.string(), z.unknown()), noteHe: z.string().optional().describe("what you read it from, e.g. 'שורה 2 בטבלת ההצעה'"), byId: personId.optional() },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const doc = pkg.documents.find((d) => d.id === a.documentId);
+    if (!doc) throw new Error(`מסמך ${a.documentId} לא נמצא`);
+    await updateDocumentFacts(a.projectId, a.documentId, a.facts, { method: "agent", byId: a.byId ?? state.operatorId, ...(a.noteHe ? { noteHe: a.noteHe } : {}) });
+    await loadState(a.projectId);
+    const fresh = pkg.documents.find((d) => d.id === a.documentId)!;
+    return { ok: true, document: { id: fresh.id, titleHe: fresh.titleHe, facts: fresh.facts ?? null, factsSource: fresh.factsSource ?? null, quoteFacts: quoteFacts(fresh) }, hintHe: "העובדות נרשמו; הבדיקות הדטרמיניסטיות ירוצו עליהן בהרצה הבאה (run_check / run_control / build_report)." };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Questions to people
 // ---------------------------------------------------------------------------
 
@@ -950,7 +1048,9 @@ define({
       finalized: report.finalized,
     };
     const unreviewed = report.openFindings.filter((f) => f.statusHe !== "טרם הוכרע" && f.statusHe !== "בהחלטה").length;
-    const attentionHe = report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : null;
+    const reviewMissing = !report.header.reviewPassHe;
+    const parts = [report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : "", reviewMissing ? "סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass." : ""].filter(Boolean);
+    const attentionHe = parts.length ? parts.join(" ") : null;
     return { ok: true, tab: a.tab, format: a.format, path, versionId, ...(attentionHe ? { attentionHe } : {}), ...(a.format === "json" ? { report } : a.format === "markdown" ? { markdown: text } : {}), summary };
   },
 });

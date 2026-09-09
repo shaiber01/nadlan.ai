@@ -10,6 +10,8 @@ The report is produced by `build_report` from the current state per `budgetcontr
 ## Before delivering: the checks
 `build_report` runs all the checks on the current data by itself. Its result carries `attentionHe` and `summary.openFindings` when something needs a decision: findings of the session nobody decided on, and findings the checks raise beyond the session ("הבקרה טרם רצה" / "חדש מאז הרצת הבקרה"). Walk them before delivering: for each, the recommended fix (`fixHe`) and the people involved (`peopleHe`); get the decision through `/bakara-control` (`run_control` first if the control has not run, so decisions can be recorded), then build again. A report delivered with open findings is delivered as not final, and you say so.
 
+`attentionHe` also says when the review pass was not done for this control (`/bakara-control` step 5): do it before delivering — the report's sources line states whether the agent's review was done.
+
 ## Build and deliver
 1. `build_report` (default `format: "summary"`). Give the user:
    - the header line (`summary.header.controlLabelHe`, cutoff, previous control);

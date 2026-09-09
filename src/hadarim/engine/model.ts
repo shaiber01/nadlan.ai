@@ -108,7 +108,7 @@ export interface ChatMessage {
 /** A note the controller adds to the control — feeds the report's risks, events, decisions, assumptions, change orders and claims. */
 export interface ControlNote {
   id: string;
-  kind: "risk" | "event" | "decision" | "assumption" | "note" | "change_order" | "claim";
+  kind: "risk" | "event" | "decision" | "assumption" | "note" | "change_order" | "claim" | "review_pass";
   textHe: string;
   sectionId?: SectionId;
   exposureHe?: string;

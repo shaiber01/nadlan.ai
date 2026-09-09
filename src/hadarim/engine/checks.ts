@@ -27,7 +27,7 @@ export interface HDecisionOption {
 }
 
 /** Control findings (decided card by card) and data-quality findings (the record itself is inconsistent). */
-export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging";
+export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "review";
 export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"];
 
 /** A person connected to the record a finding is about — who to ask when the operator does not know. */
@@ -44,6 +44,10 @@ export type InvoiceFixPatch = Partial<Pick<HInvoice, "retentionPct" | "retention
 export interface HFinding {
   id: string;
   kind: FindingKind;
+  /** "check" = a deterministic check; "review" = raised by the agent from reading records and documents. */
+  origin?: "check" | "review";
+  /** Who a "refer" decision goes to (default: whoever keys the ERP). */
+  referToId?: PersonId;
   /** People who entered, approved or changed the record (from the record and the change log). */
   people?: InvolvedPerson[];
   /** When the right values are determined by other stored data: the fix the card offers to apply. */
@@ -56,7 +60,7 @@ export interface HFinding {
   impact: { kind: "none" | "amount" | "unknown"; amount: number; labelHe: string };
   decision: { questionHe: string; options: HDecisionOption[]; freeText: boolean };
   sectionId: SectionId;
-  record: { type: "invoice" | "po" | "forecast_line" | "boq_line" | "contract"; id: string };
+  record: { type: "invoice" | "po" | "forecast_line" | "boq_line" | "contract" | "document"; id: string };
   detailsTable?: string[][];
   notesHe?: string[];
 }

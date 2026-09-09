@@ -83,7 +83,7 @@ async function main() {
   await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: s.shortHe, kind: s.kind, budget: s.budget, split: s.split, position: i + 1 })));
   // documentFacts is keyed by document id
   const factsFor = (documentId: string): Record<string, unknown> => ((documentFacts as Record<string, Record<string, unknown> | undefined>)[documentId] ?? {});
-  await insert("documents", pkg.documents.map((d) => ({ project_id: P, id: d.id, kind: d.kind, title_he: d.titleHe, date: d.date, supplier_id: d.supplierId, file_name: d.fileName, blocks: d.blocks, footer_he: d.footerHe, anchors: d.anchors, facts: factsFor(d.id) })));
+  await insert("documents", pkg.documents.map((d) => ({ project_id: P, id: d.id, kind: d.kind, title_he: d.titleHe, date: d.date, supplier_id: d.supplierId, file_name: d.fileName, blocks: d.blocks, footer_he: d.footerHe, anchors: d.anchors, facts: factsFor(d.id), facts_source: Object.keys(factsFor(d.id)).length ? { method: "seed" } : null })));
   await insert("contracts", pkg.contracts.map((c) => ({
     project_id: P,
     id: c.id,

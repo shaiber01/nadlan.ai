@@ -427,6 +427,7 @@ export type Database = {
           blocks: Json
           date: string
           facts: Json
+          facts_source: Json | null
           file_name: string
           footer_he: string
           id: string
@@ -440,6 +441,7 @@ export type Database = {
           blocks?: Json
           date: string
           facts?: Json
+          facts_source?: Json | null
           file_name: string
           footer_he?: string
           id: string
@@ -453,6 +455,7 @@ export type Database = {
           blocks?: Json
           date?: string
           facts?: Json
+          facts_source?: Json | null
           file_name?: string
           footer_he?: string
           id?: string
@@ -1022,8 +1025,8 @@ export type Database = {
           id: number
           invoiced_amount: number
           kind: string
-          project_id: string
           price_unit: string
+          project_id: string
           qty: number
           section_id: string
           status: string
@@ -1044,8 +1047,8 @@ export type Database = {
           id: number
           invoiced_amount?: number
           kind: string
+          price_unit: string
           project_id: string
-          price_unit?: string
           qty: number
           section_id: string
           status: string
@@ -1066,8 +1069,8 @@ export type Database = {
           id?: number
           invoiced_amount?: number
           kind?: string
-          project_id?: string
           price_unit?: string
+          project_id?: string
           qty?: number
           section_id?: string
           status?: string

@@ -125,6 +125,8 @@ Behaviour the user asked for (2026-09-09, verbatim intent: check the data whenev
 
 Two pages and Excel (2026-09-09): the report got its own page, `report.html` (`ReportApp.tsx`: its own header, no presenter controls, DB status), the ERP stays on `hadarim.html` (`App.tsx`) and never links to the report; the report's source links and "פתח במערכת המידע" open the ERP record in a new tab by URL (`hadarim.html?screen=…&invoice=…`, read by the store on load); `?app=report` redirects to the new page. Excel export: `src/hadarim/export/xlsx.ts` builds a workbook from the report model (one sheet per table; the v1 SpreadsheetML writer over fflate), a button in the viewer and `build_report` `format: "xlsx"` for the agent.
 
+AI review in the loop (2026-09-09, done): the deterministic checks are the floor; the agent's reading is added as (1) `raise_finding` — a finding of kind `review` with sources and reasoning, same card/decision/report path; (2) a review pass in `/bakara-control` fed by `get_review_material` (contracts' scope/inclusions/exclusions with the period's invoices, BOQ lines with candidate quotes, documents with text and facts), closed with `record_review_pass`; (3) `set_document_facts` — the agent extracts facts from a document's text and records them with `facts_source` (method agent/seed, by, at), so the checks run on what the documents say; a `/bakara-extract` skill. Later: PDFs in storage behind the same tool.
+
 Next: (8) package `.claude/` + `mcp/` as a Claude Code plugin; later: Supabase Auth and real RLS, more projects; a real messaging channel behind `ask_person`.
 
 ## 5. Build phases for the next session
