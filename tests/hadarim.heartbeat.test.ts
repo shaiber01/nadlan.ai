@@ -141,21 +141,23 @@ describe("text extraction from real files", () => {
 describe("reportBlockers — a saved version or a final control must rest on data that was read", () => {
   const other = (id: string) => pkg.sections.find((s) => s.id !== id)!.id;
   const lastLogId = (s: ReturnType<typeof initialState>) => Math.max(0, ...s.erp.changeLog.map((c) => Number(c.id.replace(/\D/g, ""))));
+  // the seed's own pending document (boq_v5_ch57) processed, so these cases can reason about an otherwise-clean folder
+  const processedPkg = { ...pkg, documents: pkg.documents.map((d) => (isUnprocessed(d) ? { ...d, facts: {}, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) };
 
   it("nothing blocks a project whose heartbeat covers the change log and whose folder has no pending document", () => {
     const s = initialState();
-    expect(reportBlockers(pkg, s, { untilChangeLogId: lastLogId(s) }, lastLogId(s))).toEqual([]);
-    expect(reportBlockers(pkg, s, null, 0)).toEqual([]);
+    expect(reportBlockers(processedPkg, s, { untilChangeLogId: lastLogId(s) }, lastLogId(s))).toEqual([]);
+    expect(reportBlockers(processedPkg, s, null, 0)).toEqual([]);
   });
 
   it("a pending document blocks; a project with changes and no heartbeat blocks", () => {
     const s = initialState();
     const pendingDoc = { ...pkg.documents[0], id: "upload_1", fileName: "scan.pdf", facts: undefined, factsSource: undefined };
-    const p = { ...pkg, documents: [...pkg.documents, pendingDoc] };
+    const p = { ...processedPkg, documents: [...processedPkg.documents, pendingDoc] };
     const [b] = reportBlockers(p, s, { untilChangeLogId: lastLogId(s) }, lastLogId(s));
     expect(b).toMatchObject({ kind: "pending_documents" });
     expect(b.textHe).toContain("scan.pdf");
-    expect(reportBlockers(pkg, s, null, lastLogId(s)).map((x) => x.kind)).toEqual(["no_heartbeat"]);
+    expect(reportBlockers(processedPkg, s, null, lastLogId(s)).map((x) => x.kind)).toEqual(["no_heartbeat"]);
   });
 
   it("changes since the last heartbeat block only when the checks raise findings on them that nobody presented", () => {
@@ -163,15 +165,15 @@ describe("reportBlockers — a saved version or a final control must rest on dat
     const inv = seed.erp.invoices.find((i) => i.contractId && pkg.contracts.find((c) => c.id === i.contractId)!.sectionId === i.sectionId)!;
     const moved = updateInvoiceSection(seed, inv.id, other(inv.sectionId) as never, "SARIT");
     const since = lastLogId(seed);
-    const [b] = reportBlockers(pkg, moved, { untilChangeLogId: since }, lastLogId(moved));
+    const [b] = reportBlockers(processedPkg, moved, { untilChangeLogId: since }, lastLogId(moved));
     expect(b).toMatchObject({ kind: "unreviewed_findings" });
     expect(b.textHe).toContain(`F-ALLOC-${inv.id}`);
     // findings not tied to the change (the seed's own open findings) do not block: they are the control's business
     expect(b.textHe).not.toContain("F-UNIT");
     // once a heartbeat covered the change, nothing blocks
-    expect(reportBlockers(pkg, moved, { untilChangeLogId: lastLogId(moved) }, lastLogId(moved))).toEqual([]);
+    expect(reportBlockers(processedPkg, moved, { untilChangeLogId: lastLogId(moved) }, lastLogId(moved))).toEqual([]);
     // a change that raises nothing does not block either: the invoice moved back to where it belongs
     const back = updateInvoiceSection(moved, inv.id, inv.sectionId, "SARIT");
-    expect(reportBlockers(pkg, back, { untilChangeLogId: since }, lastLogId(back))).toEqual([]);
+    expect(reportBlockers(processedPkg, back, { untilChangeLogId: since }, lastLogId(back))).toEqual([]);
   });
 });
