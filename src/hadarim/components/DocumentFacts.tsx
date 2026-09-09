@@ -47,18 +47,16 @@ export function DocumentFacts({ record, doc, compact = false }: { record: Record
           <thead>
             <tr>
               <th>שדה</th>
-              <th>ברשומה</th>
               <th>במסמך</th>
-              <th aria-label="התאמה" />
+              <th aria-label="התאמה לרשומה" />
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.key} className={r.match === false ? "is-mismatch" : r.match === true ? "is-match" : "is-info"} data-fact={r.key} data-match={String(r.match)}>
                 <td>{r.fieldHe}</td>
-                <td>{r.recordHe ?? "—"}</td>
                 <td>{r.docHe}</td>
-                <td className="h2-docfacts-mark" title={r.match === null ? "עובדה שאין לה שדה מקביל ברשומה" : CHECK_TITLE_HE[r.check ?? "none"]}>
+                <td className="h2-docfacts-mark" title={r.match === null ? "עובדה שאין לה שדה מקביל ברשומה" : `${r.match ? "תואם לרשומה" : `שונה מהרשומה — ברשומה: ${r.recordHe ?? "—"}`} · ${CHECK_TITLE_HE[r.check ?? "none"]}`}>
                   {r.match === true ? "✓" : r.match === false ? "✗" : ""}
                 </td>
               </tr>
