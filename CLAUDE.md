@@ -7,7 +7,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 ## Running the agent
 
 - Whole session as the controller: `claude --agent bakara` from this folder (the `.mcp.json` servers load; approve them on first use).
-- From a normal session: "use the bakara agent to …" delegates one task to it.
+- From a normal session: "use the bakara agent to …" delegates one task to it (as a subagent it cannot ask clickable questions, so decisions come back as text; run it as the session for the interactive cards).
 - `claude agents` lists the agents; the skills are `/bakara-control`, `/bakara-report`, `/bakara-qa`, `/bakara-erp`, `/bakara-reset`, `/bakara-extract` (read a document, record its facts), `/bakara-heartbeat` (everything new since the last pass: pending documents, changed records, the checks on them).
 - Headless, for cron/launchd: `scripts/heartbeat.sh` runs `/bakara-heartbeat` with `claude -p` (nothing is decided without a user; the summary is what the user reads next).
 - Two pages (`npm run dev`): `hadarim.html` is the simulated ERP, `report.html` the live, read-only view of the agent's report with the saved versions. Neither links to the other; the report's source links open ERP records in a new tab by URL (`hadarim.html?screen=invoices&invoice=1147`). Open the report next to the agent to watch the control take shape.

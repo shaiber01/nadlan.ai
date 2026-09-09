@@ -89,6 +89,9 @@ describe("the document and heartbeat tools", () => {
     const agent = readFileSync(".claude/agents/bakara.md", "utf8");
     for (const t of ["add_document", "classify_document", "get_heartbeat_work", "record_heartbeat", "list_heartbeats"]) expect(agent).toContain(`mcp__bakara__${t}`);
     expect(agent).not.toContain("mcp__bakara__ask_person");
+    // decisions are asked with clickable options; the control skill routes every card through it
+    expect(agent.split("\n")[3]).toContain("AskUserQuestion");
+    expect(readFileSync(".claude/skills/bakara-control/SKILL.md", "utf8")).toContain("AskUserQuestion");
     expect(existsSync(".claude/skills/bakara-heartbeat/SKILL.md")).toBe(true);
     expect(readFileSync(".claude/skills/bakara-report/SKILL.md", "utf8")).toContain("/bakara-heartbeat");
   });

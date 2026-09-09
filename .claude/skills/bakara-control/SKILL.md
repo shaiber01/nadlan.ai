@@ -12,7 +12,8 @@ Numbers and wording come only from tool results. The tools are the `mcp__bakara_
 - `idle` → a new control: go to step 2.
 - `running` / `reviewing` → `get_control`; continue from `openFindings[0]` (step 3).
 - `report` → the control is done; offer `/bakara-report`.
-- The user wants to start over → say it discards this control's decisions, get a yes, then `run_control` with `force: true`.
+- The user wants to start over → say it discards this control's decisions, confirm with `AskUserQuestion` (header "אישור"), then `run_control` with `force: true`.
+- Who is deciding, when it matters for attribution and was not said: `AskUserQuestion` with the people of `get_project.people` (name — role) as options.
 
 To check one record without opening a control ("is invoice 1147 allocated right?", "is order 2291 sane?"): `run_check` with `kind` and `invoiceId` / `poId` / `sectionId`. Relay the findings the same way as cards, but nothing is recorded.
 
@@ -25,14 +26,14 @@ For the first open finding (`findings` in order, or `get_control.openFindings[0]
 - **הבעיה** — `problemHe`.
 - **המקורות** — each `sources[].labelHe`; a source with `documentId` can be opened with `get_document` if the user asks to see it.
 - **המשמעות** — `meaningHe`, then `impact.labelHe` as "השפעה על התחזית"; `detailsTable` rows when present; `notesHe`.
-- **ההחלטה הנדרשת** — `decision.questionHe` and the options as `[id] label`; say free text is allowed when `decision.freeText` is true.
+- **ההחלטה הנדרשת** — then ask with `AskUserQuestion` (one question): `header` "ממצא n/N", `question` = `decision.questionHe`, options = `decision.options` in order — the recommended fix first with "(מומלץ)" in its label — each `label` a few Hebrew words and `description` the option's full text and consequence; at most four options (with more, the first three and "the rest can be typed"); the built-in "Other" is the card's free text. Map the chosen label back to the option's id before calling the tool. Without the tool (delegated as a subagent) list the options as `[id] label` and wait.
 
-Wait for the user's decision before applying anything. Do not recommend an option unless asked; if asked, reason only from the card's sources.
+Apply nothing before the answer. Do not recommend beyond the card's own recommended fix unless asked; if asked, reason only from the card's sources.
 
 ## 4. Apply the decision
 - `decide_finding` with `findingId` and `choiceId` (or `freeTextHe`). Relay `messagesHe` verbatim — the engine may ask a follow-up:
-  - a **route question** (allocation / unit after "כן") → present the route options, wait, then `route_finding`: `update` writes the ERP record (permission-checked, attributed to the control's operator) and re-reads it — quote `verifiedHe`; `refer_accounting` / `refer_roi` open a pending task for the owner and leave the finding "ממתין לביצוע"; `forecast_only` corrects the forecast but not the ERP (say the gap will return next control).
-  - a **quote found** (coverage after "צריך להזמין") → present the quote line and validity, wait, then `confirm_quote` with `accept`. Accepting adds an estimate (not a commitment) and opens a task to order before the quote expires.
+  - a **route question** (allocation / unit after "כן") → ask the route with `AskUserQuestion` (header "ניתוב", the routes as options), then `route_finding`: `update` writes the ERP record (permission-checked, attributed to the control's operator) and re-reads it — quote `verifiedHe`; `refer_accounting` / `refer_roi` open a pending task for the owner and leave the finding "ממתין לביצוע"; `forecast_only` corrects the forecast but not the ERP (say the gap will return next control).
+  - a **quote found** (coverage after "צריך להזמין") → present the quote line and validity, ask "להוסיף לתחזית כאומדן?" with `AskUserQuestion` (כן / לא), then `confirm_quote` with `accept`. Accepting adds an estimate (not a commitment) and opens a task to order before the quote expires.
 - After each tool: quote `headline.textHe` when it changed, then present `nextOpenFinding`.
 - Finding kinds: `allocation` (שיוך חשבון לסעיף), `unit` (יחידת מידה בהזמנה), `price` (מחיר יתרה מול נספח), `coverage` (שורה בכתב הכמויות ללא חוזה ואומדן), and the data-quality kinds `duplicate`, `contract_overrun`, `cumulative`, `retention`, `dates`, `review_aging`, `document` (the record against its source document's facts); `review` is a finding you raised yourself (step 5). Data-quality cards share one decision: `apply` when the card carries a `proposedFix` (retention, cumulative, approving an invoice in review, the document's values) — the recommended fix, written on approval and verified by re-read; `refer` (the fix goes to whoever keys the ERP as a pending task); `accept` (checked, correct — give the reason as free text); and for a contract overrun `change_order` (records it; §6 of the report shows it).
 - **Recommended fix first.** When the card has a `proposedFix`, or a first option that names the fix (the contract's section, the quote's quantity, the appendix price, the quote found), present it as "התיקון המומלץ" and ask for approval. Apply nothing before the yes.

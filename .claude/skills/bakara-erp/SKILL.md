@@ -5,7 +5,7 @@ description: Apply an instructed data change outside a finding card — re-alloc
 
 # Writes — only on the user's decision
 
-Before writing, restate what will change and who decides (`byId` = their person id from `get_project.people`). After writing, quote the tool's `changeLog` rows (written by the database triggers) and its `verifiedHe` line (the record re-read from the database).
+Before writing, restate what will change and who decides (`byId` = their person id from `get_project.people`); when the instruction left either open, ask with `AskUserQuestion` (the change as "כן, בצע" / "לא", or the people as options) rather than guessing. After writing, quote the tool's `changeLog` rows (written by the database triggers) and its `verifiedHe` line (the record re-read from the database).
 
 ## ERP records
 - `reallocate_invoice` — invoice to another section. Permission-checked (only people who may write allocations; do not work around a refusal). `asCorrection: true` (default) when this is the controller's correction of a wrong allocation — it appears in report §4ב; `asCorrection: false` when the user is doing plain data entry as the ERP's user (e.g. a bookkeeper keying a change) — change log only.

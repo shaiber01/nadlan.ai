@@ -38,10 +38,10 @@ Risks the data itself implies (quote expiry, appendix-priced remainders, stale i
 
 The sections table's "תקציב מאושר / שינויים / תקציב מעודכן" columns come from the original budget and the approved budget changes (`list_budget_changes`); when changes exist the key table also shows the original budget and the net change. Budget changes are recorded through `/bakara-erp` on instruction, never to absorb a variance.
 
-`save: true` keeps the structure for the project's next controls. Say what is kept (structure: sections, comparison, building split, CEO version, summary length, the separation of corrections from forecast changes) and what is never kept (the data and conclusions — recomputed every control).
+`save: true` keeps the structure for the project's next controls; ask first with `AskUserQuestion` (header "תצורה", "לשמור את התצורה לבקרות הבאות?", כן / לא). Say what is kept (structure: sections, comparison, building split, CEO version, summary length, the separation of corrections from forecast changes) and what is never kept (the data and conclusions — recomputed every control).
 
 ## Finalize and send
-`finalize_control` only when the user says the control is closed; the header then reads "גרסה סופית". There is no mailbox: "שלח לדנה" = hand over the Word path (and the CEO version if configured) and say so plainly.
+`finalize_control` only when the user says the control is closed — confirm with `AskUserQuestion` (header "סגירה", "לסגור את הבקרה כגרסה סופית?"); the header then reads "גרסה סופית". There is no mailbox: "שלח לדנה" = hand over the Word path (and the CEO version if configured) and say so plainly.
 
 ## Where people read it
 The report page (`report.html`, hosted at `https://shaiber01.github.io/nadlan.ai/report.html`) shows this control live (rebuilt from the session on every change) and lists the saved versions next to it, with PDF, Word and Excel exports; nothing is edited there, and its source links open the ERP record in a new tab. If the user has it open, they see your decisions as you record them — say so when relevant.
