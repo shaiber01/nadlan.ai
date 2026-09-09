@@ -22,7 +22,7 @@ If the user disputes a figure, point to the report section and its source and pu
 ## Enrich before delivering
 What the data cannot know, the controller records — each note lands in the right section of the report:
 - `add_control_note` kind `risk` (§7: `textHe`, `sectionId`, `exposureHe`, `likelihoodHe`, `triggerHe`, `ownerId`), `event` (§2 material events of the period), `decision` (§1 decisions needed), `assumption` (§11), `note` (an executive-summary bullet), `change_order` and `claim` (§6 — the ERP holds neither, so §6 says "none recorded" until you record them; ask the user).
-- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend).
+- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend); also the project's materiality thresholds (§5), which `get_project` shows and the report states — change them only on the user's instruction, and say that the material sections were re-selected.
 - `open_task` / `set_task_status` — the responsibility table (§8): owner, due date, impact if ignored; close what was done.
 Risks the data itself implies (quote expiry, appendix-priced remainders, stale issues) are already derived; do not duplicate them.
 

@@ -71,6 +71,7 @@ async function main() {
       current_control_date: pkg.project.currentControlDate,
       buildings: pkg.project.buildings.map((b) => ({ id: b.id, floors: b.floors, floors_cast: b.floorsCast, units_per_floor: b.unitsPerFloor })),
       buckets: { shared: { id: pkg.project.buckets.shared.id, label_he: pkg.project.buckets.shared.labelHe }, parking: { id: pkg.project.buckets.parking.id, label_he: pkg.project.buckets.parking.labelHe } },
+      materiality: { absolute: pkg.project.materiality.absolute, pct_of_section: pkg.project.materiality.pctOfSection, absolute_always: pkg.project.materiality.absoluteAlways, budget_share_pct: pkg.project.materiality.budgetSharePct, soft_basis_pct: pkg.project.materiality.softBasisPct },
       physical_progress_pct: pkg.project.physicalProgressPct ?? null,
       schedule: pkg.project.schedule ?? {},
     },

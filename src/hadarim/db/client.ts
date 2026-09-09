@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { BuildingTag, ForecastBasis, HBoqLine, HChangeLogEntry, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPerson, HProject, HPurchaseOrder, HSection, HSupplier, HadarimPackage, PersonId, SectionId } from "../data/types";
+import { STANDARD_MATERIALITY, type BuildingTag, type ForecastBasis, type HBoqLine, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
 import type { ErpState } from "../engine/model";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import type { Database, Json, Tables, TablesInsert } from "./types";
@@ -149,6 +149,10 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     buckets: (() => {
       const b = (p.buckets ?? {}) as { shared?: { id?: string; label_he?: string }; parking?: { id?: string; label_he?: string } };
       return { shared: { id: b.shared?.id ?? "shared", labelHe: b.shared?.label_he ?? b.shared?.id ?? "shared" }, parking: { id: b.parking?.id ?? "parking", labelHe: b.parking?.label_he ?? b.parking?.id ?? "parking" } };
+    })(),
+    materiality: (() => {
+      const m = (p.materiality ?? {}) as Partial<Record<"absolute" | "pct_of_section" | "absolute_always" | "budget_share_pct" | "soft_basis_pct", number>>;
+      return { absolute: m.absolute ?? STANDARD_MATERIALITY.absolute, pctOfSection: m.pct_of_section ?? STANDARD_MATERIALITY.pctOfSection, absoluteAlways: m.absolute_always ?? STANDARD_MATERIALITY.absoluteAlways, budgetSharePct: m.budget_share_pct ?? STANDARD_MATERIALITY.budgetSharePct, softBasisPct: m.soft_basis_pct ?? STANDARD_MATERIALITY.softBasisPct };
     })(),
     units: p.units ?? 0,
     grossSqm: p.gross_sqm ?? 0,
@@ -319,6 +323,8 @@ export interface ProjectStatusPatch {
   /** Measured physical progress in percent; null = not measured. */
   physicalProgressPct?: number | null;
   schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
+  /** Materiality thresholds (report standard §5); merged with the current ones. */
+  materiality?: Partial<HMateriality>;
 }
 
 /** Updates the project's status fields (stage text, measured physical progress, schedule); the schedule is merged. */
@@ -332,6 +338,13 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
     const current = ((data?.schedule as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
     const s = patch.schedule;
     row.schedule = { ...current, ...(s.contractEnd !== undefined ? { contract_end: s.contractEnd } : {}), ...(s.expectedEnd !== undefined ? { expected_end: s.expectedEnd } : {}), ...(s.noteHe !== undefined ? { note_he: s.noteHe } : {}) } as Json;
+  }
+  if (patch.materiality) {
+    const { data, error } = await supabase.from("projects").select("materiality").eq("id", projectId).single();
+    if (error) throw new Error(`projects: ${error.message}`);
+    const current = ((data?.materiality as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+    const m = patch.materiality;
+    row.materiality = { ...current, ...(m.absolute !== undefined ? { absolute: m.absolute } : {}), ...(m.pctOfSection !== undefined ? { pct_of_section: m.pctOfSection } : {}), ...(m.absoluteAlways !== undefined ? { absolute_always: m.absoluteAlways } : {}), ...(m.budgetSharePct !== undefined ? { budget_share_pct: m.budgetSharePct } : {}), ...(m.softBasisPct !== undefined ? { soft_basis_pct: m.softBasisPct } : {}) } as Json;
   }
   if (!Object.keys(row).length) return;
   const { error } = await supabase.from("projects").update(row).eq("id", projectId);

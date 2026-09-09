@@ -148,3 +148,19 @@ describe("report statements are backed by data or by the controller", () => {
     expect(r.contingency.claimsHe).toBe("דרישת קבלן השלד להתייקרות בטון");
   });
 });
+
+describe("materiality is a project setting", () => {
+  it("tighter thresholds on the project row make more sections material and change the report's stated threshold", () => {
+    const state = initialState();
+    const standard = buildReport(pkg, state);
+    const strict = { ...pkg, project: { ...pkg.project, materiality: { absolute: 1, pctOfSection: 0, absoluteAlways: 1, budgetSharePct: 100, softBasisPct: 0 } } };
+    const r = buildReport(strict, state);
+    expect(r.sections.materialityHe).toContain("1 ₪");
+    expect(standard.sections.materialityHe).toContain("100,000 ₪");
+    // with a 1 ₪ threshold every section with any variance is highlighted; with the standard's, only the material ones
+    const varied = r.sections.rows.filter((x) => x.variance !== 0 && !x.isContingency).length;
+    expect(r.sections.rows.filter((x) => x.highlighted).length).toBeGreaterThanOrEqual(varied);
+    expect(standard.sections.rows.filter((x) => x.highlighted).length).toBeLessThanOrEqual(r.sections.rows.filter((x) => x.highlighted).length);
+    expect(r.appendices.definitionsHe.join(" ")).toContain("100% מהתקציב");
+  });
+});

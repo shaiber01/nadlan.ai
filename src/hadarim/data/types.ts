@@ -20,6 +20,22 @@ export interface HCostBucket {
   labelHe: string;
 }
 
+/** Materiality policy of a project (report standard §5): when a section's variance is material and when it gets its own analysis. */
+export interface HMateriality {
+  /** A variance is material when it is at least this (₪) AND at least `pctOfSection` of the section's budget… */
+  absolute: number;
+  pctOfSection: number;
+  /** …or at least this (₪) regardless of the section's size. */
+  absoluteAlways: number;
+  /** A section is analysed anyway when its budget exceeds this share (%) of the project budget… */
+  budgetSharePct: number;
+  /** …or when less than this share (%) of its forecast rests on commitments. */
+  softBasisPct: number;
+}
+
+/** The thresholds of `budgetcontrolreportstandard.md`, used when a project sets none of its own. */
+export const STANDARD_MATERIALITY: HMateriality = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
+
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
@@ -27,6 +43,7 @@ export interface HProject {
   buildings: HBuilding[];
   /** The non-building buckets of the split: shared costs, and parking (sections with split = parking). */
   buckets: { shared: HCostBucket; parking: HCostBucket };
+  materiality: HMateriality;
   units: number;
   grossSqm: number;
   startDate: string;

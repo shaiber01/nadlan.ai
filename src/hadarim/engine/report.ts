@@ -22,7 +22,6 @@ const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Ma
 const label = (id: SectionId) => `${id}-${sectionShort(id)}`;
 const isolate = (s: string) => `⁨${s}⁩`;
 
-export const MATERIALITY = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
 /** Exposure assumed for an estimate based on a quote that may expire (stated as an assumption in the risk row). */
 const QUOTE_EXPIRY_EXPOSURE_PCT = 25;
 
@@ -171,9 +170,11 @@ export interface ReportModel {
 
 const BASIS_HE: Record<string, string> = { invoice: "חשבון מאושר", contract: "חוזה חתום", po: "הזמנה מאושרת", quote: "הצעת מחיר", appendix: "נספח מחיר", estimate: "אומדן פנימי", allocation: "הקצאה תקציבית פנימית" };
 
-function isMaterial(s: WorkingSection): boolean {
+/** Standard §5 with the project's thresholds: a change since the previous control, or a variance over the materiality threshold. */
+function isMaterial(pkg: HadarimPackage, s: WorkingSection): boolean {
+  const m = pkg.project.materiality;
   const abs = Math.abs(s.variance);
-  return s.change !== 0 || abs >= MATERIALITY.absoluteAlways || (abs >= MATERIALITY.absolute && abs >= (s.budget * MATERIALITY.pctOfSection) / 100);
+  return s.change !== 0 || abs >= m.absoluteAlways || (abs >= m.absolute && abs >= (s.budget * m.pctOfSection) / 100);
 }
 
 function personName(pkg: HadarimPackage, id: string | undefined | null): string {
@@ -305,9 +306,9 @@ function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2Sta
   for (const s of wf.sections) {
     if (isContingency(s.sectionId)) continue;
     const reasons = [
-      isMaterial(s) ? (s.change !== 0 ? "שינוי מהבקרה הקודמת" : "סטייה מעל סף המהותיות") : "",
-      s.budget > (wf.totalBudget * MATERIALITY.budgetSharePct) / 100 ? `מעל ${MATERIALITY.budgetSharePct}% מהתקציב` : "",
-      s.basisPct < MATERIALITY.softBasisPct ? `בסיס ${num(s.basisPct)}% — מתחת ל-${MATERIALITY.softBasisPct}% התחייבות` : "",
+      isMaterial(pkg, s) ? (s.change !== 0 ? "שינוי מהבקרה הקודמת" : "סטייה מעל סף המהותיות") : "",
+      s.budget > (wf.totalBudget * pkg.project.materiality.budgetSharePct) / 100 ? `מעל ${pkg.project.materiality.budgetSharePct}% מהתקציב` : "",
+      s.basisPct < pkg.project.materiality.softBasisPct ? `בסיס ${num(s.basisPct)}% — מתחת ל-${pkg.project.materiality.softBasisPct}% התחייבות` : "",
       state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`) && c.afterHe.startsWith(s.sectionId)) ? "תיקון נתונים בתקופה" : "",
     ].filter(Boolean);
     if (!reasons.length) continue;
@@ -557,7 +558,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     previousEac: s.previousEac,
     change: s.change,
     basisPct: s.basisPct,
-    highlighted: !isContingency(s.sectionId) && (isMaterial(s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
+    highlighted: !isContingency(s.sectionId) && (isMaterial(pkg, s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
     isContingency: isContingency(s.sectionId),
   }));
   const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalBudget, changes: 0, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
@@ -675,7 +676,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
     status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },
-    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
+    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
     contingency: {
@@ -700,7 +701,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
         "יתרה להשלמה — לא מכוסה — עבודות ורכש נדרשים ללא התחייבות; בסיס: הצעה / אומדן. הקצאות פנימיות (הנהלה, בלתי צפוי) מוצגות בנפרד ואינן נספרות כאומדני רכש",
         "תחזית לגמר (EAC) — נרשם + יתרת התחייבות + יתרה לא מכוסה",
         "סטייה — תחזית לגמר פחות תקציב מעודכן; חיובית = חריגה",
-        `סף מהותיות — ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל ${MATERIALITY.budgetSharePct}% מהתקציב או כשהבסיס שלו מתחת ל-${MATERIALITY.softBasisPct}% התחייבות`,
+        `סף מהותיות — ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל ${pkg.project.materiality.budgetSharePct}% מהתקציב או כשהבסיס שלו מתחת ל-${pkg.project.materiality.softBasisPct}% התחייבות`,
       ],
       assumptionsHe: [
         `הצמדה: ${fixedContracts.length} חוזי משנה בסכום קבוע ללא הצמדה למדד${frameworkContracts.length ? `; ${frameworkContracts.map((c) => `הסכם המסגרת ${isolate(c.id)} מתעדכן בנספחי מחיר בכתב (${(c.priceAppendices ?? []).map((a) => a.titleHe).join(", ")})`).join("; ")}` : ""}`,

@@ -246,7 +246,7 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
       sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
@@ -798,15 +798,28 @@ define({
 
 define({
   name: "set_project_status",
-  title: "Update project status",
-  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend) and schedule (contract end / expected end as yyyy-mm, note). These feed report §2 and the executive key table.",
+  title: "Update project settings",
+  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend), schedule (contract end / expected end as yyyy-mm, note) and materiality thresholds (report standard §5: materialityAbsolute ₪ AND materialityPctOfSection %, or materialityAbsoluteAlways ₪; a section is analysed anyway above materialityBudgetSharePct % of the budget or below materialitySoftBasisPct % basis). These feed report §2, §5 and the executive key table. Only on the user's instruction.",
   kind: "write",
-  input: { projectId, statusHe: z.string().optional(), physicalProgressPct: z.number().min(0).max(100).nullable().optional(), scheduleContractEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(), scheduleExpectedEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(), scheduleNoteHe: z.string().optional() },
+  input: {
+    projectId,
+    statusHe: z.string().optional(),
+    physicalProgressPct: z.number().min(0).max(100).nullable().optional(),
+    scheduleContractEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    scheduleExpectedEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    scheduleNoteHe: z.string().optional(),
+    materialityAbsolute: z.number().nonnegative().optional(),
+    materialityPctOfSection: z.number().min(0).max(100).optional(),
+    materialityAbsoluteAlways: z.number().nonnegative().optional(),
+    materialityBudgetSharePct: z.number().min(0).max(100).optional(),
+    materialitySoftBasisPct: z.number().min(0).max(100).optional(),
+  },
   run: async (a) => {
     const schedule = { ...(a.scheduleContractEnd ? { contractEnd: a.scheduleContractEnd } : {}), ...(a.scheduleExpectedEnd ? { expectedEnd: a.scheduleExpectedEnd } : {}), ...(a.scheduleNoteHe !== undefined ? { noteHe: a.scheduleNoteHe } : {}) };
-    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}) });
+    const materiality = { ...(a.materialityAbsolute !== undefined ? { absolute: a.materialityAbsolute } : {}), ...(a.materialityPctOfSection !== undefined ? { pctOfSection: a.materialityPctOfSection } : {}), ...(a.materialityAbsoluteAlways !== undefined ? { absoluteAlways: a.materialityAbsoluteAlways } : {}), ...(a.materialityBudgetSharePct !== undefined ? { budgetSharePct: a.materialityBudgetSharePct } : {}), ...(a.materialitySoftBasisPct !== undefined ? { softBasisPct: a.materialitySoftBasisPct } : {}) };
+    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}) });
     await loadState(a.projectId);
-    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {} } };
+    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality } };
   },
 });
 
