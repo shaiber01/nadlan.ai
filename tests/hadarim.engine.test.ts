@@ -61,6 +61,13 @@ describe("Hadarim v2 engine — ERP edits", () => {
     expect(s.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4800, amount: 57_600 });
     expect(() => updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון" }, "EYAL")).toThrow(/57,600/);
   });
+
+  it("the ERP's manual edit can opt out of the amount check to record an inconsistent correction — an injected data-entry fault", () => {
+    const s = updatePurchaseOrder(initialState(), 2291, { qty: 12, unit: "טון" }, "EYAL", undefined, false);
+    const po = s.erp.purchaseOrders.find((p) => p.id === 2291)!;
+    expect(po).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4.8, amount: 57_600 });
+    expect(Math.round(po.qty * po.unitPrice)).not.toBe(po.amount);
+  });
 });
 
 describe("Hadarim v2 engine — the scripted control", () => {
