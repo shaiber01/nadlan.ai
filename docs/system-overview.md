@@ -70,7 +70,7 @@ Schema changes are migrations in `supabase/migrations/`, applied to the project 
 | Screen | What a user can do | What is logged |
 | --- | --- | --- |
 | חשבונות ספקים | Open an invoice; change its budget section and building tag; key in a new invoice (supplier, document number, date, amount, description, section, contract, attachment); "copy the last invoice" | intake row on insert; section, building, amount, status, approval, description, document number, retention, cumulative and dates on edit |
-| הזמנות רכש | Correct an order's quantity, quantity unit, price unit and unit price. A manual edit may leave the amount inconsistent with the line (the screen warns; the controller's own correction tool refuses) | one row per correction |
+| הזמנות רכש | Change an order's budget section (the invoices booked against it keep theirs; the screen warns when there are any); correct its quantity, quantity unit, price unit and unit price. A manual edit may leave the amount inconsistent with the line (the screen warns; the controller's own correction tool refuses) | one row per change |
 | חוזי קבלני משנה | Read: scope, inclusions, exclusions, retention, price appendices, documents | — |
 | תקציב ותחזית | Read: original budget, approved changes, updated budget, recorded, commitments, last approved forecast, Blue Book chapters per section. Key in an approved budget change (transfer / addition / reduction with approver, date, reason, reference) | a `budget` row per change |
 | יומן שינויים | Read the trigger-written change log; click through to the record | — |

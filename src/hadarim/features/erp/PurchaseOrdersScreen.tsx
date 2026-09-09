@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import type { HPurchaseOrder, PersonId } from "../../data/types";
-import { orderLineHe, pkg, updatePurchaseOrder } from "../../engine/commands";
+import type { HPurchaseOrder, PersonId, SectionId } from "../../data/types";
+import { orderLineHe, pkg, updatePurchaseOrder, updatePurchaseOrderSection } from "../../engine/commands";
 import { AttachedDocuments, linkedDocuments } from "./AttachedDocuments";
 import { ORDER_UNITS, lineValue, pricePerUnitHe } from "../../engine/units";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
@@ -242,6 +242,8 @@ function PurchaseOrderView({ poId }: { poId: number }) {
 }
 
 function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (note: string) => void; onCancel: () => void }) {
+  const state = useV2State();
+  const [sectionId, setSectionId] = useState<SectionId>(po.sectionId);
   const [qty, setQty] = useState(String(po.qty));
   const [unit, setUnit] = useState(po.unit);
   const [priceUnit, setPriceUnit] = useState(po.priceUnit);
@@ -255,12 +257,21 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
   const computed = value?.amount ?? null;
   const mismatch = computed !== po.amount;
   const units = [...new Set([po.unit, po.priceUnit, ...ORDER_UNITS])];
+  const sectionChanged = sectionId !== po.sectionId;
+  const lineChanged = q !== po.qty || unit !== po.unit || priceUnit !== po.priceUnit || p !== po.unitPrice;
+  // the invoices booked against the order keep their own section: moving the order alone splits the two
+  const invoicesAgainst = state.erp.invoices.filter((i) => i.poId === po.id);
 
   const save = () => {
     try {
-      // a manual ERP correction may leave the amount inconsistent with the line's own arithmetic (unlike the controller's own correction tool, which stays guarded)
-      store.dispatch((s) => updatePurchaseOrder(s, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId, undefined, false));
-      onDone(`נשמר. ${orderLineHe(po)} ← ${orderLineHe(draft)} (${personName(byId)}).`);
+      store.dispatch((s) => {
+        let next = sectionChanged ? updatePurchaseOrderSection(s, po.id, sectionId, byId) : s;
+        // a manual ERP correction may leave the amount inconsistent with the line's own arithmetic (unlike the controller's own correction tool, which stays guarded)
+        if (lineChanged) next = updatePurchaseOrder(next, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId, undefined, false);
+        return next;
+      });
+      const notes = [sectionChanged ? `סעיף תקציבי: ${sectionShort(po.sectionId)} ← ${sectionShort(sectionId)}` : "", lineChanged ? `${orderLineHe(po)} ← ${orderLineHe(draft)}` : ""].filter(Boolean);
+      onDone(notes.length ? `נשמר. ${notes.join(" · ")} (${personName(byId)}).` : "נשמר ללא שינוי.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -269,6 +280,16 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
   return (
     <div className="erp-form" data-testid="erp-po-edit-form">
       <div className="erp-form-grid">
+        <label className="erp-field erp-field-editable">
+          <span>סעיף תקציבי *</span>
+          <select value={sectionId} onChange={(e) => setSectionId(e.target.value as SectionId)} data-testid="erp-po-section-input">
+            {pkg.sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {sectionFull(s.id)}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="erp-field erp-field-editable">
           <span>כמות *</span>
           <input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} data-testid="erp-po-qty-input" autoFocus />
@@ -323,6 +344,11 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
             : `הכמות המומרת ליחידת המחיר × מחיר היחידה (${nis(computed)}) אינם שווים לסכום ההזמנה (${nis(po.amount)}). הסכום ההזמנה יישאר ${nis(po.amount)} ולא יתעדכן אוטומטית לפי החישוב.`}
         </p>
       )}
+      {sectionChanged && invoicesAgainst.length > 0 && (
+        <p className="erp-warn" data-testid="erp-po-section-warn">
+          {`${num(invoicesAgainst.length)} חשבונות שנרשמו כנגד ההזמנה נשארים בסעיף ${sectionShort(po.sectionId)}; שיוכם אינו משתנה עם ההזמנה.`}
+        </p>
+      )}
       {error && (
         <p className="erp-error" role="alert" data-testid="erp-po-error">
           {error}
@@ -335,7 +361,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
         <Button size="sm" variant="ghost" onClick={onCancel}>
           ביטול
         </Button>
-        <span className="erp-muted">סכום ההזמנה נעול לאחר אישור; ניתן לתקן כמות, יחידת הכמות, מחיר יחידה והיחידה שהמחיר נקוב לה. הכמות מומרת ליחידת המחיר לפני הכפל.</span>
+        <span className="erp-muted">סכום ההזמנה נעול לאחר אישור; ניתן לשנות את הסעיף התקציבי ולתקן כמות, יחידת הכמות, מחיר יחידה והיחידה שהמחיר נקוב לה. הכמות מומרת ליחידת המחיר לפני הכפל.</span>
       </div>
     </div>
   );

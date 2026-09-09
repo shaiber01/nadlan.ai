@@ -206,6 +206,22 @@ export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?:
   return tick({ ...s1, erp: { ...s1.erp, purchaseOrders: s1.erp.purchaseOrders.map((p) => (p.id === poId ? next : p)), changeLog: [...s1.erp.changeLog, entry] } });
 }
 
+/**
+ * The ERP's own edit of an order's budget section. The invoices booked against the order keep their own
+ * section — a human may split an order from its invoices here, and the checks are what notice it.
+ */
+export function updatePurchaseOrderSection(state: V2State, poId: number, sectionId: SectionId, byId: PersonId, noteHe = "שינוי ידני במערכת המידע"): V2State {
+  const po = state.erp.purchaseOrders.find((p) => p.id === poId);
+  if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
+  if (po.sectionId === sectionId) return state;
+  if (!pkg.sections.some((s) => s.id === sectionId)) throw new Error(`סעיף ${sectionId} לא קיים`);
+  const person = pkg.people.find((p) => p.id === byId)!;
+  if (!person.canWriteAllocation) throw new Error(`${person.nameHe} אינו מורשה לשינוי שיוך`);
+  const [s1, logId] = nextId(state, "CL");
+  const entry = { id: logId, recordType: "po" as const, recordId: String(poId), field: "סעיף תקציבי", before: sectionLabel(po.sectionId), after: sectionLabel(sectionId), at: state.clock, byId, noteHe };
+  return tick({ ...s1, erp: { ...s1.erp, purchaseOrders: s1.erp.purchaseOrders.map((p) => (p.id === poId ? { ...p, sectionId } : p)), changeLog: [...s1.erp.changeLog, entry] } });
+}
+
 // ---------------------------------------------------------------------------
 // The control conversation
 // ---------------------------------------------------------------------------

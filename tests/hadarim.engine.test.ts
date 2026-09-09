@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
+import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, route, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
@@ -67,6 +67,20 @@ describe("Hadarim v2 engine — ERP edits", () => {
     const po = s.erp.purchaseOrders.find((p) => p.id === 2291)!;
     expect(po).toMatchObject({ qty: 12, unit: "טון", unitPrice: 4.8, amount: 57_600 });
     expect(Math.round(po.qty * po.unitPrice)).not.toBe(po.amount);
+  });
+
+  it("the ERP can move an order to another budget section; the invoices against it keep theirs, and the change is logged", () => {
+    const base = initialState();
+    const po = base.erp.purchaseOrders.find((p) => base.erp.invoices.some((i) => i.poId === p.id)) ?? base.erp.purchaseOrders[0];
+    const other = pkg.sections.find((s) => s.id !== po.sectionId)!.id;
+    const s = updatePurchaseOrderSection(base, po.id, other, "EYAL");
+    expect(s.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(other);
+    const sectionsOf = (st: typeof base) => st.erp.invoices.filter((i) => i.poId === po.id).map((i) => i.sectionId);
+    expect(sectionsOf(s)).toEqual(sectionsOf(base));
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ recordType: "po", recordId: String(po.id), field: "סעיף תקציבי", byId: "EYAL" });
+    expect(updatePurchaseOrderSection(base, po.id, po.sectionId, "EYAL")).toBe(base);
+    expect(() => updatePurchaseOrderSection(base, po.id, other, "DANA")).toThrow(/אינו מורשה/);
+    expect(() => updatePurchaseOrderSection(base, po.id, "99" as never, "EYAL")).toThrow(/לא קיים/);
   });
 });
 

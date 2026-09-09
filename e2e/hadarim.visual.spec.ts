@@ -71,6 +71,13 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("erp-po-computed")).toHaveValue(/57,600/);
     await page.getByTestId("erp-po-save").click();
     await expect(page.getByTestId("erp-po-formula")).toContainText("12,000 ק״ג = 12 טון × 4,800 ₪ לטון = 57,600 ₪");
+
+    // the order's budget section can be changed too (a plain ERP edit; the invoices against an order keep theirs)
+    await page.getByTestId("erp-po-edit").click();
+    await page.getByTestId("erp-po-section-input").selectOption("02");
+    await page.getByTestId("erp-po-save").click();
+    await expect(page.getByTestId("erp-po-view")).toContainText("02 — שלד");
+    await expect(page.getByTestId("erp-changelog-row").first()).toContainText("סעיף תקציבי");
     await page.getByTestId("erp-nav-contracts").click();
     await page.getByTestId("erp-contract-row-07-01").click();
     await elementShot(page, "erp-contract-view", "erp-contract-07-01");
