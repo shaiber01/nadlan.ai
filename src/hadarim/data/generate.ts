@@ -1,5 +1,5 @@
 import { documentFacts, hadarimDocuments } from "./documents";
-import { STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
+import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
 import { addMonths, createRng, forceSum, lastDayOfMonth, monthKey } from "./rng";
 import type {
   BuildingTag,
@@ -47,6 +47,7 @@ export const project: HProject = {
   buckets: { shared: { id: "משותף", labelHe: "משותף" }, parking: { id: "חניון", labelHe: "חניון" } },
   materiality: { ...STANDARD_MATERIALITY },
   riskPolicy: { ...STANDARD_RISK_POLICY },
+  checkPolicy: { ...STANDARD_CHECK_POLICY },
   units: 48,
   grossSqm: 8700,
   startDate: "2025-11-02",
@@ -60,10 +61,10 @@ export const project: HProject = {
 };
 
 export const people: HPerson[] = [
-  { id: "EYAL", nameHe: "אייל", roleHe: "מנהל פרויקט", canWriteAllocation: true },
-  { id: "ROI", nameHe: "רועי", roleHe: "סמנכ״ל ביצוע", canWriteAllocation: true },
-  { id: "DANA", nameHe: "דנה", roleHe: "מנכ״לית", canWriteAllocation: false },
-  { id: "SARIT", nameHe: "שרית", roleHe: "הנהלת חשבונות", canWriteAllocation: true },
+  { id: "EYAL", nameHe: "אייל", roleHe: "מנהל פרויקט", canWriteAllocation: true, channel: "whatsapp" },
+  { id: "ROI", nameHe: "רועי", roleHe: "סמנכ״ל ביצוע", canWriteAllocation: true, channel: "whatsapp" },
+  { id: "DANA", nameHe: "דנה", roleHe: "מנכ״לית", canWriteAllocation: false, channel: "email" },
+  { id: "SARIT", nameHe: "שרית", roleHe: "הנהלת חשבונות", canWriteAllocation: true, channel: "email" },
 ];
 
 interface SiteVendor {

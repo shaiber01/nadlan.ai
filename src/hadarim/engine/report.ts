@@ -4,6 +4,7 @@ import { boqPageFor, documentById, isContingency, quoteFacts, sectionShort } fro
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
+import { CHANNEL_HE } from "./operations";
 
 /**
  * Builds the control report model per `budgetcontrolreportstandard.md` (sections 0–11 and the CEO page)
@@ -157,6 +158,10 @@ export interface ReportModel {
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
   risks: RiskRow[];
   issues: { open: IssueRow[]; closed: IssueRow[] };
+  /** Findings the checks raised that nobody has decided on yet — the report says so rather than hiding them. */
+  openFindings: { id: string; kind: string; titleHe: string; sectionHe: string; questionHe: string; statusHe: string }[];
+  /** Questions put to people and not yet answered. */
+  openQuestions: { id: string; toHe: string; channelHe: string; textHe: string; askedHe: string; findingId: string | null }[];
   verified: { titleHe: string; textHe: string }[];
   trends: { eacSeries: { labelHe: string; value: number }[]; uncoveredSeries: { labelHe: string; value: number }[]; uncoveredNow: number; uncoveredCommentaryHe: string; commentaryHe: string; comparison: string[][] | null };
   appendices: { definitionsHe: string[]; assumptionsHe: string[]; sourcesHe: string[]; correctionLog: CorrectionRow[]; inReview: { count: number; amount: number }; afterCutoffHe: string[]; uncovered: UncoveredRow[]; uncoveredTotal: number; allocations: UncoveredRow[]; allocationTotal: number };
@@ -687,6 +692,13 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     },
     risks,
     issues: { open: openIssues, closed: closedIssues },
+    openFindings: state.control.findings
+      .filter((f) => {
+        const d = state.control.decisions[f.id];
+        return !d || d.status === "open" || !!d.pending;
+      })
+      .map((f) => ({ id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, statusHe: state.control.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע" })),
+    openQuestions: state.control.questions.filter((q) => q.status === "open").map((q) => ({ id: q.id, toHe: personName(pkg, q.toId), channelHe: CHANNEL_HE[q.channel], textHe: q.textHe, askedHe: `${dateHe(q.askedAt)} ${q.askedAt.slice(11, 16)}`, findingId: q.findingId ?? null })),
     verified: state.control.positives.map((p) => ({ titleHe: p.titleHe, textHe: p.textHe })),
     trends: { eacSeries, uncoveredSeries, uncoveredNow: uncovered.total, uncoveredCommentaryHe, commentaryHe: firstOverrun ? `בקרה ראשונה מבין ${eacSeries.length - 1} שבה התחזית חורגת מהתקציב. ${priceDriven ? "החריגה נובעת ממחיר, לא מכמות." : ""}`.trim() : "התחזית בתוך התקציב לאורך כל הבקרות.", comparison },
     appendices: {

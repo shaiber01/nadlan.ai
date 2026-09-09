@@ -5,11 +5,11 @@ import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
 import { db, deleteInvoice, listProjects, resetProject, updateProject } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
-import { sectionShort, checkAllocation, checkCoverage, checkPrices, checkUnits, positives, quoteFacts, sectionLabel, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, type HFinding } from "../engine/checks";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
-import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
+import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { buildReport } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
 import { reportToMarkdown } from "../export/markdown";
@@ -53,7 +53,7 @@ const personId = z.string().describe("Person id (see list_people), e.g. EYAL");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const CHANGE_TYPES = Object.keys(CHANGE_TYPE_HE) as [keyof typeof CHANGE_TYPE_HE, ...(keyof typeof CHANGE_TYPE_HE)[]];
 const BASES = ["contract", "po", "quote", "appendix", "estimate"] as const;
-const FINDING_KINDS = ["allocation", "unit", "price", "coverage"] as const;
+const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"] as const;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const signed = (v: number) => (v === 0 ? "0 ₪" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
@@ -177,6 +177,7 @@ function controlView(state: V2State) {
     corrections: c.corrections,
     tasks: c.tasks.map((t) => ({ ...t, ownerHe: personName(t.ownerId), sectionHe: t.sectionId ? sectionLabel(t.sectionId) : null })),
     notes: c.notes,
+    questions: c.questions.map((q) => ({ ...q, toHe: personName(q.toId), channelHe: CHANNEL_HE[q.channel] })),
     reportConfig: c.reportConfig,
     savedConfig: state.savedConfig,
     headline: headline(state),
@@ -246,7 +247,7 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, checkPolicy: p.checkPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
       sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
@@ -544,18 +545,27 @@ define({
 define({
   name: "run_check",
   title: "Run a check (no save)",
-  description: "Run one control check (or all) on the live data without opening a control: allocation of invoices vs contracts and supplier history, units/quantities on orders vs quotes and appendices, forecast prices vs the appendix in force, BOQ coverage vs contracts. Optionally limited to one invoice, order or section. Returns findings and verified matches.",
+  description: "Run one check, a group, or all of them on the live data without opening a control. Control checks: allocation (invoices vs contracts and supplier history), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
   kind: "check",
-  input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), sectionId: sectionId.optional() },
+  input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "data_quality", "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), contractId: z.string().optional(), sectionId: sectionId.optional() },
   run: async (a) => {
     const state = await loadState(a.projectId, a.controlDate);
     const draft = draftOf(state);
     const sec = a.sectionId as HFinding["sectionId"] | undefined;
+    const want = (k: (typeof FINDING_KINDS)[number]) => a.kind === "all" || a.kind === k || (a.kind === "data_quality" && DATA_QUALITY_KINDS.includes(k));
+    const today = state.clock.slice(0, 10);
+    const bySection = (list: HFinding[]) => list.filter((f) => !sec || f.sectionId === sec);
     const findings: HFinding[] = [
-      ...(a.kind === "all" || a.kind === "allocation" ? checkAllocation(pkg, state.erp, a.invoiceId).filter((f) => !sec || f.sectionId === sec) : []),
-      ...(a.kind === "all" || a.kind === "unit" ? checkUnits(pkg, state.erp, a.poId).filter((f) => !sec || f.sectionId === sec) : []),
-      ...(a.kind === "all" || a.kind === "price" ? checkPrices(pkg, state.erp, draft, state.control.controlDate, sec) : []),
-      ...(a.kind === "all" || a.kind === "coverage" ? checkCoverage(pkg, draft, sec) : []),
+      ...(want("allocation") ? bySection(checkAllocation(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("unit") ? bySection(checkUnits(pkg, state.erp, a.poId)) : []),
+      ...(want("price") ? checkPrices(pkg, state.erp, draft, state.control.controlDate, sec) : []),
+      ...(want("coverage") ? checkCoverage(pkg, draft, sec) : []),
+      ...(want("duplicate") ? bySection(checkDuplicates(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("contract_overrun") ? bySection(checkContractOverrun(pkg, state.erp, a.contractId)) : []),
+      ...(want("cumulative") ? bySection(checkCumulative(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("retention") ? bySection(checkRetention(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("dates") ? bySection(checkDates(pkg, state.erp, today, a.invoiceId)) : []),
+      ...(want("review_aging") ? bySection(checkReviewAging(pkg, state.erp, state.control.controlDate, a.invoiceId)) : []),
     ];
     return { controlDate: state.control.controlDate, findings: findings.map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
   },
@@ -827,6 +837,36 @@ define({
 });
 
 // ---------------------------------------------------------------------------
+// Questions to people
+// ---------------------------------------------------------------------------
+
+define({
+  name: "ask_person",
+  title: "Ask a person",
+  description: "Put a question to the person who has the knowledge a decision needs (by person id; roles are in get_project). The full system sends it over that person's channel (WhatsApp, email, phone) and records the reply; in this prototype the question is recorded, the answer is given in the Claude session on that person's behalf and recorded with answer_question. The finding it belongs to (findingId) stays open meanwhile, and the question is listed in the report until answered.",
+  kind: "write",
+  input: { projectId, controlDate, toId: personId, textHe: z.string().describe("the question, in Hebrew, self-contained: the record, the numbers, what is asked"), findingId: z.string().optional(), byId: personId.optional().describe("who is asking (default: the control's operator)") },
+  run: async (a) => {
+    const r = await write(a.projectId, a.controlDate, (s) => askPerson(s, a, (a.byId as V2State["operatorId"] | undefined) ?? s.operatorId)[0]);
+    const q = r.state.control.questions[r.state.control.questions.length - 1];
+    const to = pkg.people.find((p) => p.id === q.toId)!;
+    return outcome(r, { question: { ...q, toHe: to.nameHe, roleHe: to.roleHe, channelHe: CHANNEL_HE[q.channel] }, sayHe: `שאלה ${q.id} ל${to.nameHe} (${to.roleHe}). במערכת המלאה תישלח ב-${CHANNEL_HE[q.channel]}; כאן ${to.nameHe} עונה בסשן זה, והתשובה נרשמת ב-answer_question.` });
+  },
+});
+
+define({
+  name: "answer_question",
+  title: "Record an answer",
+  description: "Record the answer a person gave to a question (in this prototype: typed in the session on that person's behalf; in the full system: the reply that came back over the channel). byId defaults to the person asked.",
+  kind: "write",
+  input: { projectId, controlDate, questionId: z.string(), answerHe: z.string(), byId: personId.optional() },
+  run: async (a) => {
+    const r = await write(a.projectId, a.controlDate, (s) => answerQuestion(s, a.questionId, a.answerHe, a.byId));
+    return outcome(r, { question: r.state.control.questions.find((q) => q.id === a.questionId) });
+  },
+});
+
+// ---------------------------------------------------------------------------
 // The report
 // ---------------------------------------------------------------------------
 
@@ -883,6 +923,8 @@ define({
       risks: report.risks,
       openIssues: report.issues.open,
       closedIssues: report.issues.closed,
+      openFindings: report.openFindings,
+      openQuestions: report.openQuestions,
       trends: { uncoveredCommentaryHe: report.trends.uncoveredCommentaryHe, commentaryHe: report.trends.commentaryHe, comparison: report.trends.comparison },
       assumptionsHe: report.appendices.assumptionsHe,
       uncoveredTotal: report.appendices.uncoveredTotal,

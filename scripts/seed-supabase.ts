@@ -73,11 +73,12 @@ async function main() {
       buckets: { shared: { id: pkg.project.buckets.shared.id, label_he: pkg.project.buckets.shared.labelHe }, parking: { id: pkg.project.buckets.parking.id, label_he: pkg.project.buckets.parking.labelHe } },
       materiality: { absolute: pkg.project.materiality.absolute, pct_of_section: pkg.project.materiality.pctOfSection, absolute_always: pkg.project.materiality.absoluteAlways, budget_share_pct: pkg.project.materiality.budgetSharePct, soft_basis_pct: pkg.project.materiality.softBasisPct },
       risk_policy: { quote_expiry_exposure_pct: pkg.project.riskPolicy.quoteExpiryExposurePct, price_step: pkg.project.riskPolicy.priceStep },
+      check_policy: { review_aging_days: pkg.project.checkPolicy.reviewAgingDays },
       physical_progress_pct: pkg.project.physicalProgressPct ?? null,
       schedule: pkg.project.schedule ?? {},
     },
   ]);
-  await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation })));
+  await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation, channel: p.channel ?? null })));
   await insert("suppliers", pkg.suppliers.map((s) => ({ project_id: P, id: s.id, name_he: s.nameHe, kind: s.kind })));
   await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: s.shortHe, kind: s.kind, budget: s.budget, split: s.split, position: i + 1 })));
   // documentFacts is keyed by document id

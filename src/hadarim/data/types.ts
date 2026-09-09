@@ -55,6 +55,7 @@ export interface HProject {
   buckets: { shared: HCostBucket; parking: HCostBucket };
   materiality: HMateriality;
   riskPolicy: HRiskPolicy;
+  checkPolicy: HCheckPolicy;
   units: number;
   grossSqm: number;
   startDate: string;
@@ -68,12 +69,24 @@ export interface HProject {
   schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
 }
 
+export type ContactChannel = "whatsapp" | "email" | "phone";
+
 export interface HPerson {
   id: PersonId;
   nameHe: string;
   roleHe: string;
   canWriteAllocation: boolean;
+  /** How the full system would reach this person with a question. */
+  channel?: ContactChannel;
 }
+
+/** Data-quality check policy of a project. */
+export interface HCheckPolicy {
+  /** An invoice still in review this many days after it was received is flagged. */
+  reviewAgingDays: number;
+}
+
+export const STANDARD_CHECK_POLICY: HCheckPolicy = { reviewAgingDays: 30 };
 
 export interface HSupplier {
   id: string;

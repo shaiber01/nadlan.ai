@@ -547,6 +547,18 @@ export function IssuesSection({ report }: { report: ReportModel }) {
 // 9. Verified matches
 // ---------------------------------------------------------------------------
 
+/** Findings raised by the checks that nobody decided on, and questions still waiting for an answer — stated, not hidden. */
+export function OpenFindingsSection({ report }: { report: ReportModel }) {
+  if (!report.openFindings.length && !report.openQuestions.length) return null;
+  return (
+    <Section n="8א" titleHe="ממצאים שטרם הוכרעו ושאלות פתוחות">
+      {report.openFindings.length ? <DataTable head={["ממצא", "סעיף", "ההחלטה הנדרשת", "סטטוס"]} testId="report-open-findings" rows={report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.statusHe])} rowTestId={(i) => `report-open-finding-${report.openFindings[i].id}`} /> : null}
+      {report.openQuestions.length ? <DataTable head={["שאלה", "נשאל", "ערוץ", "נשלח"]} testId="report-open-questions" rows={report.openQuestions.map((q) => [q.textHe, q.toHe, q.channelHe, q.askedHe])} rowTestId={(i) => `report-open-question-${report.openQuestions[i].id}`} /> : null}
+      <p className="muted small">הדוח אינו סופי כל עוד יש ממצאים שלא הוכרעו; הסכומים שלמעלה אינם כוללים תיקונים שטרם הוחלטו.</p>
+    </Section>
+  );
+}
+
 export function VerifiedSection({ report }: { report: ReportModel }) {
   return (
     <Section n="9" titleHe="התאמות מאומתות (״ממצאים חיוביים״)">

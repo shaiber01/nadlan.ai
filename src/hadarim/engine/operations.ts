@@ -1,7 +1,7 @@
-import type { BuildingTag, PersonId, SectionId } from "../data/types";
+import type { BuildingTag, ContactChannel, PersonId, SectionId } from "../data/types";
 import { sectionLabel } from "./checks";
 import { pkg, updateInvoiceSection, updatePurchaseOrder } from "./commands";
-import type { ChangeType, ControlNote, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
+import type { ChangeType, ControlNote, ControlQuestion, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
 
 /**
  * Free-standing control operations — the things a budget controller does outside a finding card:
@@ -169,6 +169,41 @@ export function addNote(state: V2State, input: NoteInput, byId: PersonId = state
 export function removeNote(state: V2State, id: string): V2State {
   if (!state.control.notes.some((n) => n.id === id)) throw new Error(`הערה ${id} לא נמצאה`);
   return { ...state, control: { ...state.control, notes: state.control.notes.filter((n) => n.id !== id) } };
+}
+
+// ---------------------------------------------------------------------------
+// Questions to people who know what the operator does not (the full system sends them over the person's channel)
+// ---------------------------------------------------------------------------
+
+export interface QuestionInput {
+  toId: string;
+  textHe: string;
+  findingId?: string;
+}
+
+export const CHANNEL_HE: Record<ContactChannel, string> = { whatsapp: "WhatsApp", email: "דוא״ל", phone: "טלפון" };
+
+/** Put a question to a person; the finding it belongs to stays open until the answer is recorded. */
+export function askPerson(state: V2State, input: QuestionInput, byId: PersonId = state.operatorId): [V2State, ControlQuestion] {
+  const toId = requirePerson(input.toId);
+  const to = pkg.people.find((p) => p.id === toId)!;
+  if (!input.textHe.trim()) throw new Error("נדרש נוסח השאלה");
+  if (input.findingId && !state.control.findings.some((f) => f.id === input.findingId)) throw new Error(`ממצא ${input.findingId} לא נמצא בבקרה`);
+  const [s1, id] = nextId(state, "Q");
+  const question: ControlQuestion = { id, toId, channel: to.channel ?? "whatsapp", textHe: input.textHe.trim(), ...(input.findingId ? { findingId: input.findingId } : {}), askedAt: s1.clock, askedById: byId, status: "open" };
+  const s: V2State = { ...s1, control: { ...s1.control, questions: [...s1.control.questions, question] } };
+  return [audit(s, byId, `שאלה ל${to.nameHe} (${CHANNEL_HE[question.channel]})${input.findingId ? ` על ממצא ${input.findingId}` : ""}: ${question.textHe}`), question];
+}
+
+/** Record the answer a person gave (in the full system: the reply that came back over the channel). */
+export function answerQuestion(state: V2State, id: string, answerHe: string, byId?: string): V2State {
+  const q = state.control.questions.find((x) => x.id === id);
+  if (!q) throw new Error(`שאלה ${id} לא נמצאה (${state.control.questions.map((x) => x.id).join(", ") || "אין שאלות"})`);
+  if (!answerHe.trim()) throw new Error("נדרש נוסח התשובה");
+  const answeredById = byId ? requirePerson(byId) : q.toId;
+  const answered: ControlQuestion = { ...q, status: "answered", answerHe: answerHe.trim(), answeredAt: state.clock, answeredById };
+  const s: V2State = { ...state, control: { ...state.control, questions: state.control.questions.map((x) => (x.id === id ? answered : x)) } };
+  return audit(s, answeredById, `תשובה מ${person(answeredById)} לשאלה ${id}: ${answered.answerHe}`);
 }
 
 // ---------------------------------------------------------------------------

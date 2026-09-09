@@ -913,6 +913,7 @@ export type Database = {
       people: {
         Row: {
           can_write_allocation: boolean
+          channel: string | null
           id: string
           name_he: string
           project_id: string
@@ -920,6 +921,7 @@ export type Database = {
         }
         Insert: {
           can_write_allocation?: boolean
+          channel?: string | null
           id: string
           name_he: string
           project_id: string
@@ -927,6 +929,7 @@ export type Database = {
         }
         Update: {
           can_write_allocation?: boolean
+          channel?: string | null
           id?: string
           name_he?: string
           project_id?: string
@@ -948,6 +951,7 @@ export type Database = {
           buckets: Json
           budget_version: Json
           buildings: Json
+          check_policy: Json
           company_he: string
           control_dates: string[]
           created_at: string
@@ -968,6 +972,7 @@ export type Database = {
           buckets?: Json
           budget_version: Json
           buildings?: Json
+          check_policy?: Json
           company_he: string
           control_dates?: string[]
           created_at?: string
@@ -988,6 +993,7 @@ export type Database = {
           buckets?: Json
           budget_version?: Json
           buildings?: Json
+          check_policy?: Json
           company_he?: string
           control_dates?: string[]
           created_at?: string
@@ -1103,6 +1109,69 @@ export type Database = {
             columns: ["project_id", "supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["project_id", "id"]
+          },
+        ]
+      }
+      questions: {
+        Row: {
+          answer_he: string | null
+          answered_at: string | null
+          answered_by_id: string | null
+          asked_at: string
+          asked_by_id: string
+          channel: string
+          control_date: string
+          finding_id: string | null
+          id: string
+          project_id: string
+          status: string
+          text_he: string
+          to_id: string
+        }
+        Insert: {
+          answer_he?: string | null
+          answered_at?: string | null
+          answered_by_id?: string | null
+          asked_at?: string
+          asked_by_id: string
+          channel: string
+          control_date: string
+          finding_id?: string | null
+          id: string
+          project_id: string
+          status: string
+          text_he: string
+          to_id: string
+        }
+        Update: {
+          answer_he?: string | null
+          answered_at?: string | null
+          answered_by_id?: string | null
+          asked_at?: string
+          asked_by_id?: string
+          channel?: string
+          control_date?: string
+          finding_id?: string | null
+          id?: string
+          project_id?: string
+          status?: string
+          text_he?: string
+          to_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_project_id_control_date_fkey"
+            columns: ["project_id", "control_date"]
+            isOneToOne: false
+            referencedRelation: "controls"
+            referencedColumns: ["project_id", "control_date"]
+          },
+          {
+            foreignKeyName: "questions_project_id_to_id_fkey"
+            columns: ["project_id", "to_id"]
+            isOneToOne: false
+            referencedRelation: "people"
             referencedColumns: ["project_id", "id"]
           },
         ]

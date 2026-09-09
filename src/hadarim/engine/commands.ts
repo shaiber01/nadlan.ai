@@ -189,7 +189,7 @@ export function controlSteps(state: V2State): { textHe: string; done: boolean; s
 export function startControl(state: V2State, requestTextHe: string): V2State {
   let s = push(state, { role: "user", kind: "text", textHe: requestTextHe });
   const draft = pkg.forecasts.find((f) => f.controlDate === s.control.controlDate)!;
-  const result = runChecks(pkg, s.erp, draft, s.control.controlDate);
+  const result = runChecks(pkg, s.erp, draft, s.control.controlDate, s.clock.slice(0, 10));
   const liveChanged = result.findings.filter((f) => s.erp.changeLog.some((c) => c.recordId === f.record.id && c.at.startsWith(s.clock.slice(0, 10))));
   s = { ...s, control: { ...s.control, status: "running", requestedAt: s.clock, findings: result.findings, positives: result.positives, checkedHe: result.checkedHe, stepsRevealed: 0 } };
   s = push(s, { role: "system", kind: "steps", textHe: `מכין בקרה תקציבית ל${pkg.project.nameHe}`, steps: controlSteps(s).map((st) => ({ ...st, done: false })) });
@@ -260,7 +260,39 @@ export function decide(state: V2State, findingId: string, choiceId: string | nul
       return decidePrice(s, f, choiceId);
     case "coverage":
       return decideCoverage(s, f, choiceId, freeTextHe);
+    default:
+      return decideDataQuality(s, f, choiceId, freeTextHe);
   }
+}
+
+/**
+ * Data-quality cards share one decision shape: the record is confirmed correct, the fix is referred to the
+ * person who keys the ERP (a pending task), or — for a contract overrun — a change order is recorded.
+ */
+function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
+  const reason = freeTextHe ? ` (${freeTextHe})` : "";
+  const text = freeTextHe ?? "";
+  if (choiceId === "accept" || (!choiceId && /תקין|לא כפול|בסדר|נכון/.test(text))) {
+    let s = setDecision(state, f.id, { status: "handled", resolvedAt: state.clock, auditHe: `נבדק — תקין${reason}` });
+    s = push(s, { role: "system", kind: "text", textHe: "נרשם כתקין. הממצא נסגר ללא שינוי בנתונים; ההחלטה מתועדת בדוח." });
+    return nextFinding(audit(s, s.operatorId, `ממצא ${f.id} (${f.titleHe}): נבדק — תקין${reason}`));
+  }
+  if (f.kind === "contract_overrun" && (choiceId === "change_order" || (!choiceId && /פקודת שינוי/.test(text)))) {
+    const [s1, noteId] = nextId(state, "NOTE");
+    const note = { id: noteId, kind: "change_order" as const, textHe: `פקודת שינוי לחוזה ${f.record.id} — ${nis(f.impact.amount)}${reason}`, sectionId: f.sectionId, at: s1.clock, byId: s1.operatorId };
+    let s: V2State = { ...s1, control: { ...s1.control, notes: [...s1.control.notes, note] } };
+    s = setDecision(s, f.id, { status: "handled", resolvedAt: s.clock, auditHe: `פקודת שינוי נרשמה: ${nis(f.impact.amount)}${reason}` });
+    s = push(s, { role: "system", kind: "text", textHe: `נרשמה פקודת שינוי של ${nis(f.impact.amount)} לחוזה ${f.record.id}; היא תופיע בסעיף 6 של הדוח. הנרשם כבר בתחזית.` });
+    return nextFinding(audit(s, s.operatorId, `חוזה ${f.record.id}: פקודת שינוי ${nis(f.impact.amount)} נרשמה (ממצא ${f.id})`));
+  }
+  // refer the fix to whoever keys the ERP (bookkeeping), or to execution for a contract dispute
+  const ownerId = f.kind === "contract_overrun" ? executionOwnerId(state) : accountantId();
+  const [s1, taskId] = nextId(state, "TASK");
+  const task: ControlTask = { id: taskId, titleHe: f.kind === "contract_overrun" ? `בירור מול הקבלן — ${f.titleHe}` : `תיקון במערכת המידע — ${f.titleHe}`, sectionId: f.sectionId, ownerId, dueDate: null, openedInControl: s1.control.controlDate, status: "pending_execution", closedAt: null, findingId: f.id, impactIfIgnoredHe: f.impact.labelHe };
+  let s: V2State = { ...s1, control: { ...s1.control, tasks: [...s1.control.tasks, task] } };
+  s = setDecision(s, f.id, { status: "pending_execution", ownerId, auditHe: `הועבר ל${personName(ownerId)} לביצוע${reason}` });
+  s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(ownerId)}: ״${task.titleHe}״. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון ייראה במערכת המידע; הנתונים בתחזית ללא שינוי בינתיים.` });
+  return nextFinding(audit(s, s.operatorId, `ממצא ${f.id}: הועבר ל${personName(ownerId)} לביצוע${reason}`));
 }
 
 function decideAllocation(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {

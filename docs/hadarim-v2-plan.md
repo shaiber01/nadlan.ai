@@ -119,7 +119,9 @@ Step 7 — done (2026-09-09, user chose "remove the tab, keep a report viewer"):
 
 Audit (2026-09-09, user: "make sure nothing is hard-coded, raw data from the database, everything else calculated"): section short names and a reporting `kind` (works / overhead / contingency) moved into the sections table and the package; the trend uses every final forecast version; default people and referral owners come from roles; invoices are numbered sequentially; the per-building split works from `project.buildings` (any number, any ids; by floors cast, by units, or equally) with "משותף" and "חניון" as the only fixed buckets, and building tags are validated against the project (the A/B check constraint is dropped). `tests/hadarim.generic.test.ts` and a live audit with inputs outside the script (arbitrary invoices, a mis-allocated invoice, a kg-as-tons order) lock this in.
 
-Next: (8) package `.claude/` + `mcp/` as a Claude Code plugin; later: Supabase Auth and real RLS, more projects.
+Data quality and questions (2026-09-09): six data-quality checks join the control (duplicate document numbers, approved invoices above a contract, cumulative chains, retention arithmetic and rate, dates, invoices in review beyond `projects.check_policy.review_aging_days`), each a card with one decision shape — refer to whoever keys the ERP (pending task), accept as checked, or for a contract overrun record a change order. The report lists findings nobody decided on and open questions (8א) and says it is not final while they exist. `ask_person` / `answer_question` record questions to people (a `questions` table in the session, each person with a `channel`: WhatsApp, email, phone); the full system would send them over that channel, the prototype has the person answer in the Claude session. Agent rules 8–9: ask the person who knows instead of guessing; no report without the checks.
+
+Next: (8) package `.claude/` + `mcp/` as a Claude Code plugin; later: Supabase Auth and real RLS, more projects; a real messaging channel behind `ask_person`.
 
 ## 5. Build phases for the next session
 

@@ -1,4 +1,4 @@
-import type { HChangeLogEntry, HInvoice, HOpenIssue, HPurchaseOrder, PersonId, SectionId } from "../data/types";
+import type { ContactChannel, HChangeLogEntry, HInvoice, HOpenIssue, HPurchaseOrder, PersonId, SectionId } from "../data/types";
 import type { HFinding, HPositive } from "./checks";
 
 /**
@@ -119,9 +119,29 @@ export interface ControlNote {
   byId: PersonId;
 }
 
+/**
+ * A question the controller put to a person who has knowledge the operator lacks. The full system sends it
+ * over the person's channel (WhatsApp, email, phone) and records the reply; in this prototype the reply is
+ * given in the Claude session on that person's behalf.
+ */
+export interface ControlQuestion {
+  id: string;
+  toId: PersonId;
+  channel: ContactChannel;
+  textHe: string;
+  findingId?: string;
+  askedAt: string;
+  askedById: PersonId;
+  status: "open" | "answered";
+  answerHe?: string;
+  answeredAt?: string;
+  answeredById?: PersonId;
+}
+
 export interface ControlSession {
   controlDate: string;
   notes: ControlNote[];
+  questions: ControlQuestion[];
   status: "idle" | "running" | "reviewing" | "report";
   requestedAt: string | null;
   findings: HFinding[];
@@ -169,5 +189,5 @@ export interface V2State {
 export const DEFAULT_REPORT_CONFIG: ReportConfig = { includeTrends: false, splitByBuilding: false, ceoVersion: false, execSummaryMaxLines: 5, savedAs: null };
 
 export function emptySession(controlDate: string): ControlSession {
-  return { controlDate, notes: [], status: "idle", requestedAt: null, findings: [], positives: [], checkedHe: [], decisions: {}, adjustments: [], corrections: [], tasks: [], messages: [], reportConfig: { ...DEFAULT_REPORT_CONFIG }, finalized: false, stepsRevealed: 0 };
+  return { controlDate, notes: [], questions: [], status: "idle", requestedAt: null, findings: [], positives: [], checkedHe: [], decisions: {}, adjustments: [], corrections: [], tasks: [], messages: [], reportConfig: { ...DEFAULT_REPORT_CONFIG }, finalized: false, stepsRevealed: 0 };
 }
