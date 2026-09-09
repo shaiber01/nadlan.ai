@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, route, setPackage, startControl, updateInvoiceSection, setReportConfig } from "../src/hadarim/engine/commands";
+import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, setPackage, startControl, updateInvoiceSection, setReportConfig } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
 import { exportReportDocx } from "../src/hadarim/export/docx";
@@ -15,10 +15,8 @@ function runScript(): V2State {
   s = reviewFindings(s);
   const alloc = findingByKind(s, "allocation");
   s = decide(s, alloc.id, "yes_target");
-  s = route(s, alloc.id, "update");
   const unit = findingByKind(s, "unit");
-  s = decide(s, unit.id, "yes_tons");
-  s = route(s, unit.id, "refer_roi");
+  s = decide(s, unit.id, "yes_refer");
   const price = findingByKind(s, "price");
   s = decide(s, price.id, "all");
   const cov = findingByKind(s, "coverage");

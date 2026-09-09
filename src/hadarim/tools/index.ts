@@ -716,7 +716,7 @@ define({
 define({
   name: "route_finding",
   title: "Route a correction",
-  description: "After a 'yes' on an allocation or unit finding: apply the correction in the ERP (update — attributed to the control's operator, permission-checked, re-read from the database as verification), or refer it (refer_accounting / refer_roi opens a pending task for the owner), or keep it in the forecast only (forecast_only). For an order's allocation (F-ALLOC-PO-…) the routes are update and refer_roi.",
+  description: "Set the route of an allocation or unit correction on its own, without a card answer: update applies it in the ERP (attributed to the control's operator, permission-checked, re-read from the database as verification), refer_accounting / refer_roi opens a pending task for the owner, forecast_only corrects the forecast and leaves the ERP alone. Not a step of the normal flow — the card's own answers already carry their route, decide_finding with the approving option writes the ERP itself. Use this only for a route the card does not offer (forecast_only) or to change a route already taken. For an order's allocation (F-ALLOC-PO-…) the routes are update and refer_roi.",
   kind: "write",
   input: { projectId, controlDate, findingId: z.string(), routeId: z.enum(["update", "refer_accounting", "forecast_only", "refer_roi"]) },
   run: async (a) => {

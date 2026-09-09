@@ -95,6 +95,25 @@ export function sectionLabel(id: SectionId, p: HadarimPackage = pkg): string {
   return `${id}-${sectionShort(id, p)}`;
 }
 
+/** The person who handles bookkeeping referrals: the accounting role if there is one, else someone who may write allocations. */
+export function accountantPerson(p: HadarimPackage = pkg) {
+  return p.people.find((x) => x.roleHe.includes("חשבונות")) ?? p.people.find((x) => x.canWriteAllocation) ?? p.people[0];
+}
+
+/** The person who executes order corrections on site, when the project has such a role. */
+export function executionPerson(p: HadarimPackage = pkg) {
+  return p.people.find((x) => x.roleHe.includes("ביצוע"));
+}
+
+/**
+ * "Yes, but someone else keys it" — the alternative to applying the fix here and now. Only when the
+ * project has an execution role to hand it to; otherwise the card offers approval or nothing.
+ */
+function referOption(): HDecisionOption[] {
+  const person = executionPerson();
+  return person ? [{ id: "yes_refer", labelHe: `כן — להעביר ל${person.nameHe} לתיקון` }] : [];
+}
+
 /** The reserve section (kind = contingency): reported on its own, never counted as an estimate. */
 export function isContingency(id: SectionId, p: HadarimPackage = pkg): boolean {
   return p.sections.find((s) => s.id === id)?.kind === "contingency";
@@ -215,7 +234,7 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       sources,
       meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן, ל${sectionShort(right)}` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, { id: "yes_refer", labelHe: `כן — להעביר ל${accountantPerson().nameHe} לתיקון` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
       sectionId: wrong,
       record: { type: "invoice", id: String(inv.id) },
     });
@@ -278,7 +297,7 @@ export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoI
       checkHe: target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו." : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה." : "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק.",
       meaningHe: `התחייבות של ${nis(po.amount)} תוצג ב${sectionShort(wrong)} במקום ב${sectionShort(right)}${against.length ? `; החשבונות כנגד ההזמנה נשארים בסעיפם` : ""}. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן, ל${sectionShort(right)}` }, { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, ...referOption(), { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
       sectionId: wrong,
       record: { type: "po", id: String(po.id) },
     });
@@ -332,7 +351,7 @@ export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number
       checkHe: `הסכום ${nis(po.amount)} ${facts?.amount != null ? "נכון" : "מתקבל גם כך"}. הכמות והמחיר הוזנו ב${po.unit === "טון" ? "ק״ג" : "יחידה אחרת"} (${num(po.qty)} × ${po.unitPrice}), אך שדה היחידה אומר ${po.unit}.`,
       meaningHe: `הסכום הכספי תקין — לכן אף אחד לא שם לב. אבל כל חישוב שמסתמך על שדה הכמות — יתרה להזמנה, קצב צריכה, השוואה לכתב כמויות — רואה ${num(po.qty)} ${po.unit} במקום ${num(rightQty)}.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן, ${num(rightQty)} ${rightUnit}` }, { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק" }], freeText: false },
+      decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן — לתקן ל-${num(rightQty)} ${rightUnit} במערכת המידע` }, ...referOption(), { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק" }], freeText: false },
       sectionId: po.sectionId,
       record: { type: "po", id: String(po.id) },
       detailsTable: [["שדה", "בהזמנה", facts ? "לפי ההצעה" : "לפי הנספח"], ["כמות", num(po.qty), num(rightQty)], ["יחידה", po.unit, rightUnit], ["מחיר יח׳", `${po.unitPrice} ₪`, `${num(rightPrice)} ₪`], ["סכום", nis(po.amount), nis(Math.round(rightQty * rightPrice))]],

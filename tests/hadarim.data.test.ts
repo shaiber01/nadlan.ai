@@ -144,7 +144,8 @@ describe("Hadarim v2 checks", () => {
     expect(alloc.sources.some((s) => s.kind === "history" && s.labelHe.includes("6 חשבונות קודמים"))).toBe(true);
     expect(alloc.sources.some((s) => s.kind === "changelog" && s.labelHe.includes("02-שלד"))).toBe(true);
     expect(alloc.sources.some((s) => s.kind === "contract" && s.labelHe.includes("אינו קבלן משנה מאושר"))).toBe(true);
-    expect(alloc.decision.options.map((o) => o.labelHe)).toEqual(["כן, לפיתוח", "לא, נשאר בשלד", "לא בטוח"]);
+    // one question, not two: approving the fix is the answer that writes it to the ERP
+    expect(alloc.decision.options.map((o) => o.labelHe)).toEqual(["כן — לעדכן לפיתוח במערכת המידע", "כן — להעביר לשרית לתיקון", "לא, נשאר בשלד", "לא בטוח"]);
     expect(recordedBySection(edited.invoices, CURRENT_CONTROL)["02"]).toBe(8_580_000);
     expect(recordedBySection(edited.invoices, CURRENT_CONTROL)["07"]).toBe(2_100_000);
   });
@@ -155,7 +156,7 @@ describe("Hadarim v2 checks", () => {
     expect(unit.record.id).toBe("2291");
     expect(unit.checkHe).toContain("57,600 ₪ נכון");
     expect(unit.sources.some((s) => s.documentId === "quote_pladot_12t")).toBe(true);
-    expect(unit.decision.options[0].labelHe).toBe("כן, 12 טון");
+    expect(unit.decision.options[0].labelHe).toBe("כן — לתקן ל-12 טון במערכת המידע");
     const price = findings.find((f) => f.kind === "price")!;
     expect(price.impact).toMatchObject({ kind: "amount", amount: 240_000 });
     expect(price.meaningHe).toContain("3,240,000 ₪");

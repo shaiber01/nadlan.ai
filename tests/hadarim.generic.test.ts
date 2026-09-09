@@ -57,7 +57,7 @@ describe("generic checks", () => {
     const moved = updateInvoiceSection(seed, victim.id, wrong, "SARIT");
     const findings = checkAllocation(pkg, moved.erp);
     expect(findings.map((f) => f.record.id)).toEqual([String(victim.id)]);
-    expect(findings[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(victim.sectionId)}`);
+    expect(findings[0].decision.options[0].labelHe).toBe(`כן — לעדכן ל${sectionShort(victim.sectionId)} במערכת המידע`);
     const back = updateInvoiceSection(moved, victim.id, victim.sectionId, "SARIT");
     expect(checkAllocation(pkg, back.erp)).toHaveLength(0);
   });
@@ -74,7 +74,7 @@ describe("generic checks", () => {
     const findings = checkOrderAllocation(pkg, moved.erp);
     expect(findings.map((f) => f.record)).toEqual([{ type: "po", id: String(po.id) }]);
     expect(findings[0]).toMatchObject({ id: `F-ALLOC-PO-${po.id}`, kind: "allocation", sectionId: wrong, impact: { kind: "none" } });
-    expect(findings[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(po.sectionId)}`);
+    expect(findings[0].decision.options[0].labelHe).toBe(`כן — לעדכן ל${sectionShort(po.sectionId)} במערכת המידע`);
     expect(findings[0].sources.map((x) => x.kind)).toEqual(expect.arrayContaining(["po", "contract", "changelog"]));
     // the invoice check is untouched by an order move
     expect(checkAllocation(pkg, moved.erp)).toHaveLength(0);
@@ -89,7 +89,7 @@ describe("generic checks", () => {
     const split = { ...seed, erp: { ...seed.erp, purchaseOrders: seed.erp.purchaseOrders.map((p) => (p.id === withInvoices.id ? { ...p, contractId: null, sectionId: other(p.sectionId) } : p)) } };
     const a = checkOrderAllocation(pkg, split.erp, withInvoices.id);
     expect(a).toHaveLength(1);
-    expect(a[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(withInvoices.sectionId)}`);
+    expect(a[0].decision.options[0].labelHe).toBe(`כן — לעדכן ל${sectionShort(withInvoices.sectionId)} במערכת המידע`);
     expect(a[0].sources.some((x) => x.kind === "history" && x.labelHe.includes("כנגד ההזמנה"))).toBe(true);
     // (b) neither contract nor invoices: the supplier's other records, when they all sit on one section
     const lone = seed.erp.purchaseOrders.find((p) => {
@@ -99,7 +99,7 @@ describe("generic checks", () => {
     })!;
     const b = checkOrderAllocation(pkg, updatePurchaseOrderSection(seed, lone.id, other(lone.sectionId), "EYAL").erp, lone.id);
     expect(b).toHaveLength(1);
-    expect(b[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(lone.sectionId)}`);
+    expect(b[0].decision.options[0].labelHe).toBe(`כן — לעדכן ל${sectionShort(lone.sectionId)} במערכת המידע`);
     // (c) a supplier with a single other record determines nothing
     const single = { ...seed, erp: { ...seed.erp, purchaseOrders: [...seed.erp.purchaseOrders.filter((p) => p.supplierId !== lone.supplierId), { ...lone, id: 99_001, sectionId: other(lone.sectionId) }, { ...lone, id: 99_002 }], invoices: seed.erp.invoices.filter((i) => i.supplierId !== lone.supplierId) } };
     expect(checkOrderAllocation(pkg, single.erp, 99_001)).toHaveLength(0);
