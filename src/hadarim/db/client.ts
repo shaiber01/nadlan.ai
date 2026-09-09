@@ -140,7 +140,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   if (!p) throw new Error(`project ${projectId} not found`);
   const budgetVersion = p.budget_version as { number: number; approved_at: string; amount: number };
   const boqVersion = p.boq_version as { number: number; date: string };
-  const buildings = (p.buildings as { id: "A" | "B"; floors: number; floors_cast: number; units_per_floor: number }[]).map((b) => ({ id: b.id, floors: b.floors, floorsCast: b.floors_cast, unitsPerFloor: b.units_per_floor }));
+  const buildings = (p.buildings as { id: string; floors: number; floors_cast: number; units_per_floor: number }[]).map((b) => ({ id: String(b.id), floors: Number(b.floors), floorsCast: Number(b.floors_cast), unitsPerFloor: Number(b.units_per_floor) }));
   const project: HProject = {
     id: "HADARIM",
     nameHe: p.name_he,

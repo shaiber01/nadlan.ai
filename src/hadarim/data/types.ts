@@ -3,14 +3,26 @@
  * the engine keeps integers). Dates are ISO yyyy-mm-dd.
  */
 export type SectionId = "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18";
-export type BuildingTag = "A" | "B" | "משותף";
+/** A building id of the project (`HProject.buildings[].id`) or the shared tag. */
+export type BuildingTag = string;
+/** Invoices and costs that belong to no single building. */
+export const SHARED_BUILDING = "משותף";
+/** The parking bucket of the per-building split (sections with split = parking). */
+export const PARKING_BUCKET = "חניון";
 export type PersonId = "EYAL" | "ROI" | "DANA" | "SARIT";
+
+export interface HBuilding {
+  id: string;
+  floors: number;
+  floorsCast: number;
+  unitsPerFloor: number;
+}
 
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
   companyHe: string;
-  buildings: { id: "A" | "B"; floors: number; floorsCast: number; unitsPerFloor: number }[];
+  buildings: HBuilding[];
   units: number;
   grossSqm: number;
   startDate: string;

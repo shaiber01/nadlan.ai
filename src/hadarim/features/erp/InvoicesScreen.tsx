@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
-import type { HInvoice, PersonId, SectionId } from "../../data/types";
-import { createInvoice, pkg, updateInvoiceSection } from "../../engine/commands";
+import { SHARED_BUILDING, type HInvoice, type PersonId, type SectionId } from "../../data/types";
+import { createInvoice, pkg, updateInvoiceBuilding, updateInvoiceSection } from "../../engine/commands";
 import { dateHe, dateTimeHe, monthHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
 const STATUS_TONE: Record<HInvoice["status"], string> = { אושר: "ok", בבדיקה: "warn", שולם: "done" };
@@ -266,14 +266,22 @@ function InvoiceView({ invoiceId }: { invoiceId: number }) {
 
 function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onDone: (note: string) => void; onCancel: () => void }) {
   const [sectionId, setSectionId] = useState<SectionId>(invoice.sectionId);
+  const [building, setBuilding] = useState<string>(invoice.building ?? "");
   const [byId, setById] = useState<PersonId>(defaultActor("חשבונות"));
   const [error, setError] = useState<string | null>(null);
   const changed = sectionId !== invoice.sectionId;
+  const buildingChanged = (building || null) !== invoice.building;
+  const buildingOptions = [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}` })), { id: SHARED_BUILDING, labelHe: SHARED_BUILDING }];
 
   const save = () => {
     try {
-      store.dispatch((s) => updateInvoiceSection(s, invoice.id, sectionId, byId));
-      onDone(changed ? `נשמר. סעיף תקציבי: ${sectionShort(invoice.sectionId)} ← ${sectionShort(sectionId)} (${personName(byId)}).` : "נשמר ללא שינוי.");
+      store.dispatch((s) => {
+        let next = updateInvoiceSection(s, invoice.id, sectionId, byId);
+        if (buildingChanged) next = updateInvoiceBuilding(next, invoice.id, building || null, byId);
+        return next;
+      });
+      const notes = [changed ? `סעיף תקציבי: ${sectionShort(invoice.sectionId)} ← ${sectionShort(sectionId)}` : "", buildingChanged ? `בניין: ${invoice.building ?? "—"} ← ${building || "—"}` : ""].filter(Boolean);
+      onDone(notes.length ? `נשמר. ${notes.join(" · ")} (${personName(byId)}).` : "נשמר ללא שינוי.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -308,6 +316,17 @@ function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onD
             {pkg.sections.map((s) => (
               <option key={s.id} value={s.id}>
                 {sectionFull(s.id)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="erp-field erp-field-editable">
+          <span>בניין</span>
+          <select value={building} onChange={(e) => setBuilding(e.target.value)} data-testid="erp-invoice-building">
+            <option value="">לא צוין</option>
+            {buildingOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.labelHe}
               </option>
             ))}
           </select>

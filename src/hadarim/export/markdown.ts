@@ -46,7 +46,7 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
   rows.push(["", "**סה״כ**", nis(t.budget), "—", nis(t.updatedBudget), nis(t.recorded), nis(t.committed), nis(t.remainingCommitment), nis(t.uncovered), nis(t.eac), signed(t.variance), pct(t.variancePct), nis(t.previousEac), signed(t.change), `${t.basisPct}%`]);
   out.push(table(["#", "סעיף", "תקציב מאושר", "שינויים", "תקציב מעודכן", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "תחזית קודמת", "שינוי", "בסיס"], rows), report.sections.materialityHe, "");
   if (report.sections.byBuilding) {
-    out.push("### פילוח משני — לפי בניין", "", table(["בניין", "תקציב", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], report.sections.byBuilding.map((b) => [b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), pct(b.variancePct), `${b.basisPct}%`])));
+    out.push("### פילוח משני — לפי בניין", "", table(["בניין", "תקציב", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], report.sections.byBuilding.map((b) => [b.labelHe, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), pct(b.variancePct), `${b.basisPct}%`])));
     if (report.sections.byBuildingNoteHe) out.push(`הערה: ${report.sections.byBuildingNoteHe}`, "");
   }
 

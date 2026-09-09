@@ -681,9 +681,9 @@ define({
 define({
   name: "set_invoice_building",
   title: "Tag an invoice with a building",
-  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report. Attributed and trigger-logged.",
+  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report: a building id of the project (get_project → project.buildings) or 'משותף' for shared costs. Attributed and trigger-logged.",
   kind: "write",
-  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.enum(["A", "B", "משותף"]).nullable(), byId: personId },
+  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.string().nullable().describe("a building id of the project, 'משותף', or null to clear"), byId: personId },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => updateInvoiceBuilding(s, a.invoiceId, a.building, a.byId as V2State["operatorId"]));
     return outcome(r, { invoice: invoiceView(r.state.erp.invoices.find((i) => i.id === a.invoiceId)!) });

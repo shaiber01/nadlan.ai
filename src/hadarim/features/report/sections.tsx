@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Badge, Notice } from "../../../components/primitives";
 import { store } from "../../app/store";
+import { SHARED_BUILDING } from "../../data/types";
 import { updateInvoiceBuilding } from "../../engine/commands";
 import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, SectionRow, UncoveredRow } from "../../engine/report";
 import { mil, nis, num, pct, signedNis, signedPct } from "./format";
@@ -352,7 +353,7 @@ export function SectionsTableSection({ report }: { report: ReportModel }) {
           <DataTable
             head={["בניין", "תקציב מאושר", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"]}
             numeric={[1, 2, 3, 4, 5, 6, 7, 8, 9]}
-            rows={sec.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signedNis(b.variance), signedPct(b.variancePct), `${num(b.basisPct)}%`])}
+            rows={sec.byBuilding.map((b) => [b.labelHe, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signedNis(b.variance), signedPct(b.variancePct), `${num(b.basisPct)}%`])}
             foot={["סה״כ", nis(sec.totals.budget), nis(sec.totals.recorded), nis(sec.totals.committed), nis(sec.totals.remainingCommitment), nis(sec.totals.uncovered), nis(sec.totals.eac), signedNis(sec.totals.variance), signedPct(sec.totals.variancePct), `${num(sec.totals.basisPct)}%`]}
             rowTestId={(i) => `report-building-${sec.byBuilding![i].building}`}
           />
@@ -363,9 +364,9 @@ export function SectionsTableSection({ report }: { report: ReportModel }) {
                 <span key={c.invoiceId} className="h2-report-change-building no-print">
                   {" "}
                   שנה — {c.labelHe}:
-                  {(["A", "B", "משותף"] as const).map((b) => (
-                    <button key={b} type="button" className={`btn btn-sm ${c.building === b || (!c.building && b === "משותף") ? "btn-primary" : "btn-ghost"}`} onClick={() => store.dispatch((s) => updateInvoiceBuilding(s, c.invoiceId, b, s.operatorId))} data-testid={`report-building-change-${c.invoiceId}-${b}`}>
-                      {b === "משותף" ? "משותף" : `בניין ${b}`}
+                  {sec.byBuildingOptions.map((b) => (
+                    <button key={b.id} type="button" className={`btn btn-sm ${c.building === b.id || (!c.building && b.id === SHARED_BUILDING) ? "btn-primary" : "btn-ghost"}`} onClick={() => store.dispatch((s) => updateInvoiceBuilding(s, c.invoiceId, b.id, s.operatorId))} data-testid={`report-building-change-${c.invoiceId}-${b.id}`}>
+                      {b.labelHe}
                     </button>
                   ))}
                 </span>

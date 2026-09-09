@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkAllocation, checkUnits, isContingency, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
-import { createInvoice, initialState, pkg, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
+import { createInvoice, initialState, pkg, setReportConfig, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
 import { recordedBySection, workingForecast } from "../src/hadarim/engine/forecast";
 import { buildReport } from "../src/hadarim/engine/report";
 
@@ -81,5 +81,38 @@ describe("generic checks", () => {
     const r = buildReport(pkg, initialState());
     expect(r.contingency.original).toBe(contingency.budget);
     expect(r.trends.eacSeries.map((p) => p.value)).toEqual([...pkg.forecasts.filter((f) => f.status === "final").map((f) => f.totalEac), r.working.totalEac]);
+  });
+});
+
+describe("generic building split", () => {
+  it("splits by the project's own buildings, whatever their number and names, and sums back to the section totals", () => {
+    const seed = initialState();
+    const state = setReportConfig(seed, { splitByBuilding: true });
+    const three = { ...pkg, project: { ...pkg.project, buildings: [...pkg.project.buildings, { id: "C", floors: 6, floorsCast: 2, unitsPerFloor: 4 }] } };
+    const r = buildReport(three, state);
+    const rows = r.sections.byBuilding!;
+    expect(rows.map((x) => x.building)).toEqual(["A", "B", "C", "חניון", "משותף"]);
+    expect(rows.map((x) => x.labelHe)).toEqual(["בניין A", "בניין B", "בניין C", "חניון", "משותף"]);
+    expect(r.sections.byBuildingOptions.map((o) => o.id)).toEqual(["A", "B", "C", "משותף"]);
+    for (const key of ["budget", "recorded", "committed", "remainingCommitment", "uncovered", "eac"] as const) {
+      expect(rows.reduce((a, x) => a + x[key], 0)).toBe(r.sections.totals[key]);
+    }
+    // a section split by floors cast follows the buildings' floors: 7 : 5 : 2 of its budget
+    const byFloors = pkg.sections.find((s) => s.split === "by_floors")!;
+    const shareOf = (id: string) => three.project.buildings.find((b) => b.id === id)!.floorsCast / 14;
+    const two = buildReport(pkg, state).sections.byBuilding!;
+    const budgetDelta = (id: string) => two.find((x) => x.building === id)!.budget - rows.find((x) => x.building === id)!.budget;
+    expect(budgetDelta("A")).toBeGreaterThan(0); // A's share shrinks when a third building joins
+    expect(Math.abs(rows.find((x) => x.building === "C")!.budget - pkg.sections.filter((s) => s.split === "by_floors").reduce((a, s) => a + s.budget, 0) * shareOf("C") - pkg.sections.filter((s) => s.split === "by_units").reduce((a, s) => a + s.budget, 0) * (24 / 72) - pkg.sections.filter((s) => s.split === "per_building").reduce((a, s) => a + s.budget, 0) / 3)).toBeLessThan(5);
+    expect(byFloors.split).toBe("by_floors");
+  });
+
+  it("an invoice can only be tagged with a building of the project or 'משותף'", () => {
+    const seed = initialState();
+    const inv = seed.erp.invoices[0];
+    expect(() => updateInvoiceBuilding(seed, inv.id, "Z", "EYAL")).toThrow(/בניין Z/);
+    const tagged = updateInvoiceBuilding(seed, inv.id, pkg.project.buildings[0].id, "EYAL");
+    expect(tagged.erp.invoices.find((i) => i.id === inv.id)!.building).toBe(pkg.project.buildings[0].id);
+    expect(updateInvoiceBuilding(seed, inv.id, "משותף", "EYAL").erp.invoices.find((i) => i.id === inv.id)!.building).toBe("משותף");
   });
 });
