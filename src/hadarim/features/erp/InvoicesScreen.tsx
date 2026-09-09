@@ -3,7 +3,7 @@ import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HInvoice, PersonId, SectionId } from "../../data/types";
 import { createInvoice, pkg, updateInvoiceBuilding, updateInvoiceSection } from "../../engine/commands";
-import { AttachedDocuments, linkedDocuments } from "./AttachedDocuments";
+import { AttachedDocuments } from "./AttachedDocuments";
 import { dateHe, dateTimeHe, monthHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
 const STATUS_TONE: Record<HInvoice["status"], string> = { אושר: "ok", בבדיקה: "warn", שולם: "done" };
@@ -215,10 +215,7 @@ function InvoiceView({ invoiceId }: { invoiceId: number }) {
           <RecordSection title="אישור">
             <Fieldv label="סטטוס" value={invoice.status} />
             <Fieldv label="אושר על ידי" value={personName(invoice.approvedBy)} />
-            <Fieldv
-              label="קובץ מצורף"
-              value={<AttachedDocuments attachment={attachment} linked={linkedDocuments("invoice", String(invoice.id))} />}
-            />
+            <Fieldv label="מסמכי החשבון והעובדות שנקראו מהם" value={<AttachedDocuments record={{ type: "invoice", id: String(invoice.id) }} />} wide />
           </RecordSection>
         </div>
       )}

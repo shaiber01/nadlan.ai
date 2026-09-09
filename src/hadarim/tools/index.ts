@@ -7,7 +7,7 @@ import { addBudgetChange, addDocument, db, deleteInvoice, documentFilePath, docu
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
-import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed } from "../engine/heartbeat";
+import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed, reportBlockers } from "../engine/heartbeat";
 import { DATA_QUALITY_KINDS, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
 import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
@@ -1269,14 +1269,24 @@ define({
   },
 });
 
+/** A saved version or a final control must rest on data that was read: refuse while documents are pending or a heartbeat is due with findings. */
+async function refuseUnlessRead(projectId: string, state: V2State, prefixHe: string): Promise<void> {
+  const history = await listHeartbeats(projectId, 200);
+  const reported = new Set<string>();
+  for (const h of history) for (const id of ((h.details.findingIds as string[] | undefined) ?? [])) reported.add(id);
+  const blockers = reportBlockers(pkg, state, history[0] ?? null, await latestChangeLogId(projectId), reported, nowStamp().slice(0, 10));
+  if (blockers.length) throw new Error(`${prefixHe}: ${blockers.map((b) => b.textHe).join(" ")}`);
+}
+
 define({
   name: "build_report",
   title: "Build the report",
-  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path), 'xlsx' (Excel workbook, one sheet per table, written to path). saveVersion=true (or a label) stores the version in the database.",
+  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path), 'xlsx' (Excel workbook, one sheet per table, written to path). saveVersion=true (or a label) stores the version in the database — refused, with the reason, while documents are pending, no heartbeat was ever recorded, or the checks raise findings on records changed since the last heartbeat that nobody presented (run /bakara-heartbeat first; building without saving always works).",
   kind: "write",
   input: { projectId, controlDate, tab: z.enum(["full", "ceo"]).default("full"), format: z.enum(["summary", "markdown", "json", "docx", "xlsx"]).default("summary"), path: z.string().optional().describe("output file path for docx/xlsx/markdown (default out/…)"), label: z.string().optional(), saveVersion: z.boolean().default(false) },
   run: async (a) => {
     const state = await loadState(a.projectId, a.controlDate);
+    if (a.saveVersion || a.label) await refuseUnlessRead(a.projectId, state, "הדוח לא נשמר כגרסה");
     const report = buildReport(pkg, state);
     const date = state.control.controlDate;
     let path: string | null = null;
@@ -1335,10 +1345,13 @@ define({
 define({
   name: "finalize_control",
   title: "Finalize the control",
-  description: "Close the control as the final version (the report header changes from טיוטה to גרסה סופית). Only when the user says the control is closed.",
+  description: "Close the control as the final version (the report header changes from טיוטה to גרסה סופית). Only when the user says the control is closed. Refused, with the reason, while documents are pending or findings on records changed since the last heartbeat were never presented (run /bakara-heartbeat first).",
   kind: "write",
   input: { projectId, controlDate },
-  run: async (a) => outcome(await write(a.projectId, a.controlDate, finalizeControl), { finalized: true }),
+  run: async (a) => {
+    await refuseUnlessRead(a.projectId, await loadState(a.projectId, a.controlDate), "הבקרה לא נסגרה");
+    return outcome(await write(a.projectId, a.controlDate, finalizeControl), { finalized: true });
+  },
 });
 
 define({

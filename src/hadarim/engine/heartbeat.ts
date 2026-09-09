@@ -84,6 +84,33 @@ export function heartbeatWork(pkg: HadarimPackage, state: V2State, sinceChangeLo
 }
 
 /** One Hebrew line the heartbeat record and the CLI print. */
+/** What stops a report from being saved as a version or the control from being finalized: data nobody read yet. */
+export interface ReportBlocker {
+  kind: "pending_documents" | "no_heartbeat" | "unreviewed_findings";
+  textHe: string;
+}
+
+/**
+ * A report version or a final control must not rest on documents nobody read or on changed records whose
+ * findings nobody saw: pending documents block; a project with changes but no heartbeat blocks; changes since
+ * the last heartbeat block only when the checks raise findings on them that were never presented.
+ */
+export function reportBlockers(pkg: HadarimPackage, state: V2State, lastHeartbeat: { untilChangeLogId: number } | null, latestChangeLogId: number, previouslyReported: Iterable<string> = [], today: string = state.clock.slice(0, 10)): ReportBlocker[] {
+  const out: ReportBlocker[] = [];
+  const pending = pkg.documents.filter(isUnprocessed);
+  if (pending.length) out.push({ kind: "pending_documents", textHe: `${pending.length} מסמכים בתיקייה טרם נקראו (${pending.map((d) => d.fileName).join(", ")}) — הרץ /bakara-heartbeat ועבד אותם.` });
+  if (!lastHeartbeat) {
+    if (latestChangeLogId > 0) out.push({ kind: "no_heartbeat", textHe: "לא נרשמה פעימת לב לפרויקט — הרץ /bakara-heartbeat לפני שמירת הדוח." });
+  } else if (latestChangeLogId > lastHeartbeat.untilChangeLogId) {
+    const work = heartbeatWork(pkg, state, lastHeartbeat.untilChangeLogId, previouslyReported, today);
+    // only findings on the records that changed: findings elsewhere are the control's business and the report lists them as open
+    const changed = new Set(work.changedRecords.map((r) => `${r.type}:${r.id}`));
+    const onChanged = work.findings.filter((f) => changed.has(`${f.record.type}:${f.record.id}`));
+    if (onChanged.length) out.push({ kind: "unreviewed_findings", textHe: `${onChanged.length} ממצאים על רשומות שהשתנו מאז פעימת הלב האחרונה טרם הוצגו (${onChanged.map((f) => f.id).join(", ")}) — הרץ /bakara-heartbeat.` });
+  }
+  return out;
+}
+
 export function heartbeatSummaryHe(w: HeartbeatWork): string {
   const parts = [`${w.pendingDocuments.length} מסמכים ממתינים לעיבוד`, `${w.changedRecords.length} רשומות השתנו (${w.changedRecords.filter((r) => r.isNew).length} חדשות)`, `${w.findings.length} ממצאים לבדיקה`];
   if (w.sessionOpenFindings.length) parts.push(`${w.sessionOpenFindings.length} ממצאי בקרה פתוחים`);

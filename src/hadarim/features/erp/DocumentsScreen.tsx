@@ -4,17 +4,11 @@ import { store, useUi, useV2State } from "../../app/store";
 import { DOCUMENT_KIND_HE, type DocumentKind, type HDocument, type PersonId } from "../../data/types";
 import { pkg } from "../../engine/commands";
 import { isUnprocessed } from "../../engine/heartbeat";
+import { documentStatusHe } from "../../components/DocumentFacts";
 import { dateHe, dateTimeHe, defaultActor, num, personName, supplierName } from "./format";
 
 const RECORD_HE = { invoice: "חשבון", po: "הזמנה", contract: "חוזה" } as const;
-const FACTS_METHOD_HE: Record<string, string> = { seed: "נתוני הבסיס", agent: "נקרא על ידי הסוכן", extraction: "חילוץ אוטומטי" };
-
-/** A document's processing status: the ERP only shows it; processing is the agent's. */
-export function documentStatusHe(d: HDocument): { labelHe: string; tone: "pending" | "done" } {
-  if (isUnprocessed(d)) return { labelHe: "טרם עובד", tone: "pending" };
-  const src = d.factsSource!;
-  return { labelHe: `${FACTS_METHOD_HE[src.method] ?? src.method}${src.byId ? ` · ${personName(src.byId as PersonId)}` : ""}`, tone: "done" };
-}
+export { documentStatusHe };
 
 /**
  * תיקיית מסמכים — the project folder in the ERP: the seed's pages and the real files people upload. Uploading

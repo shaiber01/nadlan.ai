@@ -1,4 +1,5 @@
 import { Button } from "../../../components/primitives";
+import { AttachedDocuments } from "./AttachedDocuments";
 import { store, useUi, useV2State } from "../../app/store";
 import { pkg } from "../../engine/commands";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
@@ -109,6 +110,9 @@ function ContractView({ contractId }: { contractId: string }) {
           {c.steelSuppliedByClient && <Fieldv label="ברזל" value={`מסופק על ידי המזמין${pkg.contracts.some((x) => x.priceAppendices?.length) ? ` (הסכם מסגרת ${pkg.contracts.filter((x) => x.priceAppendices?.length).map((x) => `⁨${x.id}⁩`).join(", ")})` : ""}`} />}
           <Fieldv label="התאמה לכתב כמויות" value={c.boqMatchVerified ? "✔ נבדק שורה מול שורה" : "לא נבדק"} />
           {c.noteHe && <Fieldv label="הערה" value={c.noteHe} wide />}
+        </RecordSection>
+        <RecordSection title="מסמכים">
+          <Fieldv label="מסמכי החוזה" value={<AttachedDocuments record={{ type: "contract", id: c.id }} />} wide />
         </RecordSection>
         {c.inclusionsHe.length > 0 && (
           <section className="erp-record-section">

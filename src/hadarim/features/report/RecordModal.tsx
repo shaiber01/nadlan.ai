@@ -1,7 +1,8 @@
 import { Surface } from "../../../components/Drawer";
 import { Button, KeyValue } from "../../../components/primitives";
 import { erpRecordUrl, store, useV2State, type UiState } from "../../app/store";
-import { sectionLabel } from "../../engine/checks";
+import { recordDocuments, sectionLabel } from "../../engine/checks";
+import { DocumentFacts } from "../../components/DocumentFacts";
 import { pkg } from "../../engine/commands";
 import { pricePerUnitHe } from "../../engine/units";
 import { dateHe, nis, num, timeHe } from "./fmt";
@@ -16,6 +17,7 @@ export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
   const supplierHe = (id: string) => pkg.suppliers.find((s) => s.id === id)?.nameHe ?? id;
   const personHe = (id: string | null) => (id ? pkg.people.find((p) => p.id === id)?.nameHe ?? id : "—");
   const log = state.erp.changeLog.filter((c) => c.recordType === recordRef.type && c.recordId === recordRef.id);
+  const docs = recordDocuments(pkg, state.erp, recordRef);
 
   let title = "";
   let rows: { labelHe: string; value: React.ReactNode }[] = [];
@@ -101,6 +103,14 @@ export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
     >
       <div className="stack" data-testid="record-modal" data-record-type={recordRef.type} data-record-id={recordRef.id}>
         <KeyValue rows={rows} />
+        {docs.length ? (
+          <div data-testid="record-modal-documents">
+            <h4 className="muted">מסמכים והעובדות שנקראו מהם</h4>
+            {docs.map((d) => (
+              <DocumentFacts key={d.id} record={recordRef} doc={d} />
+            ))}
+          </div>
+        ) : null}
         <div>
           <h4 className="muted">יומן שינויים</h4>
           {log.length ? (

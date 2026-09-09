@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
-import { DATA_QUALITY_KINDS, checkDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
+import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
 import { tools } from "../src/hadarim/tools";
 
@@ -14,6 +14,68 @@ import { tools } from "../src/hadarim/tools";
 const seedState = () => initialState();
 const invoiceWithDoc = () => seedState().erp.invoices.find((i) => i.attachmentId && pkg.documents.find((d) => d.id === i.attachmentId)?.facts)!;
 const withDoc = (doc: HDocument): HadarimPackage => ({ ...pkg, documents: [...pkg.documents.filter((d) => d.id !== doc.id), doc] });
+
+describe("compareDocument — the record against its document, the way the cards show it", () => {
+  it("lists a record's documents: attachment, linked files, and a contract's excerpt and price appendices", () => {
+    const state = seedState();
+    const inv = invoiceWithDoc();
+    expect(recordDocuments(pkg, state.erp, { type: "invoice", id: String(inv.id) }).map((d) => d.id)).toEqual([inv.attachmentId]);
+    const framework = pkg.contracts.find((c) => c.priceAppendices?.length)!;
+    const ids = recordDocuments(pkg, state.erp, { type: "contract", id: framework.id }).map((d) => d.id);
+    for (const a of framework.priceAppendices!) expect(ids).toContain(a.documentId);
+    const excerpt = pkg.contracts.find((c) => c.documentId)!;
+    expect(recordDocuments(pkg, state.erp, { type: "contract", id: excerpt.id }).map((d) => d.id)).toContain(excerpt.documentId);
+  });
+
+  it("every compared fact of the seed invoice matches, with Hebrew labels; the rows the document check reads are exactly its mismatches", () => {
+    const state = seedState();
+    const inv = invoiceWithDoc();
+    const doc = pkg.documents.find((d) => d.id === inv.attachmentId)!;
+    const rows = compareDocument(pkg, state.erp, { type: "invoice", id: String(inv.id) }, doc);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((r) => r.check === "document").every((r) => r.match === true)).toBe(true);
+    expect(rows.every((r) => /^[^a-zA-Z]*$/.test(r.fieldHe))).toBe(true);
+    // a changed amount: the compare marks it, and the check's details table carries the same row
+    const p = withDoc({ ...doc, facts: { ...doc.facts, amountThis: inv.amount + 5_000, cumulativeNow: (inv.cumulativePrev ?? 0) + inv.amount + 5_000 } });
+    const changed = compareDocument(p, state.erp, { type: "invoice", id: String(inv.id) }, p.documents.find((d) => d.id === doc.id)!);
+    const mismatches = changed.filter((r) => r.check === "document" && r.match === false);
+    expect(mismatches.map((r) => r.key).sort()).toEqual(["amount", "cumulativeNow"]);
+    const [f] = checkDocuments(p, state.erp, { invoiceId: inv.id });
+    expect(f.detailsTable!.slice(1).map((r) => [r[0], r[1], r[2]])).toEqual(mismatches.map((r) => [r.fieldHe, r.recordHe, r.docHe]));
+  });
+
+  it("an order's quote: amount and supplier for the document check, the line for the unit check — the seed's mis-keyed order shows the line as a mismatch", () => {
+    const state = seedState();
+    const po = state.erp.purchaseOrders.find((p) => p.attachmentId && pkg.documents.find((d) => d.id === p.attachmentId)?.facts)!;
+    const doc = pkg.documents.find((d) => d.id === po.attachmentId)!;
+    const rows = compareDocument(pkg, state.erp, { type: "po", id: String(po.id) }, doc);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(byKey.amount).toMatchObject({ check: "document", match: true });
+    expect(byKey.supplierId).toMatchObject({ check: "document", match: true });
+    expect(byKey.line_qty.check).toBe("unit");
+    expect(byKey.line_price.check).toBe("unit");
+    // the seed keys the order in the wrong unit on purpose: the unit check raises it, and the compare shows the same
+    const unitFinding = runChecks(pkg, state.erp, pkg.forecasts.find((f) => f.controlDate === state.control.controlDate && f.sections)!, state.control.controlDate).findings.find((f) => f.kind === "unit" && f.record.id === String(po.id));
+    expect(!!unitFinding).toBe(byKey.line_qty.match === false || byKey.line_price.match === false);
+    expect(checkDocuments(pkg, state.erp, { poId: po.id })).toEqual([]);
+  });
+
+  it("a contract's appendix facts are compared with the appendix on the contract; an excerpt's exclusion clause with the contract's exclusions", () => {
+    const state = seedState();
+    const framework = pkg.contracts.find((c) => c.priceAppendices?.length)!;
+    for (const a of framework.priceAppendices!) {
+      const doc = pkg.documents.find((d) => d.id === a.documentId)!;
+      const rows = compareDocument(pkg, state.erp, { type: "contract", id: framework.id }, doc);
+      const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+      if (byKey.pricePerTon) expect(byKey.pricePerTon).toMatchObject({ match: true, check: null });
+      if (byKey.validFrom) expect(byKey.validFrom.match).toBe(true);
+    }
+    const withExcerpt = pkg.contracts.find((c) => c.documentId && pkg.documents.find((d) => d.id === c.documentId)?.facts?.exclusionClause)!;
+    const rows = compareDocument(pkg, state.erp, { type: "contract", id: withExcerpt.id }, pkg.documents.find((d) => d.id === withExcerpt.documentId)!);
+    expect(rows.find((r) => r.key === "exclusionClause")).toMatchObject({ match: true });
+    expect(rows.find((r) => r.key === "contractId")).toMatchObject({ match: true, recordHe: withExcerpt.id });
+  });
+});
 
 describe("checkDocuments", () => {
   it("is part of the data-quality checks and raises nothing on the consistent seed", () => {

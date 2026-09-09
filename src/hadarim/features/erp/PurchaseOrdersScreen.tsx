@@ -3,7 +3,7 @@ import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HPurchaseOrder, PersonId, SectionId } from "../../data/types";
 import { orderLineHe, pkg, updatePurchaseOrder, updatePurchaseOrderSection } from "../../engine/commands";
-import { AttachedDocuments, linkedDocuments } from "./AttachedDocuments";
+import { AttachedDocuments } from "./AttachedDocuments";
 import { ORDER_UNITS, lineValue, pricePerUnitHe } from "../../engine/units";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
 import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
@@ -199,10 +199,7 @@ function PurchaseOrderView({ poId }: { poId: number }) {
             <Fieldv label="חויב" value={nis(po.invoicedAmount)} />
           </RecordSection>
           <RecordSection title="מסמכים">
-            <Fieldv
-              label="קובץ מצורף"
-              value={<AttachedDocuments attachment={attachment} linked={linkedDocuments("po", String(po.id))} />}
-            />
+            <Fieldv label="מסמכי ההזמנה והעובדות שנקראו מהם" value={<AttachedDocuments record={{ type: "po", id: String(po.id) }} />} wide />
           </RecordSection>
         </div>
       )}

@@ -703,31 +703,231 @@ export function checkReviewAging(pkg: HadarimPackage, erp: ErpState, controlDate
  * values (with the dependent retention, net payable and cumulative recomputed); an order is corrected on
  * instruction. Quantities and units of orders against quotes are the unit check's domain and are not repeated.
  */
+export type RecordRefLite = { type: "invoice" | "po" | "contract"; id: string };
+
+/** Hebrew labels of the fact keys documents carry (unknown keys are shown as they are). */
+export const FACT_LABEL_HE: Record<string, string> = { amount: "סכום", amountThis: "סכום החשבון", qty: "כמות", qtyKg: "כמות (ק״ג)", qtyTon: "כמות (טון)", unit: "יחידה", unitPrice: "מחיר יחידה", pricePerTon: "מחיר לטון", validFrom: "בתוקף מ-", validUntil: "תוקף עד", supplierId: "ספק", supplierDocNo: "מס׳ מסמך ספק", docNo: "מס׳ מסמך ספק", invoiceNo: "מס׳ מסמך ספק", date: "תאריך", invoiceDate: "תאריך", retentionPct: "שיעור עכבון", cumulativePrev: "מצטבר קודם", cumulativeNow: "מצטבר נוכחי", contractId: "חוזה", invoiceId: "מס׳ חשבון", boqLineId: "שורת כתב כמויות", exclusionClause: "סעיף החרגה" };
+
+/** A fact's value the way a person reads it. */
+export function factValueHe(pkg: HadarimPackage, key: string, value: unknown): string {
+  if (value == null || value === "") return "—";
+  if (key === "supplierId") return supplierNameOf(pkg, String(value));
+  if (typeof value === "number") {
+    if (/amount|cumulative|unitPrice/i.test(key)) return nis(value);
+    if (key === "pricePerTon") return `${num(value)} ₪/טון`;
+    if (key === "retentionPct") return `${value}%`;
+    return num(value);
+  }
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return dateHe(value);
+  return String(value);
+}
+
+export function documentHasFacts(d: HDocument): boolean {
+  return !!d.facts && Object.keys(d.facts).length > 0;
+}
+
+/** The documents of a record: its attachment, the files linked to it, and for a contract its excerpt and price appendices. */
+export function recordDocuments(pkg: HadarimPackage, erp: ErpState, record: RecordRefLite): HDocument[] {
+  const ids = new Set<string>();
+  if (record.type === "invoice") {
+    const inv = erp.invoices.find((i) => String(i.id) === record.id);
+    if (inv?.attachmentId) ids.add(inv.attachmentId);
+  } else if (record.type === "po") {
+    const po = erp.purchaseOrders.find((x) => String(x.id) === record.id);
+    if (po?.attachmentId) ids.add(po.attachmentId);
+  } else {
+    const c = pkg.contracts.find((x) => x.id === record.id);
+    if (c?.documentId) ids.add(c.documentId);
+    for (const a of c?.priceAppendices ?? []) ids.add(a.documentId);
+  }
+  for (const d of pkg.documents) if (d.recordRef?.type === record.type && d.recordRef.id === record.id) ids.add(d.id);
+  return pkg.documents.filter((d) => ids.has(d.id));
+}
+
+/**
+ * One line of the comparison between a record and the facts read from one of its documents. `match` is null
+ * when the fact has no counterpart on the record (shown, not compared); `check` names the deterministic check
+ * that raises a finding on a mismatch — the document check, the unit check, or none (compared for the eye only).
+ */
+export interface DocumentFactRow {
+  key: string;
+  fieldHe: string;
+  docHe: string;
+  recordHe: string | null;
+  match: boolean | null;
+  check: "document" | "unit" | null;
+  raw: unknown;
+  /** Set when the document check may write the document's value on approval. */
+  patchKey?: keyof InvoiceFixPatch;
+  anchor?: string;
+}
+
+const numOf = (f: Record<string, unknown>, ...keys: string[]): number | null => {
+  for (const k of keys) {
+    const v = f[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.replace(/,/g, ""))) return Number(v.replace(/,/g, ""));
+  }
+  return null;
+};
+const strOf = (f: Record<string, unknown>, ...keys: string[]): string | null => {
+  for (const k of keys) {
+    const v = f[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+};
+
+/**
+ * The record against the facts of one document — the single comparison the document check, the ERP record
+ * card and the report's record modal all show, so the screen and the check never disagree.
+ */
+export function compareDocument(pkg: HadarimPackage, erp: ErpState, record: RecordRefLite, doc: HDocument): DocumentFactRow[] {
+  const f = (doc.facts ?? {}) as Record<string, unknown>;
+  if (!Object.keys(f).length) return [];
+  const rows: DocumentFactRow[] = [];
+  const used = new Set<string>();
+  const present = (...keys: string[]): string | null => keys.find((k) => f[k] != null && f[k] !== "") ?? null;
+  const label = (key: string) => FACT_LABEL_HE[key] ?? key;
+  const rest = () => {
+    for (const k of Object.keys(f)) if (!used.has(k) && f[k] != null && f[k] !== "") rows.push({ key: k, fieldHe: label(k), docHe: factValueHe(pkg, k, f[k]), recordHe: null, match: null, check: null, raw: f[k] });
+  };
+
+  if (record.type === "invoice") {
+    const inv = erp.invoices.find((i) => String(i.id) === record.id);
+    if (!inv) return [];
+    const amountKey = present("amountThis", "amount");
+    if (amountKey) {
+      const v = numOf(f, amountKey);
+      used.add("amountThis").add("amount");
+      rows.push({ key: "amount", fieldHe: "סכום", docHe: v != null ? nis(v) : String(f[amountKey]), recordHe: nis(inv.amount), match: v != null ? v === inv.amount : null, check: v != null ? "document" : null, raw: v, patchKey: "amount", anchor: "cumulative" });
+    }
+    const docNoKey = present("supplierDocNo", "docNo", "invoiceNo");
+    if (docNoKey) {
+      const v = strOf(f, docNoKey);
+      used.add("supplierDocNo").add("docNo").add("invoiceNo");
+      rows.push({ key: "supplierDocNo", fieldHe: "מס׳ מסמך ספק", docHe: v ?? "—", recordHe: inv.supplierDocNo, match: v ? v === inv.supplierDocNo : null, check: v ? "document" : null, raw: v, patchKey: "supplierDocNo", anchor: "header" });
+    }
+    const dateKey = present("date", "invoiceDate");
+    if (dateKey) {
+      const v = strOf(f, dateKey);
+      const iso = !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+      used.add("date").add("invoiceDate");
+      rows.push({ key: "date", fieldHe: "תאריך", docHe: iso ? dateHe(v!) : (v ?? "—"), recordHe: dateHe(inv.date), match: iso ? v === inv.date : null, check: iso ? "document" : null, raw: v, patchKey: "date", anchor: "header" });
+    }
+    if (present("retentionPct")) {
+      const v = numOf(f, "retentionPct");
+      used.add("retentionPct");
+      rows.push({ key: "retentionPct", fieldHe: "שיעור עכבון", docHe: v != null ? `${v}%` : String(f.retentionPct), recordHe: `${inv.retentionPct}%`, match: v != null ? v === inv.retentionPct : null, check: v != null ? "document" : null, raw: v, patchKey: "retentionPct", anchor: "retention" });
+    }
+    for (const [key, fieldHe, recordValue] of [["cumulativePrev", "מצטבר קודם", inv.cumulativePrev], ["cumulativeNow", "מצטבר נוכחי", inv.cumulativeNow]] as const) {
+      if (!present(key)) continue;
+      const v = numOf(f, key);
+      used.add(key);
+      const compared = v != null && recordValue != null;
+      rows.push({ key, fieldHe, docHe: v != null ? nis(v) : String(f[key]), recordHe: recordValue != null ? nis(recordValue) : null, match: compared ? v === recordValue : null, check: compared ? "document" : null, raw: v, patchKey: key, anchor: "cumulative" });
+    }
+    if (present("supplierId")) {
+      const v = strOf(f, "supplierId");
+      used.add("supplierId");
+      rows.push({ key: "supplierId", fieldHe: "ספק", docHe: v ? supplierNameOf(pkg, v) : "—", recordHe: supplierNameOf(pkg, inv.supplierId), match: v ? v === inv.supplierId : null, check: v ? "document" : null, raw: v, anchor: "header" });
+    }
+    if (present("qty")) {
+      const v = numOf(f, "qty");
+      used.add("qty");
+      const compared = v != null && inv.quantity != null;
+      rows.push({ key: "qty", fieldHe: "כמות", docHe: v != null ? num(v) : String(f.qty), recordHe: inv.quantity != null ? num(inv.quantity) : null, match: compared ? v === inv.quantity : null, check: compared ? "document" : null, raw: v });
+    }
+    if (present("unit")) {
+      const v = strOf(f, "unit");
+      used.add("unit");
+      const compared = !!v && !!inv.unit;
+      rows.push({ key: "unit", fieldHe: "יחידה", docHe: v ?? "—", recordHe: inv.unit ?? null, match: compared ? v === inv.unit : null, check: compared ? "document" : null, raw: v });
+    }
+    if (present("unitPrice")) {
+      const v = numOf(f, "unitPrice");
+      used.add("unitPrice");
+      const compared = v != null && inv.unitPrice != null;
+      rows.push({ key: "unitPrice", fieldHe: "מחיר יחידה", docHe: v != null ? nis(v) : String(f.unitPrice), recordHe: inv.unitPrice != null ? nis(inv.unitPrice) : null, match: compared ? v === inv.unitPrice : null, check: compared ? "document" : null, raw: v });
+    }
+    if (present("invoiceId")) {
+      used.add("invoiceId");
+      rows.push({ key: "invoiceId", fieldHe: "מס׳ חשבון", docHe: String(f.invoiceId), recordHe: String(inv.id), match: String(f.invoiceId) === String(inv.id), check: null, raw: f.invoiceId });
+    }
+    rest();
+    return rows;
+  }
+
+  if (record.type === "po") {
+    const po = erp.purchaseOrders.find((x) => String(x.id) === record.id);
+    if (!po) return [];
+    if (present("amount")) {
+      const v = numOf(f, "amount");
+      used.add("amount");
+      rows.push({ key: "amount", fieldHe: "סכום", docHe: v != null ? nis(v) : String(f.amount), recordHe: nis(po.amount), match: v != null ? v === po.amount : null, check: v != null ? "document" : null, raw: v, anchor: "line" });
+    }
+    if (present("supplierId")) {
+      const v = strOf(f, "supplierId");
+      used.add("supplierId");
+      rows.push({ key: "supplierId", fieldHe: "ספק", docHe: v ? supplierNameOf(pkg, v) : "—", recordHe: supplierNameOf(pkg, po.supplierId), match: v ? v === po.supplierId : null, check: v ? "document" : null, raw: v, anchor: "header" });
+    }
+    // the line — quantity, unit and unit price — the way the unit check reads a quote (tons win over kilograms)
+    const q = quoteFacts(doc);
+    if (q && (q.qty != null || q.unit)) {
+      for (const k of ["qty", "qtyKg", "qtyTon", "unit"]) used.add(k);
+      const mismatch = (q.qty != null && q.qty !== po.qty) || (!!q.unit && q.unit !== po.unit);
+      rows.push({ key: "line_qty", fieldHe: "כמות ויחידה", docHe: `${q.qty != null ? num(q.qty) : "—"} ${q.unit ?? ""}`.trim(), recordHe: `${num(po.qty)} ${po.unit}`, match: !mismatch, check: "unit", raw: q.qty, anchor: "line" });
+    }
+    if (q && q.unitPrice != null) {
+      used.add("unitPrice").add("pricePerTon");
+      const priceUnit = f.pricePerTon != null ? "טון" : (q.unit ?? po.priceUnit);
+      rows.push({ key: "line_price", fieldHe: "מחיר יחידה", docHe: `${num(q.unitPrice)} ₪ ל${priceUnit}`, recordHe: `${num(po.unitPrice)} ₪ ל${po.priceUnit}`, match: Math.abs(q.unitPrice - po.unitPrice) <= 0.005 && priceUnit === po.priceUnit, check: "unit", raw: q.unitPrice, anchor: "line" });
+    }
+    rest();
+    return rows;
+  }
+
+  const c = pkg.contracts.find((x) => x.id === record.id);
+  if (!c) return [];
+  if (present("contractId")) {
+    used.add("contractId");
+    rows.push({ key: "contractId", fieldHe: "חוזה", docHe: String(f.contractId), recordHe: c.id, match: String(f.contractId) === c.id, check: null, raw: f.contractId });
+  }
+  if (present("supplierId")) {
+    const v = strOf(f, "supplierId");
+    used.add("supplierId");
+    rows.push({ key: "supplierId", fieldHe: "ספק", docHe: v ? supplierNameOf(pkg, v) : "—", recordHe: supplierNameOf(pkg, c.supplierId), match: v ? v === c.supplierId : null, check: null, raw: v });
+  }
+  const appendix = c.priceAppendices?.find((a) => a.documentId === doc.id);
+  if (present("pricePerTon")) {
+    const v = numOf(f, "pricePerTon");
+    used.add("pricePerTon");
+    rows.push({ key: "pricePerTon", fieldHe: `מחיר ל${appendix ? appendixUnit(appendix) : "טון"}`, docHe: v != null ? `${num(v)} ₪` : String(f.pricePerTon), recordHe: appendix ? `${num(appendix.pricePerTon)} ₪` : null, match: appendix && v != null ? v === appendix.pricePerTon : null, check: null, raw: v, anchor: "price" });
+  }
+  if (present("validFrom")) {
+    const v = strOf(f, "validFrom");
+    used.add("validFrom");
+    rows.push({ key: "validFrom", fieldHe: "בתוקף מ-", docHe: factValueHe(pkg, "validFrom", v), recordHe: appendix ? dateHe(appendix.validFrom) : null, match: appendix && v ? v === appendix.validFrom : null, check: null, raw: v, anchor: "price" });
+  }
+  if (present("exclusionClause")) {
+    const clause = String(f.exclusionClause);
+    const found = c.exclusions.find((e) => e.clause === clause);
+    used.add("exclusionClause");
+    rows.push({ key: "exclusionClause", fieldHe: "סעיף החרגה", docHe: clause, recordHe: found ? `סעיף ${found.clause}: ${found.textHe}` : null, match: !!found, check: null, raw: clause, anchor: "exclusion" });
+  }
+  rest();
+  return rows;
+}
+
 export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invoiceId?: number; poId?: number }): HFinding[] {
   const out: HFinding[] = [];
-  const withFacts = (d: HDocument) => !!d.facts && Object.keys(d.facts).length > 0;
-  const docsOf = (type: "invoice" | "po", id: string, attachmentId: string | null) => pkg.documents.filter((d) => withFacts(d) && (d.id === attachmentId || (d.recordRef?.type === type && d.recordRef.id === id)));
-  const numFact = (f: Record<string, unknown>, ...keys: string[]): number | null => {
-    for (const k of keys) {
-      const v = f[k];
-      if (typeof v === "number" && Number.isFinite(v)) return v;
-      if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.replace(/,/g, ""))) return Number(v.replace(/,/g, ""));
-    }
-    return null;
-  };
-  const strFact = (f: Record<string, unknown>, ...keys: string[]): string | null => {
-    for (const k of keys) {
-      const v = f[k];
-      if (typeof v === "string" && v.trim()) return v.trim();
-    }
-    return null;
-  };
   const docSource = (d: HDocument, anchor?: string): HSource => ({ kind: "document", refId: d.id, labelHe: `${d.titleHe} · ${d.fileName}${d.factsSource ? ` · עובדות: ${d.factsSource.method === "seed" ? "נתוני הבסיס" : d.factsSource.method === "agent" ? "קריאת הסוכן" : "חילוץ"}` : ""}`, documentId: d.id, ...(anchor && d.anchors[anchor] != null ? { anchor } : {}) });
 
   if (only?.poId == null) {
     for (const inv of erp.invoices) {
       if (only?.invoiceId != null && inv.id !== only.invoiceId) continue;
-      const docs = docsOf("invoice", String(inv.id), inv.attachmentId);
+      const record: RecordRefLite = { type: "invoice", id: String(inv.id) };
+      const docs = recordDocuments(pkg, erp, record).filter(documentHasFacts);
       if (!docs.length) continue;
       const rows: string[][] = [];
       const sources: HSource[] = [invoiceSource(pkg, inv)];
@@ -735,61 +935,13 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
       let fixable = true;
       let amountDelta = 0;
       for (const d of docs) {
-        const f = d.facts!;
-        const push = (fieldHe: string, recordHe: string, docHe: string, anchor?: string) => {
-          rows.push([fieldHe, recordHe, docHe, d.titleHe]);
-          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, anchor));
-        };
-        const amount = numFact(f, "amountThis", "amount");
-        if (amount != null && amount !== inv.amount) {
-          push("סכום", nis(inv.amount), nis(amount), "cumulative");
-          patch.amount = amount;
-          amountDelta = amount - inv.amount;
-        }
-        const docNo = strFact(f, "supplierDocNo", "docNo", "invoiceNo");
-        if (docNo && docNo !== inv.supplierDocNo) {
-          push("מס׳ מסמך ספק", inv.supplierDocNo, docNo, "header");
-          patch.supplierDocNo = docNo;
-        }
-        const date = strFact(f, "date", "invoiceDate");
-        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date !== inv.date) {
-          push("תאריך", dateHe(inv.date), dateHe(date), "header");
-          patch.date = date;
-        }
-        const retentionPct = numFact(f, "retentionPct");
-        if (retentionPct != null && retentionPct !== inv.retentionPct) {
-          push("שיעור עכבון", `${inv.retentionPct}%`, `${retentionPct}%`, "retention");
-          patch.retentionPct = retentionPct;
-        }
-        const cumPrev = numFact(f, "cumulativePrev");
-        const cumNow = numFact(f, "cumulativeNow");
-        if (cumPrev != null && inv.cumulativePrev != null && cumPrev !== inv.cumulativePrev) {
-          push("מצטבר קודם", nis(inv.cumulativePrev), nis(cumPrev), "cumulative");
-          patch.cumulativePrev = cumPrev;
-        }
-        if (cumNow != null && inv.cumulativeNow != null && cumNow !== inv.cumulativeNow) {
-          push("מצטבר נוכחי", nis(inv.cumulativeNow), nis(cumNow), "cumulative");
-          patch.cumulativeNow = cumNow;
-        }
-        const supplier = strFact(f, "supplierId");
-        if (supplier && supplier !== inv.supplierId) {
-          push("ספק", supplierNameOf(pkg, inv.supplierId), supplierNameOf(pkg, supplier), "header");
-          fixable = false;
-        }
-        const qty = numFact(f, "qty");
-        const unit = strFact(f, "unit");
-        const unitPrice = numFact(f, "unitPrice");
-        if (qty != null && inv.quantity != null && qty !== inv.quantity) {
-          push("כמות", num(inv.quantity), num(qty));
-          fixable = false;
-        }
-        if (unit && inv.unit && unit !== inv.unit) {
-          push("יחידה", inv.unit, unit);
-          fixable = false;
-        }
-        if (unitPrice != null && inv.unitPrice != null && unitPrice !== inv.unitPrice) {
-          push("מחיר יחידה", nis(inv.unitPrice), nis(unitPrice));
-          fixable = false;
+        for (const r of compareDocument(pkg, erp, record, d)) {
+          if (r.check !== "document" || r.match !== false) continue;
+          rows.push([r.fieldHe, r.recordHe ?? "—", r.docHe, d.titleHe]);
+          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, r.anchor));
+          if (r.patchKey) (patch as Record<string, unknown>)[r.patchKey] = r.raw;
+          else fixable = false;
+          if (r.key === "amount") amountDelta = (r.raw as number) - inv.amount;
         }
       }
       if (!rows.length) continue;
@@ -820,23 +972,18 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
   if (only?.invoiceId == null) {
     for (const po of erp.purchaseOrders) {
       if (only?.poId != null && po.id !== only.poId) continue;
-      const docs = docsOf("po", String(po.id), po.attachmentId);
+      const record: RecordRefLite = { type: "po", id: String(po.id) };
+      const docs = recordDocuments(pkg, erp, record).filter(documentHasFacts);
       if (!docs.length) continue;
       const rows: string[][] = [];
       const sources: HSource[] = [{ kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplierNameOf(pkg, po.supplierId)} · ${nis(po.amount)}`, documentId: po.attachmentId ?? undefined }];
       let amountDelta = 0;
       for (const d of docs) {
-        const f = d.facts!;
-        const amount = numFact(f, "amount");
-        if (amount != null && amount !== po.amount) {
-          rows.push(["סכום", nis(po.amount), nis(amount), d.titleHe]);
-          amountDelta = amount - po.amount;
-          sources.push(docSource(d, "line"));
-        }
-        const supplier = strFact(f, "supplierId");
-        if (supplier && supplier !== po.supplierId) {
-          rows.push(["ספק", supplierNameOf(pkg, po.supplierId), supplierNameOf(pkg, supplier), d.titleHe]);
-          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, "header"));
+        for (const r of compareDocument(pkg, erp, record, d)) {
+          if (r.check !== "document" || r.match !== false) continue;
+          rows.push([r.fieldHe, r.recordHe ?? "—", r.docHe, d.titleHe]);
+          if (r.key === "amount") amountDelta = (r.raw as number) - po.amount;
+          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, r.anchor));
         }
       }
       if (!rows.length) continue;
