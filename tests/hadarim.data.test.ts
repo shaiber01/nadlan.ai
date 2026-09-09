@@ -60,12 +60,14 @@ describe("Hadarim v2 data package", () => {
     for (const p of pkg.purchaseOrders) expect({ id: p.id, amount: lineAmount(p) }).toEqual({ id: p.id, amount: p.amount });
   });
 
-  it("BOQ v4 has ~120 lines with the drainage line excluded and elevators covered by 14-01", () => {
+  it("BOQ v4 has ~120 lines, the drainage line covered by 07-01 at first, and elevators covered by 14-01", () => {
     expect(pkg.boq.length).toBeGreaterThanOrEqual(110);
     expect(pkg.boq.length).toBeLessThanOrEqual(125);
     const drainage = pkg.boq.find((l) => l.id === "57.03.040")!;
-    expect(drainage).toMatchObject({ coverage: "excluded", qty: 80, unit: "מ׳", sectionId: "07" });
-    expect(drainage.coverageRef).toContain("3.4");
+    expect(drainage).toMatchObject({ coverage: "covered", coveredByContractId: "07-01", qty: 80, unit: "מ׳", sectionId: "07" });
+    const revisionDoc = pkg.documents.find((d) => d.id === "boq_v5_ch57")!;
+    expect(revisionDoc.factsSource).toBeUndefined();
+    expect(revisionDoc.facts).toBeUndefined();
     const steel = pkg.boq.find((l) => l.descriptionHe.includes("מוטות פלדה"))!;
     expect(steel).toMatchObject({ qty: 750, unit: "טון", sectionId: "03", coverage: "covered" });
     expect(pkg.boq.filter((l) => l.chapter === "17").every((l) => l.coverage === "covered" && l.coveredByContractId === "14-01")).toBe(true);
@@ -109,7 +111,7 @@ describe("Hadarim v2 data package", () => {
   });
 
   it("documents: seven PDF-like pages with anchors and the demo footer", () => {
-    expect(pkg.documents).toHaveLength(7);
+    expect(pkg.documents).toHaveLength(8);
     for (const d of pkg.documents) expect(d.footerHe).toBe("מסמך הדגמה — נתונים בדויים");
     expect(pkg.documents.find((d) => d.id === "contract_07_01_excerpt")!.anchors.exclusion).toBeGreaterThan(0);
     expect(pkg.documents.find((d) => d.id === "quote_pladot_12t")!.blocks.some((b) => b.text?.includes("12,000 ק״ג (12 טון) × 4,800"))).toBe(true);
@@ -119,15 +121,22 @@ describe("Hadarim v2 data package", () => {
 describe("Hadarim v2 checks", () => {
   const draft = pkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
   const erp = { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog };
+  // the revised BOQ page (boq_v5_ch57) processed, the way the agent would after reading it
+  const processedPkg = { ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) };
 
-  it("on the seed only the three pre-loaded findings fire", () => {
+  it("on the seed only the price and unit findings fire — the revised BOQ page is still unprocessed", () => {
     const result = runChecks(pkg, erp, draft, CURRENT_CONTROL);
+    expect(result.findings.map((f) => f.kind).sort()).toEqual(["price", "unit"]);
+  });
+
+  it("once the revised BOQ page is processed, the coverage finding joins the other two", () => {
+    const result = runChecks(processedPkg, erp, draft, CURRENT_CONTROL);
     expect(result.findings.map((f) => f.kind).sort()).toEqual(["coverage", "price", "unit"]);
   });
 
   it("moving invoice 1147 to 02 in the ERP adds the allocation finding with no effect on totals", () => {
     const edited = { ...erp, invoices: erp.invoices.map((i) => (i.id === 1147 ? { ...i, sectionId: "02" as const } : i)), changeLog: [...erp.changeLog, { id: "CL-LIVE", recordType: "invoice" as const, recordId: "1147", field: "סעיף תקציבי", before: "07-פיתוח", after: "02-שלד", at: "2026-09-03T09:03", byId: "EYAL" as const, noteHe: "שינוי ידני" }] };
-    const result = runChecks(pkg, edited, draft, CURRENT_CONTROL);
+    const result = runChecks(processedPkg, edited, draft, CURRENT_CONTROL);
     expect(result.findings).toHaveLength(4);
     const alloc = result.findings.find((f) => f.kind === "allocation")!;
     expect(alloc.problemHe).toContain("חשבון 1147 של נ.ת.ב. תשתיות ופיתוח בע״מ, 180,000 ₪, שויך לסעיף 02-שלד");
@@ -141,7 +150,7 @@ describe("Hadarim v2 checks", () => {
   });
 
   it("unit finding reads the quote and appendix; price finding is +240,000; coverage finding is not yet estimated", () => {
-    const { findings, positives } = runChecks(pkg, erp, draft, CURRENT_CONTROL);
+    const { findings, positives } = runChecks(processedPkg, erp, draft, CURRENT_CONTROL);
     const unit = findings.find((f) => f.kind === "unit")!;
     expect(unit.record.id).toBe("2291");
     expect(unit.checkHe).toContain("57,600 ₪ נכון");
@@ -156,7 +165,7 @@ describe("Hadarim v2 checks", () => {
     const coverage = findings.find((f) => f.kind === "coverage")!;
     expect(coverage.impact.kind).toBe("unknown");
     expect(coverage.record.id).toBe("57.03.040");
-    expect(coverage.sources.some((s) => s.anchor === "exclusion")).toBe(true);
+    expect(coverage.sources.some((s) => s.anchor === "removed")).toBe(true);
     expect(coverage.decision.freeText).toBe(true);
     expect(positives.map((p) => p.sectionId)).toEqual(["05"]);
   });

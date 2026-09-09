@@ -1,7 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
 import { chapterLabelHe } from "../data/bluebook";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { boqPageFor, documentById, isContingency, quoteFacts, runChecks, sectionShort, type HFinding } from "./checks";
+import { boqPageFor, documentById, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
@@ -390,7 +390,7 @@ function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2Sta
     if (!reasons.length) continue;
     const reasonHe = reasons.join(" · ");
     const frameworkContract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.priceAppendices?.length);
-    const excludedLines = pkg.boq.filter((l) => l.sectionId === s.sectionId && l.coverage === "excluded");
+    const excludedLines = pkg.boq.filter((l) => l.sectionId === s.sectionId && (l.coverage === "excluded" || revisionRemovalDocFor(pkg, l.id)));
     const coverageAdjustments = state.control.adjustments.filter((a) => a.sectionId === s.sectionId && a.changeType === "coverage_gap");
     if (frameworkContract) out.push(frameworkPriceSection(pkg, wf, state, s, reasonHe, frameworkContract));
     else if (excludedLines.length || coverageAdjustments.length) out.push(coverageSection(pkg, state, s, reasonHe));
@@ -454,13 +454,15 @@ function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection,
   const contract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.amount != null);
   const supplier = contract ? pkg.suppliers.find((x) => x.id === contract.supplierId) : undefined;
   const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && (!contract || i.contractId === contract.id));
-  const excluded = pkg.boq.filter((l) => l.sectionId === s.sectionId && l.coverage === "excluded");
+  const excluded = pkg.boq.filter((l) => l.sectionId === s.sectionId && (l.coverage === "excluded" || revisionRemovalDocFor(pkg, l.id)));
   const adjustments = state.control.adjustments.filter((a) => a.sectionId === s.sectionId && a.changeType === "coverage_gap");
   const quoteValidity = adjustments.map((a) => quoteFacts(documentById(pkg, a.documentId))?.validUntil).find(Boolean);
   const excludedHe = excluded.map((l) => {
     const clause = contract?.exclusions.find((e) => e.clause === l.coverageRef);
+    const revisionDoc = revisionRemovalDocFor(pkg, l.id);
+    const reasonHe = clause ? ` — מוחרג בסעיף ${clause.clause} לחוזה` : revisionDoc ? ` — הוסר ב${revisionDoc.titleHe}, הרשומה עדיין מסומנת מכוסה בחוזה ${l.coveredByContractId}` : "";
     const estimated = adjustments.find((a) => a.sourceRef.includes(l.id));
-    return `${l.descriptionHe.split(",")[0]} (${num(l.qty)} ${l.unit})${clause ? ` — מוחרג בסעיף ${clause.clause} לחוזה` : ""}; ${estimated ? `הוסף לתחזית כאומדן לפי ${estimated.basisHe} (טרם הוזמן)` : "ללא חוזה וללא אומדן"}`;
+    return `${l.descriptionHe.split(",")[0]} (${num(l.qty)} ${l.unit})${reasonHe}; ${estimated ? `הוסף לתחזית כאומדן לפי ${estimated.basisHe} (טרם הוזמן)` : "ללא אומדן"}`;
   });
   return {
     sectionId: s.sectionId,
@@ -484,8 +486,9 @@ function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection,
     ],
     recommendationHe: adjustments.length ? `להסדיר הזמנה ל${adjustments.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")}${quoteValidity ? ` לפני פקיעת ההצעה (${dateHe(quoteValidity)})` : ""}.` : "לתמחר את השורות המוחרגות לפני סגירת התחזית.",
     sources: [
-      ...(contract ? [{ labelHe: `חוזה ${contract.id}${excluded[0]?.coverageRef ? ` — סעיף ${excluded[0].coverageRef}` : ""}`, documentId: contract.documentId, anchor: "exclusion", recordRef: { type: "contract" as const, id: contract.id } }] : []),
+      ...(contract ? [{ labelHe: `חוזה ${contract.id}${excluded.find((l) => l.coverage === "excluded")?.coverageRef ? ` — סעיף ${excluded.find((l) => l.coverage === "excluded")!.coverageRef}` : ""}`, documentId: contract.documentId, anchor: "exclusion", recordRef: { type: "contract" as const, id: contract.id } }] : []),
       ...excluded.map((l) => boqPageFor(pkg, l.id)).filter(Boolean).map((d) => ({ labelHe: d!.titleHe, documentId: d!.id, anchor: "line" })),
+      ...excluded.map((l) => revisionRemovalDocFor(pkg, l.id)).filter(Boolean).map((d) => ({ labelHe: d!.titleHe, documentId: d!.id, anchor: "removed" })),
       ...excluded.map((l) => ({ labelHe: `שורה ${l.id} בכתב הכמויות במערכת המידע`, erp: { screen: "boq" as const, sectionId: s.sectionId, boqLineId: l.id } })),
       ...adjustments.filter((a) => a.documentId).map((a) => ({ labelHe: a.basisHe.split(",")[0], documentId: a.documentId!, anchor: "line" })),
       ...state.control.corrections.filter((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)).map((c) => ({ labelHe: `חשבון ${c.recordId}`, recordRef: { type: "invoice" as const, id: c.recordId } })),

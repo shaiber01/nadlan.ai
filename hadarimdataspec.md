@@ -61,7 +61,7 @@ Previous forecast nets to exactly 48.0M via two small, explainable variances (si
 | :---- | :---- | :---- | ----: | :---- | :---- |
 | 02-01 | 02 | ב.מ. בנייה מהירה בע״מ | 12,600,000 | 20.10.2025 | Shell labour \+ concrete. Steel supplied by client (אספקת ברזל ע״י המזמין). Elevators, aluminium excluded — covered elsewhere (a *legitimate* exclusion the engine must not flag). |
 | 04-01 | 04 | ע. דורון עבודות עפר | 2,850,000 | 15.10.2025 | Closed 30.4.2026, final account approved. |
-| 07-01 | 07 | נ.ת.ב. תשתיות ופיתוח בע״מ | 3,200,000 | 5.1.2026 | Site development. **§3.4 exclusion:** ״לא כולל קווי ניקוז ראשיים מחוץ לקו הבניין ועד נקודת החיבור לתשתית העירונית״. |
+| 07-01 | 07 | נ.ת.ב. תשתיות ופיתוח בע״מ | 3,200,000 | 5.1.2026 | Site development, covers all BOQ chapter-57 lines including the outdoor drainage line at first. **§3.4 exclusions:** water-connection fees, public-road paving. |
 | 05-01 | 05 | איטום פלוס | 900,000 | 12.1.2026 | BOQ ch. 05 fully matched → the "positive finding". |
 | 14-01 | 14 | מעליות אורן | 1,300,000 | 3.3.2026 | 4 elevators; 20% advance paid. |
 | 08-01 | 08 | ש.י. אינסטלציה | 2,300,000 | 18.5.2026 |  |
@@ -112,11 +112,11 @@ Generation rules, so the totals in §2 reconcile exactly:
 
 Blue-book chapters, contractor's design quantity list (not a tender BOQ). \~120 lines. Chapters: 01 עבודות עפר · 02 בטון יצוק באתר · 04 בנייה · 05 איטום · 06 נגרות ומסגרות · 07 תברואה · 08 חשמל · 09 טיח · 10 ריצוף וחיפוי · 11 צבע · 12 אלומיניום · 15 מיזוג · 17 מעליות · 22 גבס · 23 כלונסאות · 40 פיתוח האתר · 51 סלילה · **57 קווי מים, ביוב וניקוז**.
 
-Key line: `57.03.040 — צינור ניקוז PVC קשיח SN8 קוטר 400 מ״מ, כולל חפירה, מצע ומילוי, עומק עד 2.5 מ׳ — 80 מ׳ — הערה: קו ראשי עד נקודת החיבור העירונית`.
+Key line: `57.03.040 — צינור ניקוז PVC קשיח SN8 קוטר 400 מ״מ, כולל חפירה, מצע ומילוי, עומק עד 2.5 מ׳ — 80 מ׳ — הערה: קו ראשי עד נקודת החיבור העירונית`. At seed it is `coverage: covered`, `coveredByContractId: 07-01` — same as its chapter-57 siblings; the gap only surfaces once `boq_v5_ch57.pdf` (see §8) is processed.
 
 Steel appears in chapter 02 as ״מוטות פלדה מצולעים לזיון — 750 טון״ (quantities total → ties to the 3.0M budget at 4,000).
 
-Each BOQ chapter maps to a section and to a contract coverage flag: covered / excluded (§ref) / not yet contracted. Chapter 05 fully covered → positive finding. Chapter 17 excluded from shell but covered by 14-01 → trap, not a gap.
+Each BOQ chapter maps to a section and to a contract coverage flag: covered / excluded (§ref) / not yet contracted. Chapter 05 fully covered → positive finding. Chapter 17 excluded from shell but covered by 14-01 → trap, not a gap. Line 57.03.040 stays `covered` in the record even after the gap is found — the check reads it from `boq_v5_ch57.pdf`'s recorded facts (`removedLineIds`), not from the line's own `coverage` field.
 
 ---
 
@@ -137,9 +137,10 @@ Open issues carried from 1.8 (3): שינוי מס׳ 2 בחוזה השלד — cl
 | `inv_1147_ntb_partial7.pdf` | חשבון חלקי מס׳ 7 — חשבון עסקה, נ.ת.ב. תשתיות | Cumulative table (מצטבר קודם / מצטבר נוכחי / חשבון זה), 5% retention, sections of work with quantities, project manager approval box, stamp. |
 | `quote_pladot_12t.pdf` | הצעת מחיר / אישור הזמנה, פלדות הצפון, 20.8.2026 | ״12,000 ק״ג (12 טון) × 4,800 ₪/טון \= 57,600 ₪״, delivery to site, payment terms שוטף+60. |
 | `appendix_A2_steel_price_2026-07-15.pdf` | נספח א׳-2 למסגרת 03-F | Price table by diameter, base 4,800 ₪/t, validity, index clause, signed by both. Replaces appendix A (4,000). |
-| `contract_07-01_excerpt.pdf` | חוזה קבלנות משנה 07-01 — עמ׳ 3–4, סעיף 3 היקף העבודות | §3.3 included works; **§3.4 exclusions** with the drainage sentence. |
+| `contract_07-01_excerpt.pdf` | חוזה קבלנות משנה 07-01 — עמ׳ 3–4, סעיף 3 היקף העבודות | §3.3 included works, now including the outdoor drainage line; **§3.4 exclusions** are water-connection fees and public-road paving only. |
 | `quote_ycohen_drainage.pdf` | הצעת מחיר, י. כהן תשתיות, 20.8.2026 | Ø400 SN8, 80 m, 1,500 ₪/m incl. excavation/bedding/backfill up to 2.5 m; excludes municipal connection fee; valid 30 days. |
-| `boq_v4_ch57.pdf` | כתב כמויות גרסה 4 — פרק 57 | One page, the drainage line highlighted. |
+| `boq_v4_ch57.pdf` | כתב כמויות גרסה 4 — פרק 57 | One page, the drainage line present and highlighted. |
+| `boq_v5_ch57.pdf` | כתב כמויות גרסה 5 (2.9.2026) — פרק 57, עדכון | Same chapter, drainage line (57.03.040) dropped from the table, with a note that it moved to a later phase. Seeded **unprocessed** (no `facts`/`factsSource`) — the agent must read it before the coverage finding can fire. |
 | `appendix_A_steel_price_2025-11.pdf` | Original appendix (4,000) | So the "old price" has a source too. |
 
 Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01 header, change log.
@@ -148,7 +149,7 @@ Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01
 
 ## 9\. Realism traps the engine is tested against — `SPEC.md §Tests`
 
-Must fire (4): invoice 1147 on 02 · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 excluded from 07-01 with no estimate.
+Must fire (4): invoice 1147 on 02 · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 still recorded as covered by 07-01 once `boq_v5_ch57.pdf` is processed and shows the line removed, with no estimate. (Before that document is processed, only 3 of the 4 fire — the coverage gap is document-driven, not pre-seeded.)
 
 Must NOT fire (5): PO 2240 old price (pre-dates appendix) · crane invoice "שלד" text in 01 · elevators excluded from shell but covered by 14-01 · steel invoice in kg/kg · earth/piling closed under budget (variance, not an error).
 

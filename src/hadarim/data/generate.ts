@@ -31,6 +31,9 @@ export const CONTROL_DATES = ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08
 export const CURRENT_CONTROL = "2026-09-01";
 /** The day the presentation happens (invoice 1147 was keyed in by bookkeeping on 2.9). */
 export const DEMO_DAY = "2026-09-03";
+
+/** Seed documents left unprocessed (no facts/factsSource) — pending in the project folder for the agent to read, exactly like a live upload. */
+const UNPROCESSED_DOCUMENT_IDS = new Set(["boq_v5_ch57"]);
 export const EARLIER_CONTROL_TOTALS: Record<string, number> = { "2026-05-01": 47_900_000, "2026-06-01": 47_950_000, "2026-07-01": 48_000_000 };
 
 const MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"];
@@ -165,9 +168,8 @@ export const contracts: HContract[] = [
     amount: 3_200_000,
     signedAt: "2026-01-05",
     scopeHe: "עבודות פיתוח ותשתיות חוץ",
-    inclusionsHe: ["עבודות עפר לפיתוח", "קירות תומכים", "תשתיות ראשיות בתחום המגרש (מים, חשמל, תקשורת)", "ריצוף ואבן בשטחים החיצוניים", "גינון והשקיה בהיקף המפרט", "קווי ניקוז פנימיים בתחום המגרש"],
+    inclusionsHe: ["עבודות עפר לפיתוח", "קירות תומכים", "תשתיות ראשיות בתחום המגרש (מים, חשמל, תקשורת)", "ריצוף ואבן בשטחים החיצוניים", "גינון והשקיה בהיקף המפרט", "קווי ניקוז פנימיים בתחום המגרש", "קווי ניקוז ראשיים עד נקודת החיבור העירונית"],
     exclusions: [
-      { clause: "3.4", textHe: "לא כולל קווי ניקוז ראשיים מחוץ לקו הבניין ועד נקודת החיבור לתשתית העירונית" },
       { clause: "3.4", textHe: "לא כולל אגרות חיבור לתאגיד המים" },
       { clause: "3.4", textHe: "לא כולל עבודות סלילה ברשות הרבים" },
     ],
@@ -542,9 +544,6 @@ export function buildBoq(): HBoqLine[] {
         coveredBy = "03-F";
       }
       if (id === "57.03.040") {
-        coverage = "excluded";
-        coverageRef = "חוזה 07-01 §3.4 — מוחרג";
-        coveredBy = null;
         noteHe = "קו ראשי עד נקודת החיבור העירונית";
       }
       if (ch.chapter === "17") {
@@ -680,8 +679,10 @@ export function generateHadarimPackage(): HadarimPackage {
     buildForecast("2026-08-01", invoices, purchaseOrders, "final", openIssuesAtAugust),
     buildForecast(CURRENT_CONTROL, invoices, purchaseOrders, "draft", openIssuesAtAugust),
   ];
-  // the seed's documents were typed in with their facts: all of them count as processed (method "seed")
+  // the seed's documents were typed in with their facts: all of them count as processed (method "seed"),
+  // except UNPROCESSED_DOCUMENT_IDS — left pending, exactly as a live upload would, for the agent to read and record.
   const documents = hadarimDocuments.map((d) => {
+    if (UNPROCESSED_DOCUMENT_IDS.has(d.id)) return d;
     const facts = (documentFacts as Record<string, Record<string, unknown> | undefined>)[d.id];
     return { ...d, ...(facts ? { facts } : {}), factsSource: { method: "seed" as const } };
   });
