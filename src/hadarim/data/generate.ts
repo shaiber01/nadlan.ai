@@ -1,5 +1,5 @@
 import { documentFacts, hadarimDocuments } from "./documents";
-import { STANDARD_MATERIALITY } from "./types";
+import { STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
 import { addMonths, createRng, forceSum, lastDayOfMonth, monthKey } from "./rng";
 import type {
   BuildingTag,
@@ -46,6 +46,7 @@ export const project: HProject = {
   ],
   buckets: { shared: { id: "משותף", labelHe: "משותף" }, parking: { id: "חניון", labelHe: "חניון" } },
   materiality: { ...STANDARD_MATERIALITY },
+  riskPolicy: { ...STANDARD_RISK_POLICY },
   units: 48,
   grossSqm: 8700,
   startDate: "2025-11-02",

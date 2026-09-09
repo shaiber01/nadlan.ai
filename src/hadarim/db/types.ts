@@ -957,6 +957,7 @@ export type Database = {
           materiality: Json
           name_he: string
           physical_progress_pct: number | null
+          risk_policy: Json
           schedule: Json
           start_date: string | null
           status_he: string | null
@@ -976,6 +977,7 @@ export type Database = {
           materiality?: Json
           name_he: string
           physical_progress_pct?: number | null
+          risk_policy?: Json
           schedule?: Json
           start_date?: string | null
           status_he?: string | null
@@ -995,6 +997,7 @@ export type Database = {
           materiality?: Json
           name_he?: string
           physical_progress_pct?: number | null
+          risk_policy?: Json
           schedule?: Json
           start_date?: string | null
           status_he?: string | null

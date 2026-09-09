@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkAllocation, checkUnits, isContingency, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
 import { createInvoice, initialState, pkg, setReportConfig, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
 import { recordedBySection, workingForecast } from "../src/hadarim/engine/forecast";
+import { addAdjustment } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
 
 /**
@@ -162,5 +163,23 @@ describe("materiality is a project setting", () => {
     expect(r.sections.rows.filter((x) => x.highlighted).length).toBeGreaterThanOrEqual(varied);
     expect(standard.sections.rows.filter((x) => x.highlighted).length).toBeLessThanOrEqual(r.sections.rows.filter((x) => x.highlighted).length);
     expect(r.appendices.definitionsHe.join(" ")).toContain("100% מהתקציב");
+  });
+});
+
+describe("risk assumptions are a project setting", () => {
+  it("the quote-expiry exposure and the price step come from the project row and are stated in the risk rows", () => {
+    const seed = initialState();
+    const quote = pkg.documents.find((d) => d.kind === "quote" && d.facts?.validUntil)!;
+    const withQuote = addAdjustment(seed, { sectionId: pkg.boq[0].sectionId, changeType: "coverage_gap", descriptionHe: "אומדן לפי הצעה", basis: "quote", basisHe: "הצעה", sourceRef: "בדיקה", amount: 200_000, documentId: quote.id })[0];
+    const custom = { ...pkg, project: { ...pkg.project, riskPolicy: { quoteExpiryExposurePct: 50, priceStep: 250 } } };
+    const r = buildReport(custom, withQuote);
+    const quoteRisk = r.risks.find((x) => x.topicHe.startsWith("תוקף הצעת המחיר"))!;
+    expect(quoteRisk.exposureHe).toContain("100,000 ₪");
+    expect(quoteRisk.exposureHe).toContain("50%");
+    const appendixRisk = r.risks.find((x) => x.topicHe.startsWith("עדכון נוסף במחיר"))!;
+    expect(appendixRisk.exposureHe).toContain("לכל 250 ₪");
+    const standard = buildReport(pkg, withQuote);
+    expect(standard.risks.find((x) => x.topicHe.startsWith("תוקף הצעת המחיר"))!.exposureHe).toContain("25%");
+    expect(standard.risks.find((x) => x.topicHe.startsWith("עדכון נוסף במחיר"))!.exposureHe).toContain("לכל 100 ₪");
   });
 });

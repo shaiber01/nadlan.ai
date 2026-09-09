@@ -36,6 +36,16 @@ export interface HMateriality {
 /** The thresholds of `budgetcontrolreportstandard.md`, used when a project sets none of its own. */
 export const STANDARD_MATERIALITY: HMateriality = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
 
+/** Assumptions behind the report's derived risks (§7); each is stated in the risk row it produces. */
+export interface HRiskPolicy {
+  /** Exposure assumed when an estimate rests on a quote that may expire: up to this share (%) of the estimate. */
+  quoteExpiryExposurePct: number;
+  /** Price step (₪ per unit) used to express the exposure of a remainder priced by an appendix. */
+  priceStep: number;
+}
+
+export const STANDARD_RISK_POLICY: HRiskPolicy = { quoteExpiryExposurePct: 25, priceStep: 100 };
+
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
@@ -44,6 +54,7 @@ export interface HProject {
   /** The non-building buckets of the split: shared costs, and parking (sections with split = parking). */
   buckets: { shared: HCostBucket; parking: HCostBucket };
   materiality: HMateriality;
+  riskPolicy: HRiskPolicy;
   units: number;
   grossSqm: number;
   startDate: string;

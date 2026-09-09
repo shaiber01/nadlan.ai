@@ -22,9 +22,6 @@ const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Ma
 const label = (id: SectionId) => `${id}-${sectionShort(id)}`;
 const isolate = (s: string) => `⁨${s}⁩`;
 
-/** Exposure assumed for an estimate based on a quote that may expire (stated as an assumption in the risk row). */
-const QUOTE_EXPIRY_EXPOSURE_PCT = 25;
-
 /** A clickable origin for a number: a document page (with an anchor), an ERP record, or an ERP screen. */
 export interface ReportSource {
   labelHe: string;
@@ -484,9 +481,9 @@ function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, 
   for (const a of state.control.adjustments) {
     const facts = quoteFacts(documentById(pkg, a.documentId));
     if (a.basis !== "quote" || !facts?.validUntil) continue;
-    const exposure = Math.round((a.amount * QUOTE_EXPIRY_EXPOSURE_PCT) / 100);
+    const exposure = Math.round((a.amount * pkg.project.riskPolicy.quoteExpiryExposurePct) / 100);
     const task = state.control.tasks.find((t) => t.findingId && t.findingId === a.findingId);
-    out.push({ topicHe: `תוקף הצעת המחיר — ${a.descriptionHe.split(" — ")[0]}`, sectionHe: label(a.sectionId), descriptionHe: `האומדן מבוסס על הצעה בתוקף עד ${dateHe(facts.validUntil)}; ללא הזמנה עד אז — תמחור מחדש`, exposureHe: `0 – ${nis(exposure)} (הנחה: עד ${QUOTE_EXPIRY_EXPOSURE_PCT}% מהאומדן)`, likelihoodHe: "בינונית", triggerHe: `הזמנה עד ${dateHe(facts.validUntil)}`, ownerHe: personName(pkg, task?.ownerId ?? state.operatorId) });
+    out.push({ topicHe: `תוקף הצעת המחיר — ${a.descriptionHe.split(" — ")[0]}`, sectionHe: label(a.sectionId), descriptionHe: `האומדן מבוסס על הצעה בתוקף עד ${dateHe(facts.validUntil)}; ללא הזמנה עד אז — תמחור מחדש`, exposureHe: `0 – ${nis(exposure)} (הנחה: עד ${pkg.project.riskPolicy.quoteExpiryExposurePct}% מהאומדן)`, likelihoodHe: "בינונית", triggerHe: `הזמנה עד ${dateHe(facts.validUntil)}`, ownerHe: personName(pkg, task?.ownerId ?? state.operatorId) });
   }
   // remainders priced by an appendix that can move again
   for (const s of wf.sections) {
@@ -495,7 +492,7 @@ function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, 
     const exposedQty = s.lines.filter((l) => l.kind === "uncovered" && (l.basis === "appendix" || l.basis === "estimate") && l.qty).reduce((a, l) => a + (l.qty ?? 0), 0);
     if (!exposedQty) continue;
     const unit = priceAppendixAt(contract, state.control.controlDate)?.unit ?? "טון";
-    out.push({ topicHe: `עדכון נוסף במחיר ${sectionShort(s.sectionId)}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * 100)} לכל 100 ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
+    out.push({ topicHe: `עדכון נוסף במחיר ${sectionShort(s.sectionId)}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * pkg.project.riskPolicy.priceStep)} לכל ${num(pkg.project.riskPolicy.priceStep)} ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
   }
   // issues open for more than two controls with a stated impact
   for (const i of openIssues.filter((x) => x.stale && x.impactHe !== "—")) {

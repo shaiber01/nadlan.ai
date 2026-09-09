@@ -246,7 +246,7 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
       sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
@@ -813,13 +813,16 @@ define({
     materialityAbsoluteAlways: z.number().nonnegative().optional(),
     materialityBudgetSharePct: z.number().min(0).max(100).optional(),
     materialitySoftBasisPct: z.number().min(0).max(100).optional(),
+    riskQuoteExpiryExposurePct: z.number().min(0).max(100).optional().describe("§7 assumption: exposure of an estimate resting on a quote that may expire, as % of the estimate"),
+    riskPriceStep: z.number().positive().optional().describe("§7: the price step (₪ per unit) used to express appendix-price exposure"),
   },
   run: async (a) => {
     const schedule = { ...(a.scheduleContractEnd ? { contractEnd: a.scheduleContractEnd } : {}), ...(a.scheduleExpectedEnd ? { expectedEnd: a.scheduleExpectedEnd } : {}), ...(a.scheduleNoteHe !== undefined ? { noteHe: a.scheduleNoteHe } : {}) };
     const materiality = { ...(a.materialityAbsolute !== undefined ? { absolute: a.materialityAbsolute } : {}), ...(a.materialityPctOfSection !== undefined ? { pctOfSection: a.materialityPctOfSection } : {}), ...(a.materialityAbsoluteAlways !== undefined ? { absoluteAlways: a.materialityAbsoluteAlways } : {}), ...(a.materialityBudgetSharePct !== undefined ? { budgetSharePct: a.materialityBudgetSharePct } : {}), ...(a.materialitySoftBasisPct !== undefined ? { softBasisPct: a.materialitySoftBasisPct } : {}) };
-    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}) });
+    const riskPolicy = { ...(a.riskQuoteExpiryExposurePct !== undefined ? { quoteExpiryExposurePct: a.riskQuoteExpiryExposurePct } : {}), ...(a.riskPriceStep !== undefined ? { priceStep: a.riskPriceStep } : {}) };
+    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}), ...(Object.keys(riskPolicy).length ? { riskPolicy } : {}) });
     await loadState(a.projectId);
-    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality } };
+    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality, riskPolicy: pkg.project.riskPolicy } };
   },
 });
 
