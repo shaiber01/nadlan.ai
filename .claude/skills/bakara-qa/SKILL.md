@@ -38,7 +38,7 @@ select section_id, description_he, qty, unit, unit_price, amount, basis, kind fr
 -- saved control sessions
 select control_date, status, finalized, operator_id, updated_at from controls where project_id = '<project id>';
 ```
-Take the project id, the control date and supplier ids from `get_project` / `list_suppliers`.
+Take the project id, the control date and supplier ids from `get_project` / `list_suppliers`. In the answer, name the source in Hebrew (טבלת החשבונות, יומן השינויים, התחזית) rather than by table or tool name; the English name only if the user asks for it.
 Tables: `projects, people, suppliers, sections, contracts, documents, budget_changes, invoices, purchase_orders, boq_lines, forecast_versions, forecast_sections, forecast_lines, open_issues, change_log, controls, decisions, forecast_adjustments, data_corrections, questions, audit, report_versions, heartbeats`. Name the table as the source.
 
 ## 3. Answer shape

@@ -5,7 +5,7 @@ description: Run a budget control for a project and walk its findings with the u
 
 # Running a control and deciding on findings
 
-Numbers and wording come only from tool results. The tools are the `mcp__bakara__*` tools; every one takes `projectId` (default הדרים) and, where relevant, `controlDate`.
+Numbers and wording come only from tool results. The tools are the `mcp__bakara__*` tools; every one takes `projectId` (default הדרים) and, where relevant, `controlDate`. What the user reads is Hebrew only (no tool names, ids or English words — see the agent's "Hebrew only" section); the cards' Hebrew fields (`problemHe`, `labelHe`, `meaningHe`, `questionHe`) are already written for that.
 
 ## 1. Where are we
 `get_project` → `control.status`:
@@ -26,7 +26,7 @@ For the first open finding (`findings` in order, or `get_control.openFindings[0]
 - **הבעיה** — `problemHe`.
 - **המקורות** — each `sources[].labelHe`; a source with `documentId` can be opened with `get_document` if the user asks to see it.
 - **המשמעות** — `meaningHe`, then `impact.labelHe` as "השפעה על התחזית"; `detailsTable` rows when present; `notesHe`.
-- **ההחלטה הנדרשת** — then ask with `AskUserQuestion` (one question): `header` "ממצא n/N", `question` = `decision.questionHe`, options = `decision.options` in order — the recommended fix first with "(מומלץ)" in its label — each `label` a few Hebrew words and `description` the option's full text and consequence; at most four options (with more, the first three and "the rest can be typed"); the built-in "Other" is the card's free text. Map the chosen label back to the option's id before calling the tool. Without the tool (delegated as a subagent) list the options as `[id] label` and wait.
+- **ההחלטה הנדרשת** — then ask with `AskUserQuestion` (one question): `header` "ממצא n/N", `question` = `decision.questionHe`, options = `decision.options` in order — the recommended fix first with "(מומלץ)" in its label — each `label` a few Hebrew words and `description` the option's full text and consequence; at most four options (with more, the first three and "the rest can be typed"); the built-in "Other" is the card's free text. Map the chosen label back to the option's id before calling the tool. Without the tool (delegated as a subagent) list the options as a numbered list of their Hebrew labels — never the ids — and wait for the number or free text.
 
 Apply nothing before the answer. Do not recommend beyond the card's own recommended fix unless asked; if asked, reason only from the card's sources.
 
