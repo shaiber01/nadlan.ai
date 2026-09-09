@@ -134,6 +134,11 @@ export function boqPageFor(pkg: HadarimPackage, boqLineId: string): HDocument | 
   return pkg.documents.find((d) => d.kind === "boq_page" && (asStr(d.facts?.boqLineId) === boqLineId || JSON.stringify(d.blocks).includes(boqLineId)));
 }
 
+/** A processed, newer BOQ page whose recorded facts say a given line was removed from scope. */
+export function revisionRemovalDocFor(pkg: HadarimPackage, boqLineId: string): HDocument | undefined {
+  return pkg.documents.find((d) => d.kind === "boq_page" && d.facts && Array.isArray(d.facts.removedLineIds) && (d.facts.removedLineIds as unknown[]).includes(boqLineId));
+}
+
 export function appendixUnit(a: HPriceAppendix): string {
   return a.unit ?? "טון";
 }
@@ -428,6 +433,39 @@ export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, only
         ...(previous ? [{ kind: "forecast" as const, refId: `${previous.controlDate}-${line.sectionId}`, labelHe: `תחזית ${dateHe(previous.controlDate)} · חבילת ${sectionShort(line.sectionId)} · ״${previousSection?.coverageNoteHe ?? "מכוסה בחוזה"}״ · אומדן נוסף: 0` }] : []),
       ],
       meaningHe: "יש עבודה בכתב הכמויות שאין לה חוזה ואין לה אומדן.",
+      impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },
+      decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: [{ id: "other_contract", labelHe: "חוזה אחר" }, { id: "self", labelHe: "ביצוע עצמי" }, { id: "order", labelHe: "צריך להזמין" }], freeText: true },
+      sectionId: line.sectionId,
+      record: { type: "boq_line", id: line.id },
+      notesHe: contract ? [`${section.nameHe}: יתר שורות הפרק מכוסות בחוזה ${contract.id}`] : [],
+    });
+  }
+  // A BOQ line the record still shows as covered, but a newer, processed revision of the BOQ dropped it —
+  // the record was never updated to match: the gap surfaces only once the agent reads that document.
+  for (const line of pkg.boq) {
+    if (onlySectionId && line.sectionId !== onlySectionId) continue;
+    if (line.coverage !== "covered" || !line.coveredByContractId) continue;
+    const revisionDoc = revisionRemovalDocFor(pkg, line.id);
+    if (!revisionDoc) continue;
+    const sectionForecast = draft.sections?.find((s) => s.sectionId === line.sectionId);
+    const estimated = sectionForecast?.lines.some((l) => l.kind === "uncovered" && l.sourceRef?.includes(line.id));
+    if (estimated) continue;
+    const section = pkg.sections.find((s) => s.id === line.sectionId)!;
+    const contract = pkg.contracts.find((c) => c.id === line.coveredByContractId);
+    const supplier = contract ? pkg.suppliers.find((s) => s.id === contract.supplierId) : undefined;
+    const page = boqPageFor(pkg, line.id);
+    const item = line.descriptionHe.split(",")[0];
+    out.push({
+      id: `F-COV-${line.id}`,
+      kind: "coverage",
+      titleHe: `${item} — לא מכוסה בחוזה`,
+      problemHe: `שורת ${line.id} בכתב הכמויות במערכת המידע עדיין מסומנת מכוסה בחוזה ${line.coveredByContractId}${supplier ? ` (${supplier.nameHe})` : ""}. ב${revisionDoc.titleHe} — מסמך מעודכן מ-${dateHe(revisionDoc.date)} — הסעיף הוצא מהיקף כתב הכמויות. הרשומה במערכת לא עודכנה בהתאם ואין אומדן נפרד בתחזית.`,
+      sources: [
+        { kind: "boq", refId: line.id, labelHe: `שורת כתב הכמויות במערכת המידע · ״${line.descriptionHe} — ${num(line.qty)} ${line.unit}״ · מסומנת מכוסה בחוזה ${line.coveredByContractId}`, documentId: page?.id, anchor: page ? "line" : undefined },
+        { kind: "document" as const, refId: revisionDoc.id, documentId: revisionDoc.id, labelHe: `${revisionDoc.titleHe} · עובדות: ${revisionDoc.factsSource?.method === "agent" ? "קריאת הסוכן" : revisionDoc.factsSource?.method === "seed" ? "נתוני הבסיס" : "חילוץ"}`, anchor: "removed" },
+        ...(contract ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${supplier?.nameHe ?? contract.id}`, documentId: contract.documentId }] : []),
+      ],
+      meaningHe: "שורה בכתב הכמויות הוסרה במסמך מעודכן, אך הרשומה במערכת עדיין מפנה לחוזה כמכוסה — נדרש לוודא אם העבודה עדיין נדרשת ומי מכסה אותה.",
       impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },
       decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: [{ id: "other_contract", labelHe: "חוזה אחר" }, { id: "self", labelHe: "ביצוע עצמי" }, { id: "order", labelHe: "צריך להזמין" }], freeText: true },
       sectionId: line.sectionId,

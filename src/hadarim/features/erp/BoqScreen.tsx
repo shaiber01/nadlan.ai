@@ -5,9 +5,6 @@ import { boqPageFor } from "../../engine/checks";
 import { pkg } from "../../engine/commands";
 import { dateHe, num, sectionShort } from "./format";
 
-const COVERAGE_HE: Record<Coverage, string> = { covered: "מכוסה בחוזה", excluded: "מוחרג מהחוזה", not_contracted: "טרם נחתם חוזה" };
-const COVERAGE_TONE: Record<Coverage, string> = { covered: "ok", excluded: "warn", not_contracted: "done" };
-
 /**
  * The ERP's bill of quantities: the contractor's design quantity list by Blue Book chapter (not a tender BOQ),
  * read-only. Every line shows the budget section it lands in and its contract coverage — the contract that
@@ -20,7 +17,6 @@ export function BoqScreen() {
   const [search, setSearch] = useState("");
   const [chapter, setChapter] = useState("");
   const [section, setSection] = useState<string>(ui.erp.sectionId ?? "");
-  const [coverage, setCoverage] = useState<string>("");
 
   const all = useMemo(() => [...pkg.boq].sort((a, b) => a.id.localeCompare(b.id)), []);
   const chapters = useMemo(() => {
@@ -30,8 +26,8 @@ export function BoqScreen() {
   }, [all]);
   const rows = useMemo(() => {
     const q = search.trim();
-    return all.filter((l) => (!chapter || l.chapter === chapter) && (!section || l.sectionId === section) && (!coverage || l.coverage === coverage)).filter((l) => !q || l.id.includes(q) || l.descriptionHe.includes(q) || (l.coverageRef ?? "").includes(q));
-  }, [all, search, chapter, section, coverage]);
+    return all.filter((l) => (!chapter || l.chapter === chapter) && (!section || l.sectionId === section)).filter((l) => !q || l.id.includes(q) || l.descriptionHe.includes(q) || (l.coverageRef ?? "").includes(q));
+  }, [all, search, chapter, section]);
   const groups = useMemo(() => {
     const map = new Map<string, HBoqLine[]>();
     for (const l of rows) map.set(l.chapter, [...(map.get(l.chapter) ?? []), l]);
@@ -87,17 +83,6 @@ export function BoqScreen() {
             ))}
           </select>
         </label>
-        <label>
-          כיסוי חוזי
-          <select value={coverage} onChange={(e) => setCoverage(e.target.value)} data-testid="erp-boq-coverage">
-            <option value="">הכול</option>
-            {(Object.keys(COVERAGE_HE) as Coverage[]).map((c) => (
-              <option key={c} value={c}>
-                {COVERAGE_HE[c]}
-              </option>
-            ))}
-          </select>
-        </label>
         <span className="erp-count" data-testid="erp-boq-count">
           {num(rows.length)} שורות
         </span>
@@ -111,7 +96,6 @@ export function BoqScreen() {
               <th className="num">כמות</th>
               <th>יח׳</th>
               <th>סעיף תקציבי</th>
-              <th>כיסוי חוזי</th>
               <th>אסמכתה</th>
               <th>הערה</th>
               <th>מסמך</th>
@@ -120,7 +104,7 @@ export function BoqScreen() {
           <tbody>
             {groups.length === 0 && (
               <tr>
-                <td colSpan={9} className="erp-muted">
+                <td colSpan={8} className="erp-muted">
                   אין שורות התואמות לסינון.
                 </td>
               </tr>
@@ -141,7 +125,7 @@ function GroupRows({ code, lines, target, count, openContract }: { code: string;
   return (
     <>
       <tr className="erp-group-row" data-testid={`erp-boq-chapter-${code}`}>
-        <td colSpan={9}>
+        <td colSpan={8}>
           פרק {code} — {lines[0].chapterNameHe} · {num(lines.length)} שורות · מכוסה {num(count(lines, "covered"))}
           {excluded ? ` · מוחרג ${num(excluded)}` : ""}
           {open ? ` · טרם נחתם חוזה ${num(open)}` : ""}
@@ -156,9 +140,6 @@ function GroupRows({ code, lines, target, count, openContract }: { code: string;
             <td className="num">{num(l.qty)}</td>
             <td>{l.unit}</td>
             <td>{sectionShort(l.sectionId)}</td>
-            <td>
-              <span className={`erp-status erp-status-${COVERAGE_TONE[l.coverage]}`}>{COVERAGE_HE[l.coverage]}</span>
-            </td>
             <td className="erp-desc">
               {l.coveredByContractId ? (
                 <button type="button" className="erp-link" onClick={() => openContract(l.coveredByContractId!)} data-testid={`erp-boq-contract-${l.id}`}>

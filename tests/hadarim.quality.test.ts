@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { checkContractOverrun, checkCumulative, checkDates, checkDuplicates, checkRetention, checkReviewAging, runChecks } from "../src/hadarim/engine/checks";
-import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
+import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, setPackage, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { answerQuestion, askPerson } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
+
+// the revised BOQ page (boq_v5_ch57) processed, as the agent would before this control runs
+setPackage({ ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) });
 
 /**
  * Data-quality checks: the record itself is inconsistent. Each case breaks one thing in a copy of the seed

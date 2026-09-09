@@ -122,7 +122,7 @@ describe("the review pass", () => {
 
 describe("facts recorded from a document drive the checks", () => {
   it("a quote pointed at a BOQ line by its facts is found for that line; facts on an order's quote decide the unit check", () => {
-    const line = pkg.boq.find((l) => l.coverage === "excluded")!;
+    const line = pkg.boq.find((l) => l.id === "57.03.040")!;
     const other = pkg.documents.find((d) => d.kind === "quote" && quoteFacts(d)?.boqLineId !== line.id)!;
     const withRef = { ...pkg, documents: pkg.documents.map((d) => (d.id === other.id ? { ...d, facts: { ...(d.facts ?? {}), boqLineId: line.id }, factsSource: { method: "agent" as const, byId: "EYAL" } } : d)) };
     expect(findQuoteFor(withRef, line)?.id).toBe(other.id);
