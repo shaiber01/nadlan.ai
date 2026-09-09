@@ -3,6 +3,7 @@ import { Button, KeyValue } from "../../../components/primitives";
 import { store, useV2State, type UiState } from "../../app/store";
 import { sectionLabel } from "../../engine/checks";
 import { pkg } from "../../engine/commands";
+import { pricePerUnitHe } from "../../engine/units";
 import { dateHe, nis, num, timeHe } from "./fmt";
 import "./record.css";
 
@@ -52,8 +53,8 @@ export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
       { labelHe: "תאריך", value: dateHe(po.date) },
       { labelHe: "תיאור", value: po.descriptionHe },
       { labelHe: "כמות", value: <bdi>{num(po.qty)}</bdi> },
-      { labelHe: "יחידה", value: po.unit },
-      { labelHe: "מחיר יח׳", value: <bdi>{po.unitPrice.toLocaleString("he-IL", { maximumFractionDigits: 2 })} ₪</bdi> },
+      { labelHe: "יחידת הכמות", value: po.unit },
+      { labelHe: "מחיר יח׳", value: <bdi>{pricePerUnitHe(po.unitPrice, po.priceUnit)}</bdi> },
       { labelHe: "סכום", value: nis(po.amount) },
       { labelHe: "סופק / חויב", value: `${num(po.deliveredQty)} ${po.unit} / ${nis(po.invoicedAmount)}` },
       { labelHe: "סעיף תקציבי", value: sectionLabel(po.sectionId) },

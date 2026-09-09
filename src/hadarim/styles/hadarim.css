@@ -66,25 +66,14 @@
   align-items: center;
   gap: 8px;
 }
-.h2-switch {
+.h2-presenter-screen {
   display: inline-flex;
+  align-items: center;
   background: #26314f;
   border-radius: 999px;
-  padding: 3px;
-}
-.h2-switch button {
-  font: inherit;
+  padding: 4px 14px;
   font-weight: 600;
   color: #c9d0e2;
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
-  padding: 4px 14px;
-  cursor: pointer;
-}
-.h2-switch button.active {
-  background: #fff;
-  color: var(--navy);
 }
 
 /* Document viewer (paper look) */

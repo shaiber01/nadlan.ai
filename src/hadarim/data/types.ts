@@ -177,7 +177,13 @@ export interface HPurchaseOrder {
   contractId: string | null;
   descriptionHe: string;
   qty: number;
+  /** Unit the quantity is measured in. */
   unit: string;
+  /**
+   * Unit the price is quoted in — usually `unit`, but a supplier may quote per טון and deliver in ק״ג.
+   * The order's value is the quantity converted into this unit, times `unitPrice` (see engine/units).
+   */
+  priceUnit: string;
   unitPrice: number;
   amount: number;
   deliveredQty: number;

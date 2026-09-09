@@ -1,5 +1,4 @@
-import { Button } from "../../../components/primitives";
-import { store, useV2State } from "../../app/store";
+import { useV2State } from "../../app/store";
 import { pkg } from "../../engine/commands";
 import { recordedBySection } from "../../engine/forecast";
 import { dateHe, nis } from "./format";
@@ -25,9 +24,6 @@ export function BudgetScreen() {
           <span className="erp-count">
             תקציב גרסה {pkg.project.budgetVersion.number} (אושר {dateHe(pkg.project.budgetVersion.approvedAt)}) · כתב כמויות גרסה {pkg.project.boqVersion.number}
           </span>
-          <Button size="sm" variant="primary" onClick={() => store.go("report")} data-testid="erp-budget-to-report">
-            לדוח הבקרה ↗
-          </Button>
         </div>
       </div>
       <div className="erp-notice">

@@ -34,14 +34,7 @@ export function HadarimApp() {
         <div className="h2-presenter no-print" data-testid="presenter-bar">
           <div className="h2-presenter-group">
             <span className="h2-presenter-brand">אב-טיפוס · {pkg.project.nameHe}</span>
-            <div className="h2-switch" role="tablist" aria-label="מסכים">
-              <button type="button" role="tab" aria-selected={ui.app === "erp"} className={ui.app === "erp" ? "active" : ""} onClick={() => store.go("erp")} data-testid="go-erp">
-                מערכת המידע (זיו)
-              </button>
-              <button type="button" role="tab" aria-selected={ui.app === "report"} className={ui.app === "report" ? "active" : ""} onClick={() => store.go("report")} data-testid="go-report">
-                דוח הבקרה
-              </button>
-            </div>
+            <span className="h2-presenter-screen" data-testid="current-app">{ui.app === "erp" ? "מערכת המידע (זיו)" : "דוח הבקרה"}</span>
           </div>
           <div className="h2-presenter-group">
             <span className={`h2-presenter-db is-${ui.db.status}`} data-testid="db-status" title={ui.db.error ?? (ui.db.lastSync ? `סנכרון אחרון ${new Date(ui.db.lastSync).toLocaleTimeString("he-IL")}` : "")}>

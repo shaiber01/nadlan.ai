@@ -67,7 +67,7 @@ test.describe("Hadarim online mode (shared database)", () => {
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("02-שלד");
 
     // the report tab before the control: draft, live data
-    await page.getByTestId("go-report").click();
+    await page.goto("/hadarim.html?app=report");
     await expect(page.getByTestId("report-idle-notice")).toBeVisible();
     await expect(page.getByTestId("report-headline-eac")).toContainText("48,000,000 ₪");
 
@@ -132,7 +132,7 @@ test.describe("Hadarim online mode (shared database)", () => {
     await resetFromUi(page);
     await expect.poll(() => invoiceSection(1147), { timeout: 15_000 }).toBe("07");
     expect((await changeLogFor(1147)).length).toBe(1);
-    await page.getByTestId("go-report").click();
+    await page.goto("/hadarim.html?app=report");
     await expect(page.getByTestId("report-idle-notice")).toBeVisible({ timeout: 20_000 });
   });
 });

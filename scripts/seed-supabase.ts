@@ -112,6 +112,7 @@ async function main() {
     description_he: p.descriptionHe,
     qty: p.qty,
     unit: p.unit,
+    price_unit: p.priceUnit,
     unit_price: p.unitPrice,
     amount: p.amount,
     delivered_qty: p.deliveredQty,
