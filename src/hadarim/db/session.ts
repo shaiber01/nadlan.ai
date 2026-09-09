@@ -1,7 +1,8 @@
 import type { HFinding, HPositive } from "../engine/checks";
 import { sectionLabel } from "../engine/checks";
 import { initialState, pkg, setPackage } from "../engine/commands";
-import type { AuditEntry, ControlNote, ControlSession, ControlTask, DataCorrection, FindingDecision, ForecastAdjustment, ReportConfig, V2State } from "../engine/model";
+import type { AuditEntry, ControlNote, ControlQuestion, ControlSession, ControlTask, DataCorrection, FindingDecision, ForecastAdjustment, ReportConfig, V2State } from "../engine/model";
+import type { PersonId } from "../data/types";
 import { db, fromStamp, loadErp, loadPackage, readInvoice, saveInvoice, savePurchaseOrder, toStamp } from "./client";
 import { DEFAULT_PROJECT_ID } from "./config";
 import type { Json, Tables } from "./types";
@@ -41,13 +42,14 @@ export async function loadState(projectId = DEFAULT_PROJECT_ID, controlDate?: st
     if (r.error) throw new Error(`${what}: ${r.error.message}`);
     return r.data ?? [];
   };
-  const [decisions, adjustments, corrections, issues, audit] = await Promise.all([
+  const [decisions, adjustments, corrections, issues, audit, questions] = await Promise.all([
     rows(supabase.from("decisions").select("*").eq("project_id", projectId).eq("control_date", date), "decisions"),
     rows(supabase.from("forecast_adjustments").select("*").eq("project_id", projectId).eq("control_date", date).order("created_at"), "forecast_adjustments"),
     rows(supabase.from("data_corrections").select("*").eq("project_id", projectId).eq("control_date", date).order("at"), "data_corrections"),
     // every issue of the project: carried from earlier controls (no finding) and opened in this one
     rows(supabase.from("open_issues").select("*").eq("project_id", projectId).order("opened_in_control").order("id"), "open_issues"),
     rows(supabase.from("audit").select("*").eq("project_id", projectId).order("at").order("id"), "audit"),
+    rows(supabase.from("questions").select("*").eq("project_id", projectId).eq("control_date", date).order("asked_at"), "questions"),
   ]);
 
   const control: ControlSession = {
@@ -99,6 +101,9 @@ export async function loadState(projectId = DEFAULT_PROJECT_ID, controlDate?: st
     ),
     tasks: issues.map(
       (t): ControlTask => ({ id: t.id, titleHe: t.title_he, sectionId: t.section_id as ControlTask["sectionId"], ownerId: t.owner_id as ControlTask["ownerId"], dueDate: t.due_date, openedInControl: t.opened_in_control, status: t.status as ControlTask["status"], closedAt: t.closed_at, ...(t.impact_if_ignored_he ? { impactIfIgnoredHe: t.impact_if_ignored_he } : {}), ...(t.finding_id ? { findingId: t.finding_id } : {}) }),
+    ),
+    questions: questions.map(
+      (q): ControlQuestion => ({ id: q.id, toId: q.to_id as PersonId, channel: q.channel as ControlQuestion["channel"], textHe: q.text_he, ...(q.finding_id ? { findingId: q.finding_id } : {}), askedAt: toStamp(q.asked_at), askedById: q.asked_by_id as PersonId, status: q.status as ControlQuestion["status"], ...(q.answer_he ? { answerHe: q.answer_he } : {}), ...(q.answered_at ? { answeredAt: toStamp(q.answered_at) } : {}), ...(q.answered_by_id ? { answeredById: q.answered_by_id as PersonId } : {}) }),
     ),
     messages: [],
     reportConfig: c.report_config as unknown as ReportConfig,
@@ -188,6 +193,8 @@ export async function saveState(prev: V2State, next: V2State, projectId = DEFAUL
   if (correctionRows.length) check(await supabase.from("data_corrections").upsert(correctionRows), "data_corrections");
   const taskRows = s.tasks.map((t) => ({ project_id: projectId, id: t.id, title_he: t.titleHe, section_id: t.sectionId, owner_id: t.ownerId, due_date: t.dueDate, opened_in_control: t.openedInControl, status: t.status, closed_at: t.closedAt, impact_if_ignored_he: t.impactIfIgnoredHe ?? null, finding_id: t.findingId ?? null }));
   if (taskRows.length) check(await supabase.from("open_issues").upsert(taskRows), "open_issues");
+  const questionRows = s.questions.map((q) => ({ project_id: projectId, control_date: s.controlDate, id: q.id, to_id: q.toId, channel: q.channel, text_he: q.textHe, finding_id: q.findingId ?? null, asked_at: fromStamp(q.askedAt), asked_by_id: q.askedById, status: q.status, answer_he: q.answerHe ?? null, answered_at: q.answeredAt ? fromStamp(q.answeredAt) : null, answered_by_id: q.answeredById ?? null }));
+  if (questionRows.length) check(await supabase.from("questions").upsert(questionRows), "questions");
   const newAudit = next.audit.slice(prev.audit.length);
   if (newAudit.length) check(await supabase.from("audit").insert(newAudit.map((a) => ({ project_id: projectId, at: fromStamp(a.at), by_id: a.byId, text_he: a.textHe, record_ref: (a.recordRef ?? null) as unknown as Json }))), "audit");
 

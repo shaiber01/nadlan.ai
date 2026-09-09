@@ -106,7 +106,7 @@ function ContractView({ contractId }: { contractId: string }) {
           <Fieldv label="עכבון" value={`${c.retentionPct}%`} />
           <Fieldv label="היקף" value={c.scopeHe} wide />
           {c.closed && <Fieldv label="נסגר" value={`${dateHe(c.closed.at)} · חשבון סופי ${nis(c.closed.finalAccount)}`} />}
-          {c.steelSuppliedByClient && <Fieldv label="ברזל" value="מסופק על ידי המזמין (הסכם מסגרת ⁨03-F⁩)" />}
+          {c.steelSuppliedByClient && <Fieldv label="ברזל" value={`מסופק על ידי המזמין${pkg.contracts.some((x) => x.priceAppendices?.length) ? ` (הסכם מסגרת ${pkg.contracts.filter((x) => x.priceAppendices?.length).map((x) => `⁨${x.id}⁩`).join(", ")})` : ""}`} />}
           <Fieldv label="התאמה לכתב כמויות" value={c.boqMatchVerified ? "✔ נבדק שורה מול שורה" : "לא נבדק"} />
           {c.noteHe && <Fieldv label="הערה" value={c.noteHe} wide />}
         </RecordSection>

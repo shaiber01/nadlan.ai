@@ -8,7 +8,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { documentFacts } from "../src/hadarim/data/documents";
 import { generateHadarimPackage, openIssuesAtAugust } from "../src/hadarim/data/generate";
-import { SECTION_SHORT_HE } from "../src/hadarim/engine/checks";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "../src/hadarim/db/config";
 
 const key = process.env.SUPABASE_SECRET_KEY ?? SUPABASE_PUBLISHABLE_KEY;
@@ -71,13 +70,17 @@ async function main() {
       control_dates: pkg.project.controlDates,
       current_control_date: pkg.project.currentControlDate,
       buildings: pkg.project.buildings.map((b) => ({ id: b.id, floors: b.floors, floors_cast: b.floorsCast, units_per_floor: b.unitsPerFloor })),
+      buckets: { shared: { id: pkg.project.buckets.shared.id, label_he: pkg.project.buckets.shared.labelHe }, parking: { id: pkg.project.buckets.parking.id, label_he: pkg.project.buckets.parking.labelHe } },
+      materiality: { absolute: pkg.project.materiality.absolute, pct_of_section: pkg.project.materiality.pctOfSection, absolute_always: pkg.project.materiality.absoluteAlways, budget_share_pct: pkg.project.materiality.budgetSharePct, soft_basis_pct: pkg.project.materiality.softBasisPct },
+      risk_policy: { quote_expiry_exposure_pct: pkg.project.riskPolicy.quoteExpiryExposurePct, price_step: pkg.project.riskPolicy.priceStep },
+      check_policy: { review_aging_days: pkg.project.checkPolicy.reviewAgingDays },
       physical_progress_pct: pkg.project.physicalProgressPct ?? null,
       schedule: pkg.project.schedule ?? {},
     },
   ]);
-  await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation })));
+  await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation, channel: p.channel ?? null })));
   await insert("suppliers", pkg.suppliers.map((s) => ({ project_id: P, id: s.id, name_he: s.nameHe, kind: s.kind })));
-  await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: SECTION_SHORT_HE[s.id], budget: s.budget, split: s.split, position: i + 1 })));
+  await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: s.shortHe, kind: s.kind, budget: s.budget, split: s.split, position: i + 1 })));
   // documentFacts is keyed by document id
   const factsFor = (documentId: string): Record<string, unknown> => ((documentFacts as Record<string, Record<string, unknown> | undefined>)[documentId] ?? {});
   await insert("documents", pkg.documents.map((d) => ({ project_id: P, id: d.id, kind: d.kind, title_he: d.titleHe, date: d.date, supplier_id: d.supplierId, file_name: d.fileName, blocks: d.blocks, footer_he: d.footerHe, anchors: d.anchors, facts: factsFor(d.id) })));

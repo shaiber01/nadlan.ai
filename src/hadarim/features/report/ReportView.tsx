@@ -5,7 +5,7 @@ import { pkg } from "../../engine/commands";
 import { buildReport, type ReportModel } from "../../engine/report";
 import { exportReportDocx } from "../../export/docx";
 import { dateHe, timeHe } from "./fmt";
-import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
+import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, OpenFindingsSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
 import "./report.css";
 
 /**
@@ -190,6 +190,7 @@ export function ReportView() {
           <ContingencySection report={report} />
           <RisksSection report={report} />
           <IssuesSection report={report} />
+          <OpenFindingsSection report={report} />
           <VerifiedSection report={report} />
           <TrendsSection report={report} />
           <AppendicesSection report={report} />

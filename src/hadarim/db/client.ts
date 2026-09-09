@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { BuildingTag, ForecastBasis, HBoqLine, HChangeLogEntry, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPerson, HProject, HPurchaseOrder, HSection, HSupplier, HadarimPackage, PersonId, SectionId } from "../data/types";
+import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY, type BuildingTag, type ForecastBasis, type HBoqLine, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HRiskPolicy, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
 import type { ErpState } from "../engine/model";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import type { Database, Json, Tables, TablesInsert } from "./types";
@@ -142,12 +142,28 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   if (!p) throw new Error(`project ${projectId} not found`);
   const budgetVersion = p.budget_version as { number: number; approved_at: string; amount: number };
   const boqVersion = p.boq_version as { number: number; date: string };
-  const buildings = (p.buildings as { id: "A" | "B"; floors: number; floors_cast: number; units_per_floor: number }[]).map((b) => ({ id: b.id, floors: b.floors, floorsCast: b.floors_cast, unitsPerFloor: b.units_per_floor }));
+  const buildings = (p.buildings as { id: string; floors: number; floors_cast: number; units_per_floor: number }[]).map((b) => ({ id: String(b.id), floors: Number(b.floors), floorsCast: Number(b.floors_cast), unitsPerFloor: Number(b.units_per_floor) }));
   const project: HProject = {
     id: "HADARIM",
     nameHe: p.name_he,
     companyHe: p.company_he,
     buildings,
+    buckets: (() => {
+      const b = (p.buckets ?? {}) as { shared?: { id?: string; label_he?: string }; parking?: { id?: string; label_he?: string } };
+      return { shared: { id: b.shared?.id ?? "shared", labelHe: b.shared?.label_he ?? b.shared?.id ?? "shared" }, parking: { id: b.parking?.id ?? "parking", labelHe: b.parking?.label_he ?? b.parking?.id ?? "parking" } };
+    })(),
+    materiality: (() => {
+      const m = (p.materiality ?? {}) as Partial<Record<"absolute" | "pct_of_section" | "absolute_always" | "budget_share_pct" | "soft_basis_pct", number>>;
+      return { absolute: m.absolute ?? STANDARD_MATERIALITY.absolute, pctOfSection: m.pct_of_section ?? STANDARD_MATERIALITY.pctOfSection, absoluteAlways: m.absolute_always ?? STANDARD_MATERIALITY.absoluteAlways, budgetSharePct: m.budget_share_pct ?? STANDARD_MATERIALITY.budgetSharePct, softBasisPct: m.soft_basis_pct ?? STANDARD_MATERIALITY.softBasisPct };
+    })(),
+    riskPolicy: (() => {
+      const r = (p.risk_policy ?? {}) as Partial<Record<"quote_expiry_exposure_pct" | "price_step", number>>;
+      return { quoteExpiryExposurePct: r.quote_expiry_exposure_pct ?? STANDARD_RISK_POLICY.quoteExpiryExposurePct, priceStep: r.price_step ?? STANDARD_RISK_POLICY.priceStep };
+    })(),
+    checkPolicy: (() => {
+      const c = (p.check_policy ?? {}) as Partial<Record<"review_aging_days", number>>;
+      return { reviewAgingDays: c.review_aging_days ?? STANDARD_CHECK_POLICY.reviewAgingDays };
+    })(),
     units: p.units ?? 0,
     grossSqm: p.gross_sqm ?? 0,
     startDate: p.start_date ?? "",
@@ -181,8 +197,8 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     ...(c.note_he ? { noteHe: c.note_he } : {}),
     ...(c.boq_match_verified ? { boqMatchVerified: true } : {}),
   }));
-  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, budget: Number(s.budget), split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
-  const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation }));
+  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
+  const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation, ...(x.channel ? { channel: x.channel as HPerson["channel"] } : {}) }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
   const documentsOut: HDocument[] = documents.map((d) => ({ id: d.id, kind: d.kind as HDocument["kind"], titleHe: d.title_he, date: d.date, supplierId: d.supplier_id, fileName: d.file_name, blocks: d.blocks as unknown as HDocument["blocks"], footerHe: d.footer_he, anchors: d.anchors as Record<string, number>, ...(d.facts && Object.keys(d.facts as object).length ? { facts: d.facts as Record<string, unknown> } : {}) }));
   const boqOut: HBoqLine[] = boq.map((l) => ({ id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) }));
@@ -317,6 +333,10 @@ export interface ProjectStatusPatch {
   /** Measured physical progress in percent; null = not measured. */
   physicalProgressPct?: number | null;
   schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
+  /** Materiality thresholds (report standard §5); merged with the current ones. */
+  materiality?: Partial<HMateriality>;
+  /** Assumptions behind derived risks (§7); merged with the current ones. */
+  riskPolicy?: Partial<HRiskPolicy>;
 }
 
 /** Updates the project's status fields (stage text, measured physical progress, schedule); the schedule is merged. */
@@ -331,13 +351,27 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
     const s = patch.schedule;
     row.schedule = { ...current, ...(s.contractEnd !== undefined ? { contract_end: s.contractEnd } : {}), ...(s.expectedEnd !== undefined ? { expected_end: s.expectedEnd } : {}), ...(s.noteHe !== undefined ? { note_he: s.noteHe } : {}) } as Json;
   }
+  if (patch.materiality) {
+    const { data, error } = await supabase.from("projects").select("materiality").eq("id", projectId).single();
+    if (error) throw new Error(`projects: ${error.message}`);
+    const current = ((data?.materiality as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+    const m = patch.materiality;
+    row.materiality = { ...current, ...(m.absolute !== undefined ? { absolute: m.absolute } : {}), ...(m.pctOfSection !== undefined ? { pct_of_section: m.pctOfSection } : {}), ...(m.absoluteAlways !== undefined ? { absolute_always: m.absoluteAlways } : {}), ...(m.budgetSharePct !== undefined ? { budget_share_pct: m.budgetSharePct } : {}), ...(m.softBasisPct !== undefined ? { soft_basis_pct: m.softBasisPct } : {}) } as Json;
+  }
+  if (patch.riskPolicy) {
+    const { data, error } = await supabase.from("projects").select("risk_policy").eq("id", projectId).single();
+    if (error) throw new Error(`projects: ${error.message}`);
+    const current = ((data?.risk_policy as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+    const r = patch.riskPolicy;
+    row.risk_policy = { ...current, ...(r.quoteExpiryExposurePct !== undefined ? { quote_expiry_exposure_pct: r.quoteExpiryExposurePct } : {}), ...(r.priceStep !== undefined ? { price_step: r.priceStep } : {}) } as Json;
+  }
   if (!Object.keys(row).length) return;
   const { error } = await supabase.from("projects").update(row).eq("id", projectId);
   if (error) throw new Error(`projects: ${error.message}`);
 }
 
 /** Tables whose changes the web app follows: the ERP, the control session the agent writes, saved reports, the project row. */
-const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions"] as const;
+const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions", "questions"] as const;
 
 /** Calls `onChange` (debounced) whenever the project's ERP data, control session or saved reports change. Returns an unsubscribe. */
 export function subscribeProject(projectId: string, onChange: () => void, supabase: Db = db()): () => void {

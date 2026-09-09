@@ -913,6 +913,7 @@ export type Database = {
       people: {
         Row: {
           can_write_allocation: boolean
+          channel: string | null
           id: string
           name_he: string
           project_id: string
@@ -920,6 +921,7 @@ export type Database = {
         }
         Insert: {
           can_write_allocation?: boolean
+          channel?: string | null
           id: string
           name_he: string
           project_id: string
@@ -927,6 +929,7 @@ export type Database = {
         }
         Update: {
           can_write_allocation?: boolean
+          channel?: string | null
           id?: string
           name_he?: string
           project_id?: string
@@ -945,16 +948,20 @@ export type Database = {
       projects: {
         Row: {
           boq_version: Json
+          buckets: Json
           budget_version: Json
           buildings: Json
+          check_policy: Json
           company_he: string
           control_dates: string[]
           created_at: string
           current_control_date: string | null
           gross_sqm: number | null
           id: string
+          materiality: Json
           name_he: string
           physical_progress_pct: number | null
+          risk_policy: Json
           schedule: Json
           start_date: string | null
           status_he: string | null
@@ -962,16 +969,20 @@ export type Database = {
         }
         Insert: {
           boq_version: Json
+          buckets?: Json
           budget_version: Json
           buildings?: Json
+          check_policy?: Json
           company_he: string
           control_dates?: string[]
           created_at?: string
           current_control_date?: string | null
           gross_sqm?: number | null
           id: string
+          materiality?: Json
           name_he: string
           physical_progress_pct?: number | null
+          risk_policy?: Json
           schedule?: Json
           start_date?: string | null
           status_he?: string | null
@@ -979,16 +990,20 @@ export type Database = {
         }
         Update: {
           boq_version?: Json
+          buckets?: Json
           budget_version?: Json
           buildings?: Json
+          check_policy?: Json
           company_he?: string
           control_dates?: string[]
           created_at?: string
           current_control_date?: string | null
           gross_sqm?: number | null
           id?: string
+          materiality?: Json
           name_he?: string
           physical_progress_pct?: number | null
+          risk_policy?: Json
           schedule?: Json
           start_date?: string | null
           status_he?: string | null
@@ -1101,6 +1116,69 @@ export type Database = {
           },
         ]
       }
+      questions: {
+        Row: {
+          answer_he: string | null
+          answered_at: string | null
+          answered_by_id: string | null
+          asked_at: string
+          asked_by_id: string
+          channel: string
+          control_date: string
+          finding_id: string | null
+          id: string
+          project_id: string
+          status: string
+          text_he: string
+          to_id: string
+        }
+        Insert: {
+          answer_he?: string | null
+          answered_at?: string | null
+          answered_by_id?: string | null
+          asked_at?: string
+          asked_by_id: string
+          channel: string
+          control_date: string
+          finding_id?: string | null
+          id: string
+          project_id: string
+          status: string
+          text_he: string
+          to_id: string
+        }
+        Update: {
+          answer_he?: string | null
+          answered_at?: string | null
+          answered_by_id?: string | null
+          asked_at?: string
+          asked_by_id?: string
+          channel?: string
+          control_date?: string
+          finding_id?: string | null
+          id?: string
+          project_id?: string
+          status?: string
+          text_he?: string
+          to_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_project_id_control_date_fkey"
+            columns: ["project_id", "control_date"]
+            isOneToOne: false
+            referencedRelation: "controls"
+            referencedColumns: ["project_id", "control_date"]
+          },
+          {
+            foreignKeyName: "questions_project_id_to_id_fkey"
+            columns: ["project_id", "to_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["project_id", "id"]
+          },
+        ]
+      }
       report_versions: {
         Row: {
           control_date: string
@@ -1146,6 +1224,7 @@ export type Database = {
         Row: {
           budget: number
           id: string
+          kind: string
           name_he: string
           position: number
           project_id: string
@@ -1155,6 +1234,7 @@ export type Database = {
         Insert: {
           budget: number
           id: string
+          kind?: string
           name_he: string
           position: number
           project_id: string
@@ -1164,6 +1244,7 @@ export type Database = {
         Update: {
           budget?: number
           id?: string
+          kind?: string
           name_he?: string
           position?: number
           project_id?: string

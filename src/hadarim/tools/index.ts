@@ -5,12 +5,12 @@ import type { HDocument, HInvoice, HPurchaseOrder } from "../data/types";
 import { db, deleteInvoice, listProjects, resetProject, updateProject } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
-import { SECTION_SHORT_HE, checkAllocation, checkCoverage, checkPrices, checkUnits, positives, quoteFacts, sectionLabel, type HFinding } from "../engine/checks";
-import { confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
+import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, type HFinding } from "../engine/checks";
+import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
+import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { lineValue } from "../engine/units";
-import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { buildReport } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
 import { reportToMarkdown } from "../export/markdown";
@@ -54,7 +54,7 @@ const personId = z.string().describe("Person id (see list_people), e.g. EYAL");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const CHANGE_TYPES = Object.keys(CHANGE_TYPE_HE) as [keyof typeof CHANGE_TYPE_HE, ...(keyof typeof CHANGE_TYPE_HE)[]];
 const BASES = ["contract", "po", "quote", "appendix", "estimate"] as const;
-const FINDING_KINDS = ["allocation", "unit", "price", "coverage"] as const;
+const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"] as const;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const signed = (v: number) => (v === 0 ? "0 ₪" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
@@ -190,6 +190,7 @@ function controlView(state: V2State) {
     corrections: c.corrections,
     tasks: c.tasks.map((t) => ({ ...t, ownerHe: personName(t.ownerId), sectionHe: t.sectionId ? sectionLabel(t.sectionId) : null })),
     notes: c.notes,
+    questions: c.questions.map((q) => ({ ...q, toHe: personName(q.toId), channelHe: CHANNEL_HE[q.channel] })),
     reportConfig: c.reportConfig,
     savedConfig: state.savedConfig,
     headline: headline(state),
@@ -259,9 +260,9 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, checkPolicy: p.checkPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
-      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: SECTION_SHORT_HE[s.id], budget: s.budget, split: s.split, contractIds: s.contractIds })),
+      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
       forecastVersions: pkg.forecasts.map((f) => ({ controlDate: f.controlDate, status: f.status, totalEac: f.totalEac })),
       control: { controlDate: c.controlDate, status: c.status, finalized: c.finalized, findings: c.findings.length, openFindings: c.findings.filter((f) => !c.decisions[f.id] || c.decisions[f.id].status === "open" || c.decisions[f.id].pending).length, adjustments: c.adjustments.length, corrections: c.corrections.length, openTasks: c.tasks.filter((t) => t.status !== "closed").length },
@@ -331,7 +332,7 @@ define({
     const invoices = state.erp.invoices.filter((i) => i.sectionId === section.id);
     const approved = invoices.filter((i) => i.status !== "בבדיקה" && i.dateReceived < state.control.controlDate);
     return {
-      section: { ...section, shortHe: SECTION_SHORT_HE[section.id] },
+      section: { ...section, shortHe: sectionShort(section.id) },
       forecast: { budget: ws.budget, recorded: ws.recorded, committed: ws.committed, remainingCommitment: ws.remainingCommitment, uncovered: ws.uncovered, eac: ws.eac, variance: ws.variance, previousEac: ws.previousEac, change: ws.change, basisPct: ws.basisPct, lines: ws.lines },
       contracts: pkg.contracts.filter((c) => c.sectionId === section.id).map((c) => ({ ...c, supplierHe: supplierName(c.supplierId) })),
       invoices: { count: invoices.length, recordedBeforeCutoff: approved.reduce((s, i) => s + i.amount, 0), inReview: invoices.filter((i) => i.status === "בבדיקה").length, rows: invoices.map(invoiceView) },
@@ -557,18 +558,27 @@ define({
 define({
   name: "run_check",
   title: "Run a check (no save)",
-  description: "Run one control check (or all) on the live data without opening a control: allocation of invoices vs contracts and supplier history, units/quantities on orders vs quotes and appendices, forecast prices vs the appendix in force, BOQ coverage vs contracts. Optionally limited to one invoice, order or section. Returns findings and verified matches.",
+  description: "Run one check, a group, or all of them on the live data without opening a control. Control checks: allocation (invoices vs contracts and supplier history), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
   kind: "check",
-  input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), sectionId: sectionId.optional() },
+  input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "data_quality", "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), contractId: z.string().optional(), sectionId: sectionId.optional() },
   run: async (a) => {
     const state = await loadState(a.projectId, a.controlDate);
     const draft = draftOf(state);
     const sec = a.sectionId as HFinding["sectionId"] | undefined;
+    const want = (k: (typeof FINDING_KINDS)[number]) => a.kind === "all" || a.kind === k || (a.kind === "data_quality" && DATA_QUALITY_KINDS.includes(k));
+    const today = state.clock.slice(0, 10);
+    const bySection = (list: HFinding[]) => list.filter((f) => !sec || f.sectionId === sec);
     const findings: HFinding[] = [
-      ...(a.kind === "all" || a.kind === "allocation" ? checkAllocation(pkg, state.erp, a.invoiceId).filter((f) => !sec || f.sectionId === sec) : []),
-      ...(a.kind === "all" || a.kind === "unit" ? checkUnits(pkg, state.erp, a.poId).filter((f) => !sec || f.sectionId === sec) : []),
-      ...(a.kind === "all" || a.kind === "price" ? checkPrices(pkg, state.erp, draft, state.control.controlDate, sec) : []),
-      ...(a.kind === "all" || a.kind === "coverage" ? checkCoverage(pkg, draft, sec) : []),
+      ...(want("allocation") ? bySection(checkAllocation(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("unit") ? bySection(checkUnits(pkg, state.erp, a.poId)) : []),
+      ...(want("price") ? checkPrices(pkg, state.erp, draft, state.control.controlDate, sec) : []),
+      ...(want("coverage") ? checkCoverage(pkg, draft, sec) : []),
+      ...(want("duplicate") ? bySection(checkDuplicates(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("contract_overrun") ? bySection(checkContractOverrun(pkg, state.erp, a.contractId)) : []),
+      ...(want("cumulative") ? bySection(checkCumulative(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("retention") ? bySection(checkRetention(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("dates") ? bySection(checkDates(pkg, state.erp, today, a.invoiceId)) : []),
+      ...(want("review_aging") ? bySection(checkReviewAging(pkg, state.erp, state.control.controlDate, a.invoiceId)) : []),
     ];
     return { controlDate: state.control.controlDate, findings: findings.map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
   },
@@ -613,7 +623,7 @@ define({
   title: "Decide on a finding",
   description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. The engine replies with what follows (a route question, a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
   kind: "decision",
-  input: { projectId, controlDate, findingId: z.string().describe("finding id (e.g. F-ALLOC-1147) or kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
+  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
   run: async (a) => {
     if (!a.choiceId && !a.freeTextHe) throw new Error("נדרש choiceId או freeTextHe");
     let f!: HFinding;
@@ -694,9 +704,9 @@ define({
 define({
   name: "set_invoice_building",
   title: "Tag an invoice with a building",
-  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report. Attributed and trigger-logged.",
+  description: "Set (or clear with null) the building tag of an invoice for the per-building split of the report: a building id of the project (get_project → project.buildings) or the project's shared bucket id (project.buckets.shared.id) for shared costs. Attributed and trigger-logged.",
   kind: "write",
-  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.enum(["A", "B", "משותף"]).nullable(), byId: personId },
+  input: { projectId, controlDate, invoiceId: z.number().int(), building: z.string().nullable().describe("a building id of the project, the shared bucket id, or null to clear"), byId: personId },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => updateInvoiceBuilding(s, a.invoiceId, a.building, a.byId as V2State["operatorId"]));
     return outcome(r, { invoice: invoiceView(r.state.erp.invoices.find((i) => i.id === a.invoiceId)!) });
@@ -791,9 +801,9 @@ define({
 define({
   name: "add_control_note",
   title: "Add a controller note",
-  description: "Record a note that feeds the report: kind 'risk' (§7 — with exposure, likelihood, trigger, owner), 'event' (§2 material events of the period), 'decision' (a decision management must take, §1), 'assumption' (§11), or 'note' (executive-summary bullet).",
+  description: "Record a note that feeds the report: kind 'risk' (§7 — with exposure, likelihood, trigger, owner), 'event' (§2 material events of the period), 'decision' (a decision management must take, §1), 'assumption' (§11), 'note' (executive-summary bullet), 'change_order' (a change order awaiting approval, §6) or 'claim' (a contractor claim or demand, §6). The ERP holds no change orders or claims, so §6 shows what was recorded here.",
   kind: "write",
-  input: { projectId, controlDate, kind: z.enum(["risk", "event", "decision", "assumption", "note"]), textHe: z.string(), sectionId: sectionId.optional(), exposureHe: z.string().optional(), likelihoodHe: z.string().optional(), triggerHe: z.string().optional(), ownerId: personId.optional(), byId: personId.optional() },
+  input: { projectId, controlDate, kind: z.enum(["risk", "event", "decision", "assumption", "note", "change_order", "claim"]), textHe: z.string(), sectionId: sectionId.optional(), exposureHe: z.string().optional(), likelihoodHe: z.string().optional(), triggerHe: z.string().optional(), ownerId: personId.optional(), byId: personId.optional() },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => addNote(s, a, (a.byId as V2State["operatorId"] | undefined) ?? s.operatorId)[0]);
     return outcome(r, { note: r.state.control.notes[r.state.control.notes.length - 1] });
@@ -803,7 +813,7 @@ define({
 define({
   name: "remove_control_note",
   title: "Remove a controller note",
-  description: "Remove a controller note (risk / event / decision / assumption / note) by id when the user withdraws it.",
+  description: "Remove a controller note (risk / event / decision / assumption / note / change_order / claim) by id when the user withdraws it.",
   kind: "write",
   input: { projectId, controlDate, noteId: z.string() },
   run: async (a) => outcome(await write(a.projectId, a.controlDate, (s) => removeNote(s, a.noteId))),
@@ -811,15 +821,61 @@ define({
 
 define({
   name: "set_project_status",
-  title: "Update project status",
-  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend) and schedule (contract end / expected end as yyyy-mm, note). These feed report §2 and the executive key table.",
+  title: "Update project settings",
+  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend), schedule (contract end / expected end as yyyy-mm, note) and materiality thresholds (report standard §5: materialityAbsolute ₪ AND materialityPctOfSection %, or materialityAbsoluteAlways ₪; a section is analysed anyway above materialityBudgetSharePct % of the budget or below materialitySoftBasisPct % basis). These feed report §2, §5 and the executive key table. Only on the user's instruction.",
   kind: "write",
-  input: { projectId, statusHe: z.string().optional(), physicalProgressPct: z.number().min(0).max(100).nullable().optional(), scheduleContractEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(), scheduleExpectedEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(), scheduleNoteHe: z.string().optional() },
+  input: {
+    projectId,
+    statusHe: z.string().optional(),
+    physicalProgressPct: z.number().min(0).max(100).nullable().optional(),
+    scheduleContractEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    scheduleExpectedEnd: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    scheduleNoteHe: z.string().optional(),
+    materialityAbsolute: z.number().nonnegative().optional(),
+    materialityPctOfSection: z.number().min(0).max(100).optional(),
+    materialityAbsoluteAlways: z.number().nonnegative().optional(),
+    materialityBudgetSharePct: z.number().min(0).max(100).optional(),
+    materialitySoftBasisPct: z.number().min(0).max(100).optional(),
+    riskQuoteExpiryExposurePct: z.number().min(0).max(100).optional().describe("§7 assumption: exposure of an estimate resting on a quote that may expire, as % of the estimate"),
+    riskPriceStep: z.number().positive().optional().describe("§7: the price step (₪ per unit) used to express appendix-price exposure"),
+  },
   run: async (a) => {
     const schedule = { ...(a.scheduleContractEnd ? { contractEnd: a.scheduleContractEnd } : {}), ...(a.scheduleExpectedEnd ? { expectedEnd: a.scheduleExpectedEnd } : {}), ...(a.scheduleNoteHe !== undefined ? { noteHe: a.scheduleNoteHe } : {}) };
-    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}) });
+    const materiality = { ...(a.materialityAbsolute !== undefined ? { absolute: a.materialityAbsolute } : {}), ...(a.materialityPctOfSection !== undefined ? { pctOfSection: a.materialityPctOfSection } : {}), ...(a.materialityAbsoluteAlways !== undefined ? { absoluteAlways: a.materialityAbsoluteAlways } : {}), ...(a.materialityBudgetSharePct !== undefined ? { budgetSharePct: a.materialityBudgetSharePct } : {}), ...(a.materialitySoftBasisPct !== undefined ? { softBasisPct: a.materialitySoftBasisPct } : {}) };
+    const riskPolicy = { ...(a.riskQuoteExpiryExposurePct !== undefined ? { quoteExpiryExposurePct: a.riskQuoteExpiryExposurePct } : {}), ...(a.riskPriceStep !== undefined ? { priceStep: a.riskPriceStep } : {}) };
+    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}), ...(Object.keys(riskPolicy).length ? { riskPolicy } : {}) });
     await loadState(a.projectId);
-    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {} } };
+    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality, riskPolicy: pkg.project.riskPolicy } };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Questions to people
+// ---------------------------------------------------------------------------
+
+define({
+  name: "ask_person",
+  title: "Ask a person",
+  description: "Put a question to the person who has the knowledge a decision needs (by person id; roles are in get_project). The full system sends it over that person's channel (WhatsApp, email, phone) and records the reply; in this prototype the question is recorded, the answer is given in the Claude session on that person's behalf and recorded with answer_question. The finding it belongs to (findingId) stays open meanwhile, and the question is listed in the report until answered.",
+  kind: "write",
+  input: { projectId, controlDate, toId: personId, textHe: z.string().describe("the question, in Hebrew, self-contained: the record, the numbers, what is asked"), findingId: z.string().optional(), byId: personId.optional().describe("who is asking (default: the control's operator)") },
+  run: async (a) => {
+    const r = await write(a.projectId, a.controlDate, (s) => askPerson(s, a, (a.byId as V2State["operatorId"] | undefined) ?? s.operatorId)[0]);
+    const q = r.state.control.questions[r.state.control.questions.length - 1];
+    const to = pkg.people.find((p) => p.id === q.toId)!;
+    return outcome(r, { question: { ...q, toHe: to.nameHe, roleHe: to.roleHe, channelHe: CHANNEL_HE[q.channel] }, sayHe: `שאלה ${q.id} ל${to.nameHe} (${to.roleHe}). במערכת המלאה תישלח ב-${CHANNEL_HE[q.channel]}; כאן ${to.nameHe} עונה בסשן זה, והתשובה נרשמת ב-answer_question.` });
+  },
+});
+
+define({
+  name: "answer_question",
+  title: "Record an answer",
+  description: "Record the answer a person gave to a question (in this prototype: typed in the session on that person's behalf; in the full system: the reply that came back over the channel). byId defaults to the person asked.",
+  kind: "write",
+  input: { projectId, controlDate, questionId: z.string(), answerHe: z.string(), byId: personId.optional() },
+  run: async (a) => {
+    const r = await write(a.projectId, a.controlDate, (s) => answerQuestion(s, a.questionId, a.answerHe, a.byId));
+    return outcome(r, { question: r.state.control.questions.find((q) => q.id === a.questionId) });
   },
 });
 
@@ -880,6 +936,8 @@ define({
       risks: report.risks,
       openIssues: report.issues.open,
       closedIssues: report.issues.closed,
+      openFindings: report.openFindings,
+      openQuestions: report.openQuestions,
       trends: { uncoveredCommentaryHe: report.trends.uncoveredCommentaryHe, commentaryHe: report.trends.commentaryHe, comparison: report.trends.comparison },
       assumptionsHe: report.appendices.assumptionsHe,
       uncoveredTotal: report.appendices.uncoveredTotal,
@@ -901,16 +959,12 @@ define({
 define({
   name: "reset_project",
   title: "Reset to seed",
-  description: "DESTRUCTIVE: restore the project's ERP data and change log to the seed snapshot and clear the control session, audit and saved report versions. variant B also removes the seed's last invoice so it can be keyed in live. Confirm with the user first.",
+  description: "DESTRUCTIVE: restore the project's ERP data and change log to the seed snapshot and clear the control session, audit and saved report versions. variant B also removes the seed's script invoice (the one the demo re-allocates) so it can be keyed in live. Confirm with the user first.",
   kind: "destructive",
   input: { projectId, variant: z.enum(["A", "B"]).default("A") },
   run: async (a) => {
     await resetProject(a.projectId);
-    if (a.variant === "B") {
-      const state = await loadState(a.projectId);
-      const last = Math.max(...state.erp.invoices.map((i) => i.id));
-      await deleteInvoice(last, a.projectId);
-    }
+    if (a.variant === "B") await deleteInvoice(SCRIPT_INVOICE_ID, a.projectId);
     const state = await loadState(a.projectId);
     return { ok: true, variant: a.variant, invoices: state.erp.invoices.length, controlStatus: state.control.status, headline: headline(state) };
   },

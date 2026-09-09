@@ -1,9 +1,10 @@
-import { CURRENT_CONTROL, EARLIER_CONTROL_TOTALS, priceAppendixAt } from "../data/generate";
+import { priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { SECTION_SHORT_HE, boqPageFor, documentById, quoteFacts } from "./checks";
+import { boqPageFor, documentById, isContingency, quoteFacts, sectionShort } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
+import { CHANNEL_HE } from "./operations";
 
 /**
  * Builds the control report model per `budgetcontrolreportstandard.md` (sections 0–11 and the CEO page)
@@ -19,12 +20,8 @@ const pct = (v: number, digits = 1) => `${v.toFixed(digits)}%`;
 const dateHe = (iso: string) => iso.slice(0, 10).split("-").reverse().map((p, i) => (i < 2 ? String(Number(p)) : p)).join(".");
 const monthHe = (ym: string) => (ym.length >= 7 ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : ym);
 const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
-const label = (id: SectionId) => `${id}-${SECTION_SHORT_HE[id]}`;
+const label = (id: SectionId) => `${id}-${sectionShort(id)}`;
 const isolate = (s: string) => `⁨${s}⁩`;
-
-export const MATERIALITY = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
-/** Exposure assumed for an estimate based on a quote that may expire (stated as an assumption in the risk row). */
-const QUOTE_EXPIRY_EXPOSURE_PCT = 25;
 
 /** A clickable origin for a number: a document page (with an anchor), an ERP record, or an ERP screen. */
 export interface ReportSource {
@@ -36,6 +33,7 @@ export interface ReportSource {
 }
 
 export interface ReportHeader {
+  projectNameHe: string;
   projectHe: string;
   companyHe: string;
   cutoffHe: string;
@@ -76,7 +74,9 @@ export interface SectionRow {
 }
 
 export interface BuildingRow {
-  building: BuildingTag | "חניון";
+  /** A building id, the parking bucket or the shared bucket. */
+  building: string;
+  labelHe: string;
   budget: number;
   recorded: number;
   committed: number;
@@ -152,12 +152,16 @@ export interface ReportModel {
   header: ReportHeader;
   executive: { paragraphHe: string; keyTable: KeyRow[]; bulletsHe: string[]; decisionsHe: string[] };
   status: { stageHe: string; physicalPct: number | null; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
-  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[] };
+  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
   changes: { forecast: ChangeRow[]; forecastTotal: number; corrections: CorrectionRow[] };
   material: MaterialSection[];
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
   risks: RiskRow[];
   issues: { open: IssueRow[]; closed: IssueRow[] };
+  /** Findings the checks raised that nobody has decided on yet — the report says so rather than hiding them. */
+  openFindings: { id: string; kind: string; titleHe: string; sectionHe: string; questionHe: string; statusHe: string }[];
+  /** Questions put to people and not yet answered. */
+  openQuestions: { id: string; toHe: string; channelHe: string; textHe: string; askedHe: string; findingId: string | null }[];
   verified: { titleHe: string; textHe: string }[];
   trends: { eacSeries: { labelHe: string; value: number }[]; uncoveredSeries: { labelHe: string; value: number }[]; uncoveredNow: number; uncoveredCommentaryHe: string; commentaryHe: string; comparison: string[][] | null };
   appendices: { definitionsHe: string[]; assumptionsHe: string[]; sourcesHe: string[]; correctionLog: CorrectionRow[]; inReview: { count: number; amount: number }; afterCutoffHe: string[]; uncovered: UncoveredRow[]; uncoveredTotal: number; allocations: UncoveredRow[]; allocationTotal: number };
@@ -168,9 +172,11 @@ export interface ReportModel {
 
 const BASIS_HE: Record<string, string> = { invoice: "חשבון מאושר", contract: "חוזה חתום", po: "הזמנה מאושרת", quote: "הצעת מחיר", appendix: "נספח מחיר", estimate: "אומדן פנימי", allocation: "הקצאה תקציבית פנימית" };
 
-function isMaterial(s: WorkingSection): boolean {
+/** Standard §5 with the project's thresholds: a change since the previous control, or a variance over the materiality threshold. */
+function isMaterial(pkg: HadarimPackage, s: WorkingSection): boolean {
+  const m = pkg.project.materiality;
   const abs = Math.abs(s.variance);
-  return s.change !== 0 || abs >= MATERIALITY.absoluteAlways || (abs >= MATERIALITY.absolute && abs >= (s.budget * MATERIALITY.pctOfSection) / 100);
+  return s.change !== 0 || abs >= m.absoluteAlways || (abs >= m.absolute && abs >= (s.budget * m.pctOfSection) / 100);
 }
 
 function personName(pkg: HadarimPackage, id: string | undefined | null): string {
@@ -186,39 +192,73 @@ function executionOwner(pkg: HadarimPackage, state: V2State): string {
 // Optional secondary split by building (standard §3: same columns; estimates declared as such)
 // ---------------------------------------------------------------------------
 
+/** What an invoice can be tagged with: the project's buildings, or its shared bucket. */
+export function buildingOptions(pkg: HadarimPackage): { id: string; labelHe: string; kind: "building" | "shared" }[] {
+  const shared = pkg.project.buckets.shared;
+  return [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}`, kind: "building" as const })), { id: shared.id, labelHe: shared.labelHe, kind: "shared" as const }];
+}
+
+/** Split `x` among the buildings by `shares` (which sum to 1), whole shekels, the last building taking the rounding. */
+function splitAmong(x: number, shares: number[]): number[] {
+  const parts = shares.map((sh) => Math.round(x * sh));
+  parts[parts.length - 1] = x - parts.slice(0, -1).reduce((a, v) => a + v, 0);
+  return parts;
+}
+
+/** How a section's budget and commitments are apportioned to the buildings: by floors cast, by units, or equally per building. */
+function buildingShares(pkg: HadarimPackage, split: "by_floors" | "by_units" | "per_building"): number[] {
+  const b = pkg.project.buildings;
+  if (!b.length) return [];
+  const weights = split === "by_floors" ? b.map((x) => x.floorsCast) : split === "by_units" ? b.map((x) => x.floors * x.unitsPerFloor) : b.map(() => 1);
+  const total = weights.reduce((a, w) => a + w, 0);
+  return total > 0 ? weights.map((w) => w / total) : b.map(() => 1 / b.length);
+}
+
 function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): { rows: BuildingRow[]; noteHe: string; changeable: ReportModel["sections"]["byBuildingChangeable"] } {
-  const floorsA = pkg.project.buildings[0]?.floorsCast ?? 1;
-  const floorsB = pkg.project.buildings[1]?.floorsCast ?? 1;
-  const shareA = floorsA / (floorsA + floorsB);
-  const blank = (building: BuildingRow["building"]): BuildingRow => ({ building, budget: 0, recorded: 0, committed: 0, remainingCommitment: 0, uncovered: 0, eac: 0, variance: 0, variancePct: 0, basisPct: 0 });
-  const rows: Record<string, BuildingRow> = { A: blank("A"), B: blank("B"), חניון: blank("חניון"), משותף: blank("משותף") };
-  const add = (key: string, part: { budget: number; recorded: number; committed: number; remainingCommitment: number; uncovered: number }) => {
+  const buildings = pkg.project.buildings.map((b) => b.id);
+  const { shared, parking } = pkg.project.buckets;
+  const SHARED_BUILDING = shared.id;
+  const PARKING_BUCKET = parking.id;
+  const hasParking = pkg.sections.some((s) => s.split === "parking");
+  const keys = [...buildings, ...(hasParking ? [PARKING_BUCKET] : []), SHARED_BUILDING];
+  const labelOf = (key: string) => (key === shared.id ? shared.labelHe : key === parking.id ? parking.labelHe : `בניין ${key}`);
+  const blank = (building: string): BuildingRow => ({ building, labelHe: labelOf(building), budget: 0, recorded: 0, committed: 0, remainingCommitment: 0, uncovered: 0, eac: 0, variance: 0, variancePct: 0, basisPct: 0 });
+  const rows: Record<string, BuildingRow> = Object.fromEntries(keys.map((k) => [k, blank(k)]));
+  const add = (key: string, part: Partial<Pick<BuildingRow, "budget" | "recorded" | "committed" | "remainingCommitment" | "uncovered">>) => {
     const r = rows[key];
-    r.budget += part.budget;
-    r.recorded += part.recorded;
-    r.committed += part.committed;
-    r.remainingCommitment += part.remainingCommitment;
-    r.uncovered += part.uncovered;
+    r.budget += part.budget ?? 0;
+    r.recorded += part.recorded ?? 0;
+    r.committed += part.committed ?? 0;
+    r.remainingCommitment += part.remainingCommitment ?? 0;
+    r.uncovered += part.uncovered ?? 0;
   };
   const untagged: string[] = [];
+  const unknownTags: string[] = [];
   for (const s of wf.sections) {
     const section = pkg.sections.find((x) => x.id === s.sectionId)!;
     const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && i.dateReceived < wf.controlDate);
-    const byTag: Record<string, number> = { A: 0, B: 0, משותף: 0 };
-    for (const inv of invoices) byTag[inv.building ?? "משותף"] += inv.amount;
+    // recorded amounts follow the invoices' own building tags; an unknown tag counts as shared
+    const byTag: Record<string, number> = Object.fromEntries(keys.map((k) => [k, 0]));
+    for (const inv of invoices) {
+      const tag = inv.building && buildings.includes(inv.building) ? inv.building : SHARED_BUILDING;
+      if (inv.building && !buildings.includes(inv.building) && inv.building !== SHARED_BUILDING) unknownTags.push(`חשבון ${inv.id} (${inv.building})`);
+      byTag[tag] += inv.amount;
+    }
+    const recordedInBuildings = buildings.reduce((a, b) => a + byTag[b], 0);
+    for (const b of buildings) add(b, { recorded: byTag[b] });
     if (section.split === "shared" || section.split === "parking") {
-      const home = section.split === "parking" ? "חניון" : "משותף";
-      add("A", { budget: 0, recorded: byTag.A, committed: 0, remainingCommitment: 0, uncovered: 0 });
-      add("B", { budget: 0, recorded: byTag.B, committed: 0, remainingCommitment: 0, uncovered: 0 });
-      add(home, { budget: s.budget, recorded: s.recorded - byTag.A - byTag.B, committed: s.committed, remainingCommitment: s.remainingCommitment, uncovered: s.uncovered });
+      const home = section.split === "parking" ? PARKING_BUCKET : SHARED_BUILDING;
+      add(home, { budget: s.budget, recorded: s.recorded - recordedInBuildings, committed: s.committed, remainingCommitment: s.remainingCommitment, uncovered: s.uncovered });
       continue;
     }
     for (const inv of invoices) if (!inv.building) untagged.push(`חשבון ${inv.id}`);
-    const share = section.split === "by_floors" ? shareA : 0.5;
-    const part = (x: number) => Math.round(x * share);
-    add("A", { budget: part(s.budget), recorded: byTag.A, committed: part(s.committed), remainingCommitment: part(s.remainingCommitment), uncovered: part(s.uncovered) });
-    add("B", { budget: s.budget - part(s.budget), recorded: byTag.B, committed: s.committed - part(s.committed), remainingCommitment: s.remainingCommitment - part(s.remainingCommitment), uncovered: s.uncovered - part(s.uncovered) });
-    add("משותף", { budget: 0, recorded: byTag["משותף"], committed: 0, remainingCommitment: 0, uncovered: 0 });
+    const shares = buildingShares(pkg, section.split);
+    const budget = splitAmong(s.budget, shares);
+    const committed = splitAmong(s.committed, shares);
+    const remaining = splitAmong(s.remainingCommitment, shares);
+    const uncovered = splitAmong(s.uncovered, shares);
+    buildings.forEach((b, i) => add(b, { budget: budget[i], committed: committed[i], remainingCommitment: remaining[i], uncovered: uncovered[i] }));
+    add(SHARED_BUILDING, { recorded: byTag[SHARED_BUILDING] });
   }
   for (const r of Object.values(rows)) {
     r.eac = r.recorded + r.remainingCommitment + r.uncovered;
@@ -234,12 +274,13 @@ function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State)
     changeable.push({ invoiceId: inv.id, labelHe: `חשבון ${inv.id}`, building: inv.building });
   }
   const sharedEstimates = state.control.adjustments.filter((a) => pkg.sections.find((s) => s.id === a.sectionId)?.split === "shared");
-  const tagged = changeable.filter((c) => c.building && c.building !== "משותף");
+  const tagged = changeable.filter((c) => c.building && c.building !== SHARED_BUILDING);
   const noteHe = [
-    untagged.length ? `${[...new Set(untagged)].join(", ")} אינו מפולח לפי בניין במקור — שויך ל״משותף״.` : "",
+    untagged.length ? `${[...new Set(untagged)].join(", ")} אינו מפולח לפי בניין במקור — שויך ל״${shared.labelHe}״.` : "",
+    unknownTags.length ? `${[...new Set(unknownTags)].join(", ")} מתויג בבניין שאינו בפרויקט — נספר כ״${shared.labelHe}״.` : "",
     tagged.length ? tagged.map((t) => `${t.labelHe} שויך לבניין ${t.building} לפי החלטת מנהל הפרויקט (נרשם ביומן השינויים).`).join(" ") : "",
-    sharedEstimates.length ? `${sharedEstimates.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")} נכנס תחת ״משותף״.` : "",
-    "הפילוח הפנימי של סעיפים לפי קומות שיוצקו ויח״ד הוא הערכה ומסומן ככזה; תחזית קודמת ושינוי אינם מפולחים.",
+    sharedEstimates.length ? `${sharedEstimates.map((a) => a.descriptionHe.split(" — ")[0]).join(", ")} נכנס תחת ״${shared.labelHe}״.` : "",
+    `הפילוח הפנימי של סעיפים לפי קומות שיוצקו, יח״ד או שווה בין ${num(buildings.length)} הבניינים הוא הערכה ומסומן ככזה; תחזית קודמת ושינוי אינם מפולחים.`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -265,11 +306,11 @@ function sourceForLine(pkg: HadarimPackage, l: HForecastLine, state: V2State): R
 function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): MaterialSection[] {
   const out: MaterialSection[] = [];
   for (const s of wf.sections) {
-    if (s.sectionId === "17") continue;
+    if (isContingency(s.sectionId)) continue;
     const reasons = [
-      isMaterial(s) ? (s.change !== 0 ? "שינוי מהבקרה הקודמת" : "סטייה מעל סף המהותיות") : "",
-      s.budget > (wf.totalBudget * MATERIALITY.budgetSharePct) / 100 ? `מעל ${MATERIALITY.budgetSharePct}% מהתקציב` : "",
-      s.basisPct < MATERIALITY.softBasisPct ? `בסיס ${num(s.basisPct)}% — מתחת ל-${MATERIALITY.softBasisPct}% התחייבות` : "",
+      isMaterial(pkg, s) ? (s.change !== 0 ? "שינוי מהבקרה הקודמת" : "סטייה מעל סף המהותיות") : "",
+      s.budget > (wf.totalBudget * pkg.project.materiality.budgetSharePct) / 100 ? `מעל ${pkg.project.materiality.budgetSharePct}% מהתקציב` : "",
+      s.basisPct < pkg.project.materiality.softBasisPct ? `בסיס ${num(s.basisPct)}% — מתחת ל-${pkg.project.materiality.softBasisPct}% התחייבות` : "",
       state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`) && c.afterHe.startsWith(s.sectionId)) ? "תיקון נתונים בתקופה" : "",
     ].filter(Boolean);
     if (!reasons.length) continue;
@@ -445,9 +486,9 @@ function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, 
   for (const a of state.control.adjustments) {
     const facts = quoteFacts(documentById(pkg, a.documentId));
     if (a.basis !== "quote" || !facts?.validUntil) continue;
-    const exposure = Math.round((a.amount * QUOTE_EXPIRY_EXPOSURE_PCT) / 100);
+    const exposure = Math.round((a.amount * pkg.project.riskPolicy.quoteExpiryExposurePct) / 100);
     const task = state.control.tasks.find((t) => t.findingId && t.findingId === a.findingId);
-    out.push({ topicHe: `תוקף הצעת המחיר — ${a.descriptionHe.split(" — ")[0]}`, sectionHe: label(a.sectionId), descriptionHe: `האומדן מבוסס על הצעה בתוקף עד ${dateHe(facts.validUntil)}; ללא הזמנה עד אז — תמחור מחדש`, exposureHe: `0 – ${nis(exposure)} (הנחה: עד ${QUOTE_EXPIRY_EXPOSURE_PCT}% מהאומדן)`, likelihoodHe: "בינונית", triggerHe: `הזמנה עד ${dateHe(facts.validUntil)}`, ownerHe: personName(pkg, task?.ownerId ?? state.operatorId) });
+    out.push({ topicHe: `תוקף הצעת המחיר — ${a.descriptionHe.split(" — ")[0]}`, sectionHe: label(a.sectionId), descriptionHe: `האומדן מבוסס על הצעה בתוקף עד ${dateHe(facts.validUntil)}; ללא הזמנה עד אז — תמחור מחדש`, exposureHe: `0 – ${nis(exposure)} (הנחה: עד ${pkg.project.riskPolicy.quoteExpiryExposurePct}% מהאומדן)`, likelihoodHe: "בינונית", triggerHe: `הזמנה עד ${dateHe(facts.validUntil)}`, ownerHe: personName(pkg, task?.ownerId ?? state.operatorId) });
   }
   // remainders priced by an appendix that can move again
   for (const s of wf.sections) {
@@ -456,7 +497,7 @@ function derivedRisks(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, 
     const exposedQty = s.lines.filter((l) => l.kind === "uncovered" && (l.basis === "appendix" || l.basis === "estimate") && l.qty).reduce((a, l) => a + (l.qty ?? 0), 0);
     if (!exposedQty) continue;
     const unit = priceAppendixAt(contract, state.control.controlDate)?.unit ?? "טון";
-    out.push({ topicHe: `עדכון נוסף במחיר ${SECTION_SHORT_HE[s.sectionId]}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * 100)} לכל 100 ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
+    out.push({ topicHe: `עדכון נוסף במחיר ${sectionShort(s.sectionId)}`, sectionHe: label(s.sectionId), descriptionHe: `${num(exposedQty)} ${unit} חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר`, exposureHe: `${nis(exposedQty * pkg.project.riskPolicy.priceStep)} לכל ${num(pkg.project.riskPolicy.priceStep)} ₪/${unit}`, likelihoodHe: "בינונית", triggerHe: "נספח מחיר חדש", ownerHe: executionOwner(pkg, state) });
   }
   // issues open for more than two controls with a stated impact
   for (const i of openIssues.filter((x) => x.stale && x.impactHe !== "—")) {
@@ -491,7 +532,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const variance = wf.totalEac - wf.totalBudget;
   const change = wf.totalEac - wf.previousTotalEac;
   const uncovered: UncoveredBreakdown = uncoveredByBasis(wf);
-  const contingency = wf.sections.find((s) => s.sectionId === "17");
+  const contingency = wf.sections.find((s) => isContingency(s.sectionId));
   const contingencyBudget = contingency?.budget ?? 0;
   const contingencyLeft = contingency?.eac ?? 0;
   const physicalPct = pkg.project.physicalProgressPct ?? null;
@@ -519,8 +560,8 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     previousEac: s.previousEac,
     change: s.change,
     basisPct: s.basisPct,
-    highlighted: s.sectionId !== "17" && (isMaterial(s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
-    isContingency: s.sectionId === "17",
+    highlighted: !isContingency(s.sectionId) && (isMaterial(pkg, s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
+    isContingency: isContingency(s.sectionId),
   }));
   const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalBudget, changes: 0, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
 
@@ -537,7 +578,9 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const events = periodEvents(pkg, state, previous.controlDate, controlDate);
 
   // trends
-  const eacSeries = [...Object.entries(EARLIER_CONTROL_TOTALS).map(([d, v]) => ({ labelHe: dateHe(d), value: v })), { labelHe: dateHe(previous.controlDate), value: previous.totalEac }, { labelHe: dateHe(controlDate), value: wf.totalEac }];
+  // every final control before this one (the early ones carry totals only), then the working total
+  const earlier = pkg.forecasts.filter((f) => f.status === "final" && f.controlDate < controlDate).sort((a, b) => a.controlDate.localeCompare(b.controlDate));
+  const eacSeries = [...earlier.map((f) => ({ labelHe: dateHe(f.controlDate), value: f.totalEac })), { labelHe: dateHe(controlDate), value: wf.totalEac }];
   const firstOverrun = eacSeries.filter((p) => p.value > wf.totalBudget).length === 1 && wf.totalEac > wf.totalBudget;
   const priceDriven = state.control.adjustments.some((a) => a.changeType === "price") && !state.control.adjustments.some((a) => a.changeType === "quantity");
   const prevUncovered = uncoveredAt(previous);
@@ -546,7 +589,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     { labelHe: dateHe(controlDate), value: uncovered.total },
   ];
   const uncoveredDeltas = wf.sections
-    .filter((s) => s.sectionId !== "17")
+    .filter((s) => !isContingency(s.sectionId))
     .map((s) => {
       const prevSection = previous.sections!.find((p) => p.sectionId === s.sectionId)!;
       const before = prevSection.lines.filter((l) => l.kind === "uncovered" && l.basis !== "allocation").reduce((a, l) => a + l.amount, 0);
@@ -561,13 +604,13 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
         ["", `בקרה ${dateHe(previous.controlDate)}`, `בקרה ${dateHe(controlDate)}`, "שינוי"],
         ["תחזית כוללת", mil(previous.totalEac), mil(wf.totalEac), `${change >= 0 ? "+" : "−"}${mil(Math.abs(change))}`],
         ...wf.sections
-          .filter((s) => s.change !== 0 && s.sectionId !== "17")
-          .map((s) => [`${SECTION_SHORT_HE[s.sectionId]} — תחזית סעיף`, mil(s.previousEac), mil(s.eac), `${s.change >= 0 ? "+" : "−"}${pct((Math.abs(s.change) / s.previousEac) * 100, 0)}`]),
+          .filter((s) => s.change !== 0 && !isContingency(s.sectionId))
+          .map((s) => [`${sectionShort(s.sectionId)} — תחזית סעיף`, mil(s.previousEac), mil(s.eac), `${s.change >= 0 ? "+" : "−"}${pct((Math.abs(s.change) / s.previousEac) * 100, 0)}`]),
         ...wf.sections
           .filter((s) => state.control.corrections.some((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)))
           .map((s) => {
             const prevRecorded = previous.sections!.find((p) => p.sectionId === s.sectionId)!.recorded;
-            return [`${SECTION_SHORT_HE[s.sectionId]} — נרשם`, mil(prevRecorded), mil(s.recorded), `${s.recorded - prevRecorded >= 0 ? "+" : "−"}${nis(Math.abs(s.recorded - prevRecorded))} (העברה)`];
+            return [`${sectionShort(s.sectionId)} — נרשם`, mil(prevRecorded), mil(s.recorded), `${s.recorded - prevRecorded >= 0 ? "+" : "−"}${nis(Math.abs(s.recorded - prevRecorded))} (העברה)`];
           }),
         ["יתרה לא מכוסה (אומדנים)", mil(prevUncovered), mil(uncovered.total), `${uncovered.total - prevUncovered >= 0 ? "+" : "−"}${mil(Math.abs(uncovered.total - prevUncovered))}`],
         ["נושאים פתוחים", String(previous.openIssues.length), String(openIssues.length), String(openIssues.length - previous.openIssues.length)],
@@ -577,12 +620,12 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   // executive summary
   const uncontracted = uncovered.lines.filter((l) => l.basis === "estimate" && !pkg.sections.find((s) => s.id === l.sectionId)?.contractIds.length);
   const uncoveredGroupsHe = [
-    uncontracted.length ? `${uncontracted.length === 4 ? "ארבע" : num(uncontracted.length)} חבילות שטרם נחתמו` : "",
-    ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${SECTION_SHORT_HE[l.sectionId]}`),
+    uncontracted.length ? `${num(uncontracted.length)} חבילות שטרם נחתמו` : "",
+    ...uncovered.lines.filter((l) => l.basis === "appendix").map((l) => `יתרת ${sectionShort(l.sectionId)}`),
     ...uncovered.lines.filter((l) => l.basis === "quote").map((l) => l.descriptionHe.split(" — ")[0]),
     ...uncovered.lines.filter((l) => l.basis === "estimate" && !uncontracted.includes(l)).map((l) => l.descriptionHe.split(" — ")[0]),
   ].filter(Boolean);
-  const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${corrections.length === 2 ? "שני" : corrections.length} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
+  const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${num(corrections.length)} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
   const keyTable: KeyRow[] = [
     { labelHe: "תקציב מעודכן", valueHe: nis(wf.totalBudget), pctHe: "" },
     { labelHe: "תחזית לגמר", valueHe: nis(wf.totalEac), pctHe: "" },
@@ -620,6 +663,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
 
   return {
     header: {
+      projectNameHe: pkg.project.nameHe,
       projectHe: `${pkg.project.nameHe} — ${pkg.project.buildings.length} בניינים, ${pkg.project.units} יח״ד`,
       companyHe: pkg.project.companyHe,
       cutoffHe: `נתונים עד ${dateHe(controlDate)} (חשבונות שהתקבלו לפני מועד החתך)`,
@@ -634,12 +678,27 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
     status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },
-    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [] },
+    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
-    contingency: { original: contingencyBudget, used: contingencyBudget - contingencyLeft, remaining: contingencyLeft, pendingChangeOrdersHe: "אין פקודות שינוי ממתינות לאישור", claimsHe: "אין דרישות/תביעות קבלנים פתוחות", decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת" },
+    contingency: {
+      original: contingencyBudget,
+      used: contingencyBudget - contingencyLeft,
+      remaining: contingencyLeft,
+      // change orders and claims are not ERP records in this system: they are what the controller recorded, or "none recorded"
+      pendingChangeOrdersHe: notes.filter((n) => n.kind === "change_order").map((n) => n.textHe).join("; ") || "לא נרשמו פקודות שינוי ממתינות לאישור (מערכת המידע אינה מנהלת פקודות שינוי; המבקר לא רשם)",
+      claimsHe: notes.filter((n) => n.kind === "claim").map((n) => n.textHe).join("; ") || "לא נרשמו דרישות או תביעות קבלנים פתוחות (המבקר לא רשם)",
+      decisionHe: decisionsHe[0] ?? "אין החלטה נדרשת",
+    },
     risks,
     issues: { open: openIssues, closed: closedIssues },
+    openFindings: state.control.findings
+      .filter((f) => {
+        const d = state.control.decisions[f.id];
+        return !d || d.status === "open" || !!d.pending;
+      })
+      .map((f) => ({ id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, statusHe: state.control.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע" })),
+    openQuestions: state.control.questions.filter((q) => q.status === "open").map((q) => ({ id: q.id, toHe: personName(pkg, q.toId), channelHe: CHANNEL_HE[q.channel], textHe: q.textHe, askedHe: `${dateHe(q.askedAt)} ${q.askedAt.slice(11, 16)}`, findingId: q.findingId ?? null })),
     verified: state.control.positives.map((p) => ({ titleHe: p.titleHe, textHe: p.textHe })),
     trends: { eacSeries, uncoveredSeries, uncoveredNow: uncovered.total, uncoveredCommentaryHe, commentaryHe: firstOverrun ? `בקרה ראשונה מבין ${eacSeries.length - 1} שבה התחזית חורגת מהתקציב. ${priceDriven ? "החריגה נובעת ממחיר, לא מכמות." : ""}`.trim() : "התחזית בתוך התקציב לאורך כל הבקרות.", comparison },
     appendices: {
@@ -651,7 +710,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
         "יתרה להשלמה — לא מכוסה — עבודות ורכש נדרשים ללא התחייבות; בסיס: הצעה / אומדן. הקצאות פנימיות (הנהלה, בלתי צפוי) מוצגות בנפרד ואינן נספרות כאומדני רכש",
         "תחזית לגמר (EAC) — נרשם + יתרת התחייבות + יתרה לא מכוסה",
         "סטייה — תחזית לגמר פחות תקציב מעודכן; חיובית = חריגה",
-        `סף מהותיות — ${nis(MATERIALITY.absolute)} וגם ${MATERIALITY.pctOfSection}% מהסעיף, או ${nis(MATERIALITY.absoluteAlways)} בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל ${MATERIALITY.budgetSharePct}% מהתקציב או כשהבסיס שלו מתחת ל-${MATERIALITY.softBasisPct}% התחייבות`,
+        `סף מהותיות — ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל ${pkg.project.materiality.budgetSharePct}% מהתקציב או כשהבסיס שלו מתחת ל-${pkg.project.materiality.softBasisPct}% התחייבות`,
       ],
       assumptionsHe: [
         `הצמדה: ${fixedContracts.length} חוזי משנה בסכום קבוע ללא הצמדה למדד${frameworkContracts.length ? `; ${frameworkContracts.map((c) => `הסכם המסגרת ${isolate(c.id)} מתעדכן בנספחי מחיר בכתב (${(c.priceAppendices ?? []).map((a) => a.titleHe).join(", ")})`).join("; ")}` : ""}`,
@@ -674,4 +733,3 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   };
 }
 
-export { CURRENT_CONTROL };

@@ -3,14 +3,59 @@
  * the engine keeps integers). Dates are ISO yyyy-mm-dd.
  */
 export type SectionId = "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18";
-export type BuildingTag = "A" | "B" | "משותף";
+/** A building id of the project (`HProject.buildings[].id`) or the project's shared bucket id. */
+export type BuildingTag = string;
 export type PersonId = "EYAL" | "ROI" | "DANA" | "SARIT";
+
+export interface HBuilding {
+  id: string;
+  floors: number;
+  floorsCast: number;
+  unitsPerFloor: number;
+}
+
+/** A cost bucket of the per-building split that is not a building: the id is what invoices carry, the label is what reports show. */
+export interface HCostBucket {
+  id: string;
+  labelHe: string;
+}
+
+/** Materiality policy of a project (report standard §5): when a section's variance is material and when it gets its own analysis. */
+export interface HMateriality {
+  /** A variance is material when it is at least this (₪) AND at least `pctOfSection` of the section's budget… */
+  absolute: number;
+  pctOfSection: number;
+  /** …or at least this (₪) regardless of the section's size. */
+  absoluteAlways: number;
+  /** A section is analysed anyway when its budget exceeds this share (%) of the project budget… */
+  budgetSharePct: number;
+  /** …or when less than this share (%) of its forecast rests on commitments. */
+  softBasisPct: number;
+}
+
+/** The thresholds of `budgetcontrolreportstandard.md`, used when a project sets none of its own. */
+export const STANDARD_MATERIALITY: HMateriality = { absolute: 100_000, pctOfSection: 3, absoluteAlways: 250_000, budgetSharePct: 10, softBasisPct: 70 };
+
+/** Assumptions behind the report's derived risks (§7); each is stated in the risk row it produces. */
+export interface HRiskPolicy {
+  /** Exposure assumed when an estimate rests on a quote that may expire: up to this share (%) of the estimate. */
+  quoteExpiryExposurePct: number;
+  /** Price step (₪ per unit) used to express the exposure of a remainder priced by an appendix. */
+  priceStep: number;
+}
+
+export const STANDARD_RISK_POLICY: HRiskPolicy = { quoteExpiryExposurePct: 25, priceStep: 100 };
 
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
   companyHe: string;
-  buildings: { id: "A" | "B"; floors: number; floorsCast: number; unitsPerFloor: number }[];
+  buildings: HBuilding[];
+  /** The non-building buckets of the split: shared costs, and parking (sections with split = parking). */
+  buckets: { shared: HCostBucket; parking: HCostBucket };
+  materiality: HMateriality;
+  riskPolicy: HRiskPolicy;
+  checkPolicy: HCheckPolicy;
   units: number;
   grossSqm: number;
   startDate: string;
@@ -24,12 +69,24 @@ export interface HProject {
   schedule?: { contractEnd?: string; expectedEnd?: string; noteHe?: string };
 }
 
+export type ContactChannel = "whatsapp" | "email" | "phone";
+
 export interface HPerson {
   id: PersonId;
   nameHe: string;
   roleHe: string;
   canWriteAllocation: boolean;
+  /** How the full system would reach this person with a question. */
+  channel?: ContactChannel;
 }
+
+/** Data-quality check policy of a project. */
+export interface HCheckPolicy {
+  /** An invoice still in review this many days after it was received is flagged. */
+  reviewAgingDays: number;
+}
+
+export const STANDARD_CHECK_POLICY: HCheckPolicy = { reviewAgingDays: 30 };
 
 export interface HSupplier {
   id: string;
@@ -40,7 +97,11 @@ export interface HSupplier {
 export interface HSection {
   id: SectionId;
   nameHe: string;
+  /** Short name for prose and labels ("03-ברזל"). */
+  shortHe: string;
   budget: number;
+  /** Reporting kind: works are procured; overhead is an internal allocation; contingency is the reserve, reported on its own. */
+  kind: "works" | "overhead" | "contingency";
   /** How the section is split per building in the optional secondary view. */
   split: "by_floors" | "by_units" | "shared" | "parking" | "per_building";
   contractIds: string[];

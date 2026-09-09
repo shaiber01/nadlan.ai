@@ -5,7 +5,10 @@ description: Build, enrich, adapt and deliver the budget-control report per the 
 
 # The living report
 
-The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`. You deliver it, explain it and shape it; you never restate a number that is not in it, and never recompute.
+The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`; every call rebuilds it from the live database, so call it again whenever something changed. You deliver it, explain it and shape it; you never restate a number that is not in it, and you do not redo its arithmetic by hand.
+
+## Before building
+`get_project` → `control.status`. If it is `idle`, the checks have not run on this data: run the control first (`/bakara-control`) or tell the user the report will carry no findings. If findings are still open, the report lists them in 8א as "טרם הוכרע" and open questions next to them — say so when delivering; a report with open findings is not final.
 
 ## Build and deliver
 1. `build_report` (default `format: "summary"`). Give the user:
@@ -17,12 +20,12 @@ The report is produced by `build_report` from the current state per `budgetcontr
 2. The full text: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
 3. To hand over: `build_report` with `format: "docx"`, a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` — the Word file path is in `path`, the stored version id in `versionId`. `list_report_versions` lists what was saved.
 
-If the user disputes a figure, point to the report section and its source; the underlying data is in `get_forecast` / `get_section`. Do not compute.
+If the user disputes a figure, point to the report section and its source and pull the underlying data with `get_forecast` / `get_section` (which recalculate from the database); do not work the number out by hand.
 
 ## Enrich before delivering
 What the data cannot know, the controller records — each note lands in the right section of the report:
-- `add_control_note` kind `risk` (§7: `textHe`, `sectionId`, `exposureHe`, `likelihoodHe`, `triggerHe`, `ownerId`), `event` (§2 material events of the period), `decision` (§1 decisions needed), `assumption` (§11), `note` (an executive-summary bullet).
-- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend).
+- `add_control_note` kind `risk` (§7: `textHe`, `sectionId`, `exposureHe`, `likelihoodHe`, `triggerHe`, `ownerId`), `event` (§2 material events of the period), `decision` (§1 decisions needed), `assumption` (§11), `note` (an executive-summary bullet), `change_order` and `claim` (§6 — the ERP holds neither, so §6 says "none recorded" until you record them; ask the user).
+- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend); also the project's materiality thresholds (§5) and risk assumptions (§7: quote-expiry exposure %, price step), which `get_project` shows and the report states — change them only on the user's instruction, and say that the material sections or risk exposures were re-derived.
 - `open_task` / `set_task_status` — the responsibility table (§8): owner, due date, impact if ignored; close what was done.
 Risks the data itself implies (quote expiry, appendix-priced remainders, stale issues) are already derived; do not duplicate them.
 

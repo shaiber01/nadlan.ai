@@ -1,6 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
-import type { HBoqLine, HContract, HDocument, HForecastVersion, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, QuoteFacts, SectionId } from "../data/types";
+import type { HBoqLine, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, QuoteFacts, SectionId } from "../data/types";
 import type { ErpState } from "./model";
+import { pkg } from "./package";
 import { convertQuantity, lineValue } from "./units";
 
 /**
@@ -25,9 +26,13 @@ export interface HDecisionOption {
   labelHe: string;
 }
 
+/** Control findings (decided card by card) and data-quality findings (the record itself is inconsistent). */
+export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging";
+export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"];
+
 export interface HFinding {
   id: string;
-  kind: "allocation" | "unit" | "price" | "coverage";
+  kind: FindingKind;
   titleHe: string;
   problemHe: string;
   sources: HSource[];
@@ -36,7 +41,7 @@ export interface HFinding {
   impact: { kind: "none" | "amount" | "unknown"; amount: number; labelHe: string };
   decision: { questionHe: string; options: HDecisionOption[]; freeText: boolean };
   sectionId: SectionId;
-  record: { type: "invoice" | "po" | "forecast_line" | "boq_line"; id: string };
+  record: { type: "invoice" | "po" | "forecast_line" | "boq_line" | "contract"; id: string };
   detailsTable?: string[][];
   notesHe?: string[];
 }
@@ -55,29 +60,19 @@ export interface CheckResult {
   checkedHe: string[];
 }
 
-export const SECTION_SHORT_HE: Record<SectionId, string> = {
-  "01": "ארגון אתר",
-  "02": "שלד",
-  "03": "ברזל",
-  "04": "עפר ודיפון",
-  "05": "איטום",
-  "06": "בנייה וטיח",
-  "07": "פיתוח",
-  "08": "אינסטלציה",
-  "09": "חשמל",
-  "10": "מיזוג",
-  "11": "אלומיניום",
-  "12": "ריצוף",
-  "13": "נגרות",
-  "14": "מעליות",
-  "15": "צבע וגבס",
-  "16": "מערכות חניון",
-  "17": "בלתי צפוי",
-  "18": "הנהלה",
-};
+/** Short name of a section from the project's data ("ברזל"); the id when the section is unknown. */
+export function sectionShort(id: SectionId, p: HadarimPackage = pkg): string {
+  return p.sections.find((s) => s.id === id)?.shortHe ?? id;
+}
 
-export function sectionLabel(id: SectionId): string {
-  return `${id}-${SECTION_SHORT_HE[id]}`;
+/** "03-ברזל" */
+export function sectionLabel(id: SectionId, p: HadarimPackage = pkg): string {
+  return `${id}-${sectionShort(id, p)}`;
+}
+
+/** The reserve section (kind = contingency): reported on its own, never counted as an estimate. */
+export function isContingency(id: SectionId, p: HadarimPackage = pkg): boolean {
+  return p.sections.find((s) => s.id === id)?.kind === "contingency";
 }
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
@@ -174,13 +169,13 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
     const log = erp.changeLog.filter((c) => c.recordType === "invoice" && c.recordId === String(inv.id));
     const sources: HSource[] = [
       { kind: "invoice", refId: String(inv.id), labelHe: `חשבון ${inv.id} · ${supplier?.nameHe} · ${nis(inv.amount)} · סעיף: ${sectionLabel(wrong)} · תיאור: ״${inv.descriptionHe}״`, fieldHe: "סעיף תקציבי", valueHe: sectionLabel(wrong), documentId: inv.attachmentId ?? undefined, anchor: "description" },
-      { kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${SECTION_SHORT_HE[wrong]}`, documentId: contract.documentId, anchor: "included" },
+      { kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${sectionShort(wrong)}`, documentId: contract.documentId, anchor: "included" },
     ];
     if (wrongMainContract) {
       const mainSupplier = pkg.suppliers.find((s) => s.id === wrongMainContract.supplierId);
-      sources.push({ kind: "contract", refId: wrongMainContract.id, labelHe: `חוזה ${SECTION_SHORT_HE[wrong]} (${mainSupplier?.nameHe}, חוזה ${wrongMainContract.id}) · ${supplier?.nameHe} אינו קבלן משנה מאושר` });
+      sources.push({ kind: "contract", refId: wrongMainContract.id, labelHe: `חוזה ${sectionShort(wrong)} (${mainSupplier?.nameHe}, חוזה ${wrongMainContract.id}) · ${supplier?.nameHe} אינו קבלן משנה מאושר` });
     }
-    if (history.length) sources.push({ kind: "history", refId: inv.supplierId, labelHe: `${num(history.length)} חשבונות קודמים של ${supplier?.nameHe} — כולם שויכו ל-${historySections.map(sectionLabel).join(", ")}` });
+    if (history.length) sources.push({ kind: "history", refId: inv.supplierId, labelHe: `${num(history.length)} חשבונות קודמים של ${supplier?.nameHe} — כולם שויכו ל-${historySections.map((id) => sectionLabel(id, pkg)).join(", ")}` });
     for (const entry of log) sources.push({ kind: "changelog", refId: entry.id, labelHe: `יומן שינויים: ${entry.field} · ${entry.after} · ${dateHe(entry.at)} ${entry.at.slice(11, 16)} · ${pkg.people.find((p) => p.id === entry.byId)?.nameHe ?? entry.byId}` });
     out.push({
       id: `F-ALLOC-${inv.id}`,
@@ -188,9 +183,9 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       titleHe: `שיוך חשבון ${inv.id} — ${supplier?.nameHe}`,
       problemHe: `חשבון ${inv.id} של ${supplier?.nameHe}, ${nis(inv.amount)}, שויך לסעיף ${sectionLabel(wrong)}. תיאור החשבון והחוזה מצביעים על ${sectionLabel(right)}.`,
       sources,
-      meaningHe: `${SECTION_SHORT_HE[wrong]} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${SECTION_SHORT_HE[right]} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
+      meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם העבודה שייכת ל${SECTION_SHORT_HE[right]}?`, options: [{ id: "yes_target", labelHe: `כן, ל${SECTION_SHORT_HE[right]}` }, { id: "no_stay", labelHe: `לא, נשאר ב${SECTION_SHORT_HE[wrong]}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן, ל${sectionShort(right)}` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
       sectionId: wrong,
       record: { type: "invoice", id: String(inv.id) },
     });
@@ -295,11 +290,11 @@ export function checkPrices(pkg: HadarimPackage, erp: ErpState, draft: HForecast
       out.push({
         id: `F-PRICE-${line.id}`,
         kind: "price",
-        titleHe: `מחיר יתרת ${SECTION_SHORT_HE[line.sectionId]} בתחזית`,
-        problemHe: `יתרת ה${SECTION_SHORT_HE[line.sectionId]} בתחזית (${num(line.qty)} ${unit}) מתומחרת לפי ${num(line.unitPrice)} ₪/${unit}. נספח המחיר העדכני של ${supplier?.nameHe} קובע ${num(current.pricePerTon)} ₪/${unit} מ-${dateHe(current.validFrom)}.`,
+        titleHe: `מחיר יתרת ${sectionShort(line.sectionId)} בתחזית`,
+        problemHe: `יתרת ה${sectionShort(line.sectionId)} בתחזית (${num(line.qty)} ${unit}) מתומחרת לפי ${num(line.unitPrice)} ₪/${unit}. נספח המחיר העדכני של ${supplier?.nameHe} קובע ${num(current.pricePerTon)} ₪/${unit} מ-${dateHe(current.validFrom)}.`,
         sources,
         checkHe,
-        meaningHe: `תחזית סעיף ${SECTION_SHORT_HE[line.sectionId]}: ${nis(recorded)} + ${nis(newCost)} = ${nis(recorded + newCost)} · תוספת ${nis(impact)} · חריגה של ${(((recorded + newCost - section.budget) / section.budget) * 100).toFixed(0)}% מתקציב הסעיף.`,
+        meaningHe: `תחזית סעיף ${sectionShort(line.sectionId)}: ${nis(recorded)} + ${nis(newCost)} = ${nis(recorded + newCost)} · תוספת ${nis(impact)} · חריגה של ${(((recorded + newCost - section.budget) / section.budget) * 100).toFixed(0)}% מתקציב הסעיף.`,
         impact: { kind: "amount", amount: impact, labelHe: `+${nis(impact)}` },
         decision: { questionHe: "המחיר החדש חל על כל היתרה?", options: [{ id: "all", labelHe: `כן, על כל ${num(line.qty)} ה${unit}` }, { id: "partial", labelHe: "לא — חלק במחיר ישן" }], freeText: false },
         sectionId: line.sectionId,
@@ -338,11 +333,11 @@ export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, only
       id: `F-COV-${line.id}`,
       kind: "coverage",
       titleHe: `${item} — לא מכוסה בחוזה`,
-      problemHe: `בכתב הכמויות (גרסה ${pkg.project.boqVersion.number}) מופיע ${item}, ${num(line.qty)} ${line.unit}. ${contract ? `בחוזה ${supplier?.nameHe} העבודה מוחרגת במפורש${exclusion ? ` (סעיף ${exclusion.clause})` : ""}.` : "אין חוזה לסעיף."} ${previousSection ? `בתחזית הקודמת חבילת ה${SECTION_SHORT_HE[line.sectionId]} סומנה ״${previousSection.coverageNoteHe ?? "מכוסה בחוזה"}״ ואין אומדן נפרד.` : "אין אומדן נפרד בתחזית."}`,
+      problemHe: `בכתב הכמויות (גרסה ${pkg.project.boqVersion.number}) מופיע ${item}, ${num(line.qty)} ${line.unit}. ${contract ? `בחוזה ${supplier?.nameHe} העבודה מוחרגת במפורש${exclusion ? ` (סעיף ${exclusion.clause})` : ""}.` : "אין חוזה לסעיף."} ${previousSection ? `בתחזית הקודמת חבילת ה${sectionShort(line.sectionId)} סומנה ״${previousSection.coverageNoteHe ?? "מכוסה בחוזה"}״ ואין אומדן נפרד.` : "אין אומדן נפרד בתחזית."}`,
       sources: [
         { kind: "boq", refId: line.id, labelHe: `כתב כמויות גרסה ${pkg.project.boqVersion.number} · פרק ${line.chapter} · ״${line.descriptionHe} — ${num(line.qty)} ${line.unit}״`, documentId: page?.id, anchor: page ? "line" : undefined },
         ...(contract ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${supplier?.nameHe}${exclusion ? ` · סעיף ${exclusion.clause}: ״${exclusion.textHe}״` : ""}`, documentId: contract.documentId, anchor: "exclusion" }] : []),
-        ...(previous ? [{ kind: "forecast" as const, refId: `${previous.controlDate}-${line.sectionId}`, labelHe: `תחזית ${dateHe(previous.controlDate)} · חבילת ${SECTION_SHORT_HE[line.sectionId]} · ״${previousSection?.coverageNoteHe ?? "מכוסה בחוזה"}״ · אומדן נוסף: 0` }] : []),
+        ...(previous ? [{ kind: "forecast" as const, refId: `${previous.controlDate}-${line.sectionId}`, labelHe: `תחזית ${dateHe(previous.controlDate)} · חבילת ${sectionShort(line.sectionId)} · ״${previousSection?.coverageNoteHe ?? "מכוסה בחוזה"}״ · אומדן נוסף: 0` }] : []),
       ],
       meaningHe: "יש עבודה בכתב הכמויות שאין לה חוזה ואין לה אומדן.",
       impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },
@@ -379,9 +374,205 @@ export function positives(pkg: HadarimPackage, draft: HForecastVersion): HPositi
   return out;
 }
 
-export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות"];
+// ---------------------------------------------------------------------------
+// Data-quality checks — the record itself is inconsistent: duplicates, contract totals, cumulative chains,
+// retention arithmetic, dates, invoices left in review. Each becomes a card; the fix is a referral to the
+// person who keys the ERP, a recorded change order, or "checked, correct".
+// ---------------------------------------------------------------------------
 
-export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string): CheckResult {
-  const findings = [...checkAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft)];
+function supplierNameOf(pkg: HadarimPackage, id: string): string {
+  return pkg.suppliers.find((s) => s.id === id)?.nameHe ?? id;
+}
+
+function invoiceSource(pkg: HadarimPackage, inv: HInvoice): HSource {
+  return { kind: "invoice", refId: String(inv.id), labelHe: `חשבון ${inv.id} · ${supplierNameOf(pkg, inv.supplierId)} · ${nis(inv.amount)} · ${dateHe(inv.date)} · מס׳ מסמך ${inv.supplierDocNo} · ${sectionLabel(inv.sectionId, pkg)}`, documentId: inv.attachmentId ?? undefined };
+}
+
+/** The standard decision of a data-quality card: refer the fix to bookkeeping, or confirm the record is right. */
+function fixDecision(questionHe: string, fixHe: string): HFinding["decision"] {
+  return { questionHe, options: [{ id: "refer", labelHe: fixHe }, { id: "accept", labelHe: "תקין — לא נדרש תיקון" }], freeText: true };
+}
+
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+
+/** Two invoices of the same supplier with the same document number: the later one is flagged. */
+export function checkDuplicates(pkg: HadarimPackage, erp: ErpState, onlyInvoiceId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  const groups = new Map<string, HInvoice[]>();
+  for (const inv of erp.invoices) {
+    const docNo = inv.supplierDocNo.trim();
+    if (!docNo) continue;
+    const key = `${inv.supplierId}|${docNo}`;
+    groups.set(key, [...(groups.get(key) ?? []), inv]);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const [first, ...rest] = [...list].sort((a, b) => a.id - b.id);
+    for (const inv of rest) {
+      if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) continue;
+      const sameAmount = inv.amount === first.amount;
+      out.push({
+        id: `F-DUP-${inv.id}`,
+        kind: "duplicate",
+        titleHe: `חשבון ${inv.id} — מספר מסמך כפול אצל ${supplierNameOf(pkg, inv.supplierId)}`,
+        problemHe: `חשבון ${inv.id} של ${supplierNameOf(pkg, inv.supplierId)} נושא את מספר המסמך ${inv.supplierDocNo} כמו חשבון ${first.id}${sameAmount ? ", ובאותו סכום" : ` (סכומים שונים: ${nis(first.amount)} מול ${nis(inv.amount)})`}.`,
+        sources: [invoiceSource(pkg, first), invoiceSource(pkg, inv)],
+        checkHe: `שני חשבונות של אותו ספק עם אותו מספר מסמך${sameAmount ? " ואותו סכום" : ""}.`,
+        meaningHe: sameAmount ? `אם זה אותו חשבון, ${nis(inv.amount)} נרשמו פעמיים ב-${sectionLabel(inv.sectionId, pkg)} והנרשם גבוה מהאמיתי.` : "ייתכן מספור שגוי אצל הספק או קליטה כפולה עם סכום מתוקן; נדרש בירור.",
+        impact: { kind: "amount", amount: -inv.amount, labelHe: `−${nis(inv.amount)} אם כפול` },
+        decision: fixDecision("האם זה רישום כפול?", "כפול — לבטל בהנהלת חשבונות"),
+        sectionId: inv.sectionId,
+        record: { type: "invoice", id: String(inv.id) },
+        detailsTable: [["שדה", `חשבון ${first.id}`, `חשבון ${inv.id}`], ["מס׳ מסמך", first.supplierDocNo, inv.supplierDocNo], ["תאריך", dateHe(first.date), dateHe(inv.date)], ["סכום", nis(first.amount), nis(inv.amount)], ["סעיף", sectionLabel(first.sectionId, pkg), sectionLabel(inv.sectionId, pkg)], ["סטטוס", first.status, inv.status]],
+      });
+    }
+  }
+  return out;
+}
+
+/** Approved invoices on a fixed-price contract exceed its amount. */
+export function checkContractOverrun(pkg: HadarimPackage, erp: ErpState, onlyContractId?: string): HFinding[] {
+  const out: HFinding[] = [];
+  for (const contract of pkg.contracts) {
+    if (onlyContractId && contract.id !== onlyContractId) continue;
+    if (contract.amount == null || contract.closed) continue;
+    const invoices = erp.invoices.filter((i) => i.contractId === contract.id && i.status !== "בבדיקה").sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    const recorded = invoices.reduce((a, i) => a + i.amount, 0);
+    if (recorded <= contract.amount) continue;
+    const over = recorded - contract.amount;
+    const last = invoices[invoices.length - 1];
+    out.push({
+      id: `F-OVER-${contract.id}`,
+      kind: "contract_overrun",
+      titleHe: `חוזה ${contract.id} — חשבונות מעבר לסכום החוזה`,
+      problemHe: `החשבונות המאושרים בחוזה ${contract.id} (${supplierNameOf(pkg, contract.supplierId)}) מסתכמים ב-${nis(recorded)} — ${nis(over)} מעל סכום החוזה ${nis(contract.amount)}.`,
+      sources: [{ kind: "contract", refId: contract.id, labelHe: `חוזה ${contract.id} · ${supplierNameOf(pkg, contract.supplierId)} · ${nis(contract.amount)}`, documentId: contract.documentId }, ...(last ? [invoiceSource(pkg, last)] : [])],
+      checkHe: `${num(invoices.length)} חשבונות מאושרים; אין פקודת שינוי רשומה בבקרה.`,
+      meaningHe: `הנרשם כבר בתחזית; יתרת ההתחייבות בחוזה היא אפס והתוספת ${nis(over)} היא חריגה מהחוזה שדורשת פקודת שינוי מאושרת או בירור מול הקבלן.`,
+      impact: { kind: "amount", amount: over, labelHe: `+${nis(over)} מעבר לחוזה` },
+      decision: { questionHe: "יש פקודת שינוי מאושרת שמכסה את התוספת?", options: [{ id: "change_order", labelHe: "כן — לרשום פקודת שינוי" }, { id: "refer", labelHe: "לא — לברר מול הקבלן" }, { id: "accept", labelHe: "תקין (חשבון סופי מוסכם)" }], freeText: true },
+      sectionId: contract.sectionId,
+      record: { type: "contract", id: contract.id },
+      detailsTable: [["רכיב", "נתון"], ["סכום החוזה", nis(contract.amount)], ["חשבונות מאושרים", nis(recorded)], ["מעבר לחוזה", nis(over)]],
+    });
+  }
+  return out;
+}
+
+/** Cumulative amounts on a contract's partial invoices must add up and chain from one invoice to the next. */
+export function checkCumulative(pkg: HadarimPackage, erp: ErpState, onlyInvoiceId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  for (const contract of pkg.contracts) {
+    const list = erp.invoices.filter((i) => i.contractId === contract.id && i.cumulativeNow != null).sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    list.forEach((inv, idx) => {
+      if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) return;
+      const prev = idx > 0 ? list[idx - 1] : null;
+      const expectedNow = (inv.cumulativePrev ?? 0) + inv.amount;
+      const arithmetic = expectedNow !== inv.cumulativeNow;
+      const chain = !!prev && prev.cumulativeNow != null && inv.cumulativePrev !== prev.cumulativeNow;
+      if (!arithmetic && !chain) return;
+      out.push({
+        id: `F-CUM-${inv.id}`,
+        kind: "cumulative",
+        titleHe: `חשבון ${inv.id} — המצטבר אינו מתחבר`,
+        problemHe: arithmetic ? `בחשבון ${inv.id} (${supplierNameOf(pkg, inv.supplierId)}, חוזה ${contract.id}): מצטבר קודם ${nis(inv.cumulativePrev ?? 0)} + סכום ${nis(inv.amount)} = ${nis(expectedNow)}, אך נרשם מצטבר נוכחי ${nis(inv.cumulativeNow!)}.` : `בחשבון ${inv.id} נרשם מצטבר קודם ${nis(inv.cumulativePrev ?? 0)}, אך החשבון הקודם בחוזה (${prev!.id}) נסגר במצטבר ${nis(prev!.cumulativeNow!)}.`,
+        sources: [...(prev ? [invoiceSource(pkg, prev)] : []), invoiceSource(pkg, inv)],
+        meaningHe: "מצטבר שגוי מסתיר תשלום כפול או חסר מול החוזה ומשבש את יתרת ההתחייבות; הסכום שנרשם לסעיף אינו משתנה עד לבירור.",
+        impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ עד לבירור" },
+        decision: fixDecision("מה נכון — המצטבר או הסכום?", "לתקן בהנהלת חשבונות"),
+        sectionId: inv.sectionId,
+        record: { type: "invoice", id: String(inv.id) },
+        detailsTable: [["שדה", "נרשם", "מתבקש"], ["מצטבר קודם", nis(inv.cumulativePrev ?? 0), prev?.cumulativeNow != null ? nis(prev.cumulativeNow) : "—"], ["סכום", nis(inv.amount), nis(inv.amount)], ["מצטבר נוכחי", nis(inv.cumulativeNow!), nis(expectedNow)]],
+      });
+    });
+  }
+  return out;
+}
+
+/** Retention arithmetic and the contract's retention rate. */
+export function checkRetention(pkg: HadarimPackage, erp: ErpState, onlyInvoiceId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  for (const inv of erp.invoices) {
+    if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) continue;
+    const expectedRetention = Math.round((inv.amount * inv.retentionPct) / 100);
+    const arithmetic = inv.retentionAmt !== expectedRetention || inv.netPayable !== inv.amount - inv.retentionAmt;
+    const contract = inv.contractId ? pkg.contracts.find((c) => c.id === inv.contractId) : undefined;
+    const rate = !!contract && inv.docType !== "חשבון מקדמה" && inv.retentionPct !== contract.retentionPct;
+    if (!arithmetic && !rate) continue;
+    out.push({
+      id: `F-RET-${inv.id}`,
+      kind: "retention",
+      titleHe: `חשבון ${inv.id} — ${arithmetic ? "חישוב העכבון אינו מתחבר" : "שיעור עכבון שונה מהחוזה"}`,
+      problemHe: arithmetic ? `בחשבון ${inv.id}: ${inv.retentionPct}% מ-${nis(inv.amount)} הם ${nis(expectedRetention)}, אך נרשם עכבון ${nis(inv.retentionAmt)} ולתשלום ${nis(inv.netPayable)} (מתבקש ${nis(inv.amount - expectedRetention)}).` : `בחשבון ${inv.id} נרשם עכבון ${inv.retentionPct}%, אך חוזה ${contract!.id} קובע ${contract!.retentionPct}%.`,
+      sources: [invoiceSource(pkg, inv), ...(contract ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${contract.id} · עכבון ${contract.retentionPct}%`, documentId: contract.documentId }] : [])],
+      meaningHe: "הסכום שנרשם לסעיף אינו משתנה, אך התשלום לספק והעכבון המצטבר שגויים.",
+      impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      decision: fixDecision("לתקן את העכבון?", "לתקן בהנהלת חשבונות"),
+      sectionId: inv.sectionId,
+      record: { type: "invoice", id: String(inv.id) },
+      detailsTable: [["שדה", "נרשם", "מתבקש"], ["שיעור עכבון", `${inv.retentionPct}%`, contract && inv.docType !== "חשבון מקדמה" ? `${contract.retentionPct}%` : `${inv.retentionPct}%`], ["סכום עכבון", nis(inv.retentionAmt), nis(expectedRetention)], ["לתשלום", nis(inv.netPayable), nis(inv.amount - expectedRetention)]],
+    });
+  }
+  return out;
+}
+
+/** Dates: an invoice received before it was issued, or dated in the future. */
+export function checkDates(pkg: HadarimPackage, erp: ErpState, today: string, onlyInvoiceId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  for (const inv of erp.invoices) {
+    if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) continue;
+    const before = inv.dateReceived < inv.date;
+    const future = inv.date > today || inv.dateReceived > today;
+    if (!before && !future) continue;
+    out.push({
+      id: `F-DATE-${inv.id}`,
+      kind: "dates",
+      titleHe: `חשבון ${inv.id} — ${future ? "תאריך עתידי" : "התקבל לפני תאריך המסמך"}`,
+      problemHe: future ? `חשבון ${inv.id} נושא תאריך ${dateHe(inv.date)} (התקבל ${dateHe(inv.dateReceived)}) — אחרי היום (${dateHe(today)}).` : `חשבון ${inv.id} התקבל ב-${dateHe(inv.dateReceived)}, לפני תאריך המסמך ${dateHe(inv.date)}.`,
+      sources: [invoiceSource(pkg, inv)],
+      meaningHe: "תאריך הקבלה קובע לאיזו בקרה החשבון נספר; תאריך שגוי מזיז את הנרשם בין בקרות.",
+      impact: { kind: "none", amount: 0, labelHe: "עשוי להזיז את הנרשם בין בקרות" },
+      decision: fixDecision("איזה תאריך נכון?", "לתקן בהנהלת חשבונות"),
+      sectionId: inv.sectionId,
+      record: { type: "invoice", id: String(inv.id) },
+    });
+  }
+  return out;
+}
+
+/** Invoices left "in review" longer than the project's policy allows are neither recorded nor rejected. */
+export function checkReviewAging(pkg: HadarimPackage, erp: ErpState, controlDate: string, onlyInvoiceId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  const limit = pkg.project.checkPolicy.reviewAgingDays;
+  for (const inv of erp.invoices) {
+    if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) continue;
+    if (inv.status !== "בבדיקה") continue;
+    const days = daysBetween(inv.dateReceived, controlDate);
+    if (days < limit) continue;
+    out.push({
+      id: `F-REVIEW-${inv.id}`,
+      kind: "review_aging",
+      titleHe: `חשבון ${inv.id} — בבדיקה ${num(days)} ימים`,
+      problemHe: `חשבון ${inv.id} של ${supplierNameOf(pkg, inv.supplierId)} (${nis(inv.amount)}) התקבל ב-${dateHe(inv.dateReceived)} ועדיין בבדיקה — ${num(days)} ימים, מעל ${num(limit)} הימים שהפרויקט מאפשר.`,
+      sources: [invoiceSource(pkg, inv)],
+      meaningHe: `כל עוד החשבון בבדיקה הוא אינו נספר בנרשם של ${sectionLabel(inv.sectionId, pkg)}; אם יאושר, הנרשם יעלה ב-${nis(inv.amount)}.`,
+      impact: { kind: "amount", amount: inv.amount, labelHe: `+${nis(inv.amount)} אם יאושר` },
+      decision: { questionHe: "מה מעכב את האישור?", options: [{ id: "refer", labelHe: "לזרז אישור — הנהלת חשבונות" }, { id: "accept", labelHe: "נשאר בבדיקה בכוונה" }], freeText: true },
+      sectionId: inv.sectionId,
+      record: { type: "invoice", id: String(inv.id) },
+    });
+  }
+  return out;
+}
+
+export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, controlDate: string, today: string): HFinding[] {
+  return [...checkDuplicates(pkg, erp), ...checkContractOverrun(pkg, erp), ...checkCumulative(pkg, erp), ...checkRetention(pkg, erp), ...checkDates(pkg, erp, today), ...checkReviewAging(pkg, erp, controlDate)];
+}
+
+export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה"];
+
+/** All checks. `today` bounds the date check (the control date when the run is not "live"). */
+export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {
+  const findings = [...checkAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)];
   return { findings, positives: positives(pkg, draft), checkedHe: CHECK_STEPS_HE };
 }

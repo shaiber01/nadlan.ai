@@ -169,7 +169,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
   if (report.sections.byBuilding) {
     part2.push(h("פילוח משני — לפי בניין", 2));
     part2.push(
-      table(["בניין", "תקציב מאושר", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], [...report.sections.byBuilding.map((b) => [b.building === "A" ? "בניין A" : b.building === "B" ? "בניין B" : b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), signedPct(b.variancePct), `${b.basisPct}%`]), ["סה״כ", nis(report.sections.totals.budget), nis(report.sections.totals.recorded), nis(report.sections.totals.committed), nis(report.sections.totals.remainingCommitment), nis(report.sections.totals.uncovered), nis(report.sections.totals.eac), signed(report.sections.totals.variance), signedPct(report.sections.totals.variancePct), `${report.sections.totals.basisPct}%`]], { textWidth: LANDSCAPE_TEXT_WIDTH, boldLast: true }),
+      table(["בניין", "תקציב מאושר", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], [...report.sections.byBuilding.map((b) => [b.labelHe, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), signedPct(b.variancePct), `${b.basisPct}%`]), ["סה״כ", nis(report.sections.totals.budget), nis(report.sections.totals.recorded), nis(report.sections.totals.committed), nis(report.sections.totals.remainingCommitment), nis(report.sections.totals.uncovered), nis(report.sections.totals.eac), signed(report.sections.totals.variance), signedPct(report.sections.totals.variancePct), `${report.sections.totals.basisPct}%`]], { textWidth: LANDSCAPE_TEXT_WIDTH, boldLast: true }),
     );
     if (report.sections.byBuildingNoteHe) part2.push(p(`הערה: ${report.sections.byBuildingNoteHe}`, { size: 16, color: "5B6478", before: 120 }));
   }
@@ -191,6 +191,10 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     table(["נושא", "סעיף", "תיאור", "חשיפה ₪ (טווח)", "סבירות", "מה יקבע", "אחראי"], report.risks.map((r) => [r.topicHe, r.sectionHe, r.descriptionHe, r.exposureHe, r.likelihoodHe, r.triggerHe, r.ownerHe]), { widths: [1.4, 1, 3, 1.4, 0.8, 1.4, 0.8], size: 16 }),
     h("8. נושאים לטיפול", 1),
     issuesTable(report.issues.open),
+    ...(report.openFindings.length || report.openQuestions.length ? [h("8א. ממצאים שטרם הוכרעו ושאלות פתוחות", 2)] : []),
+    ...(report.openFindings.length ? [table(["ממצא", "סעיף", "ההחלטה הנדרשת", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.statusHe]), { size: 16 })] : []),
+    ...(report.openQuestions.length ? [table(["שאלה", "נשאל", "ערוץ", "נשלח"], report.openQuestions.map((q) => [q.textHe, q.toHe, q.channelHe, q.askedHe]), { size: 16 })] : []),
+    ...(report.openFindings.length || report.openQuestions.length ? [p("הדוח אינו סופי כל עוד יש ממצאים שלא הוכרעו; הסכומים אינם כוללים תיקונים שטרם הוחלטו.", { size: 16, color: "5B6478", before: 120 })] : []),
     h("נסגרו מאז הבקרה הקודמת", 3),
     ...(report.issues.closed.length ? bullets(report.issues.closed.map((x) => `${x.titleHe} — נסגר ${x.closedHe ?? ""} · ${x.ownerHe}`)) : [p("לא נסגרו נושאים מאז הבקרה הקודמת.")]),
     h("9. התאמות מאומתות (״ממצאים חיוביים״)", 1),
@@ -256,7 +260,7 @@ export function buildReportDocument(report: ReportModel, tab: "full" | "ceo"): D
   const sections = (tab === "ceo" ? ceoSections(report) : fullReportSections(report)).map((s) => ({ ...s, footers: { default: footer() } }));
   return new Document({
     creator: "מערכת הבקרה — הדגמה",
-    title: `בקרה תקציבית — הדרים — ${report.header.controlLabelHe}`,
+    title: `בקרה תקציבית — ${report.header.projectNameHe} — ${report.header.controlLabelHe}`,
     description: DEMO_FOOTER,
     styles: {
       default: {

@@ -5,7 +5,7 @@ import type { HPurchaseOrder, PersonId } from "../../data/types";
 import { orderLineHe, pkg, updatePurchaseOrder } from "../../engine/commands";
 import { ORDER_UNITS, lineValue, pricePerUnitHe } from "../../engine/units";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
-import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName } from "./format";
+import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
 export function PurchaseOrdersScreen() {
   const ui = useUi();
@@ -253,7 +253,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
   const [unit, setUnit] = useState(po.unit);
   const [priceUnit, setPriceUnit] = useState(po.priceUnit);
   const [unitPrice, setUnitPrice] = useState(String(po.unitPrice));
-  const [byId, setById] = useState<PersonId>("EYAL");
+  const [byId, setById] = useState<PersonId>(defaultActor("פרויקט"));
   const [error, setError] = useState<string | null>(null);
   const q = Number(qty.replace(/[^\d.]/g, ""));
   const p = Number(unitPrice.replace(/[^\d.]/g, ""));

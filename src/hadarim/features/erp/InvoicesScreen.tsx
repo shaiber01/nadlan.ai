@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HInvoice, PersonId, SectionId } from "../../data/types";
-import { createInvoice, pkg, updateInvoiceSection } from "../../engine/commands";
-import { dateHe, dateTimeHe, monthHe, nis, num, personName, sectionFull, sectionShort, supplierName } from "./format";
+import { createInvoice, pkg, updateInvoiceBuilding, updateInvoiceSection } from "../../engine/commands";
+import { dateHe, dateTimeHe, monthHe, nis, num, personName, sectionFull, sectionShort, supplierName, defaultActor } from "./format";
 
 const STATUS_TONE: Record<HInvoice["status"], string> = { אושר: "ok", בבדיקה: "warn", שולם: "done" };
 
@@ -266,14 +266,22 @@ function InvoiceView({ invoiceId }: { invoiceId: number }) {
 
 function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onDone: (note: string) => void; onCancel: () => void }) {
   const [sectionId, setSectionId] = useState<SectionId>(invoice.sectionId);
-  const [byId, setById] = useState<PersonId>("SARIT");
+  const [building, setBuilding] = useState<string>(invoice.building ?? "");
+  const [byId, setById] = useState<PersonId>(defaultActor("חשבונות"));
   const [error, setError] = useState<string | null>(null);
   const changed = sectionId !== invoice.sectionId;
+  const buildingChanged = (building || null) !== invoice.building;
+  const buildingOptions = [...pkg.project.buildings.map((b) => ({ id: b.id, labelHe: `בניין ${b.id}` })), { id: pkg.project.buckets.shared.id, labelHe: pkg.project.buckets.shared.labelHe }];
 
   const save = () => {
     try {
-      store.dispatch((s) => updateInvoiceSection(s, invoice.id, sectionId, byId));
-      onDone(changed ? `נשמר. סעיף תקציבי: ${sectionShort(invoice.sectionId)} ← ${sectionShort(sectionId)} (${personName(byId)}).` : "נשמר ללא שינוי.");
+      store.dispatch((s) => {
+        let next = updateInvoiceSection(s, invoice.id, sectionId, byId);
+        if (buildingChanged) next = updateInvoiceBuilding(next, invoice.id, building || null, byId);
+        return next;
+      });
+      const notes = [changed ? `סעיף תקציבי: ${sectionShort(invoice.sectionId)} ← ${sectionShort(sectionId)}` : "", buildingChanged ? `בניין: ${invoice.building ?? "—"} ← ${building || "—"}` : ""].filter(Boolean);
+      onDone(notes.length ? `נשמר. ${notes.join(" · ")} (${personName(byId)}).` : "נשמר ללא שינוי.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -312,6 +320,17 @@ function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onD
             ))}
           </select>
         </label>
+        <label className="erp-field erp-field-editable">
+          <span>בניין</span>
+          <select value={building} onChange={(e) => setBuilding(e.target.value)} data-testid="erp-invoice-building">
+            <option value="">לא צוין</option>
+            {buildingOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.labelHe}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="erp-field">
           <span>מבצע השינוי</span>
           <select value={byId} onChange={(e) => setById(e.target.value as PersonId)} data-testid="erp-invoice-by">
@@ -341,12 +360,10 @@ function InvoiceEditForm({ invoice, onDone, onCancel }: { invoice: HInvoice; onD
   );
 }
 
-const SCRIPT_DEFAULTS = { supplierId: "SUP-NTB", supplierDocNo: "2026-087", date: "2026-08-31", amount: 180000, descriptionHe: "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳", sectionId: "02" as SectionId, contractId: "07-01", attachmentId: "inv_1147_ntb_partial7" };
-
 function NewInvoiceForm() {
   const state = useV2State();
   const [form, setForm] = useState({ supplierId: "", supplierDocNo: "", date: "", amount: "", descriptionHe: "", sectionId: "" as SectionId | "", contractId: "", attachmentId: "" });
-  const [byId, setById] = useState<PersonId>("SARIT");
+  const [byId, setById] = useState<PersonId>(defaultActor("חשבונות"));
   const [error, setError] = useState<string | null>(null);
   const invoiceDocs = pkg.documents.filter((d) => d.kind === "invoice");
   const contractsForSupplier = pkg.contracts.filter((c) => !form.supplierId || c.supplierId === form.supplierId);
@@ -379,8 +396,17 @@ function NewInvoiceForm() {
           חשבון ספק חדש <span className="erp-muted">(מספר יוקצה בשמירה — הבא בתור: {nextId})</span>
         </h2>
         <div className="erp-actions">
-          <Button size="sm" variant="ghost" onClick={() => setForm({ ...SCRIPT_DEFAULTS, amount: String(SCRIPT_DEFAULTS.amount) })} data-testid="erp-new-prefill">
-            מילוי לדוגמה
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              // like an ERP's "copy last invoice": the newest invoice of the ERP as a starting point
+              const last = [...state.erp.invoices].sort((a, b) => (a.enteredAt === b.enteredAt ? b.id - a.id : b.enteredAt.localeCompare(a.enteredAt)))[0];
+              if (last) setForm({ supplierId: last.supplierId, supplierDocNo: "", date: state.clock.slice(0, 10), amount: "", descriptionHe: last.descriptionHe, sectionId: last.sectionId, contractId: last.contractId ?? "", attachmentId: "" });
+            }}
+            data-testid="erp-new-copy-last"
+          >
+            העתק מהחשבון האחרון
           </Button>
           <Button size="sm" variant="ghost" onClick={() => openInvoice(null)}>
             ‹ חזרה לרשימה
@@ -402,7 +428,7 @@ function NewInvoiceForm() {
           </label>
           <label className="erp-field">
             <span>מס׳ חשבון ספק *</span>
-            <input value={form.supplierDocNo} onChange={set("supplierDocNo")} placeholder="2026-087" data-testid="erp-new-docno" />
+            <input value={form.supplierDocNo} onChange={set("supplierDocNo")} placeholder="מס׳ החשבון אצל הספק" data-testid="erp-new-docno" />
           </label>
           <label className="erp-field">
             <span>תאריך *</span>
@@ -410,11 +436,11 @@ function NewInvoiceForm() {
           </label>
           <label className="erp-field">
             <span>סכום לפני מע״מ *</span>
-            <input inputMode="numeric" value={form.amount} onChange={set("amount")} placeholder="180,000" data-testid="erp-new-amount" />
+            <input inputMode="numeric" value={form.amount} onChange={set("amount")} placeholder="סכום לפני מע״מ" data-testid="erp-new-amount" />
           </label>
           <label className="erp-field erp-field-wide">
             <span>תיאור *</span>
-            <input value={form.descriptionHe} onChange={set("descriptionHe")} placeholder="עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳" data-testid="erp-new-desc" />
+            <input value={form.descriptionHe} onChange={set("descriptionHe")} placeholder="תיאור העבודה או האספקה" data-testid="erp-new-desc" />
           </label>
           <label className="erp-field erp-field-editable">
             <span>סעיף תקציבי *</span>

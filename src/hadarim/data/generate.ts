@@ -1,4 +1,5 @@
 import { documentFacts, hadarimDocuments } from "./documents";
+import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
 import { addMonths, createRng, forceSum, lastDayOfMonth, monthKey } from "./rng";
 import type {
   BuildingTag,
@@ -43,6 +44,10 @@ export const project: HProject = {
     { id: "A", floors: 8, floorsCast: 7, unitsPerFloor: 3 },
     { id: "B", floors: 8, floorsCast: 5, unitsPerFloor: 3 },
   ],
+  buckets: { shared: { id: "משותף", labelHe: "משותף" }, parking: { id: "חניון", labelHe: "חניון" } },
+  materiality: { ...STANDARD_MATERIALITY },
+  riskPolicy: { ...STANDARD_RISK_POLICY },
+  checkPolicy: { ...STANDARD_CHECK_POLICY },
   units: 48,
   grossSqm: 8700,
   startDate: "2025-11-02",
@@ -56,10 +61,10 @@ export const project: HProject = {
 };
 
 export const people: HPerson[] = [
-  { id: "EYAL", nameHe: "אייל", roleHe: "מנהל פרויקט", canWriteAllocation: true },
-  { id: "ROI", nameHe: "רועי", roleHe: "סמנכ״ל ביצוע", canWriteAllocation: true },
-  { id: "DANA", nameHe: "דנה", roleHe: "מנכ״לית", canWriteAllocation: false },
-  { id: "SARIT", nameHe: "שרית", roleHe: "הנהלת חשבונות", canWriteAllocation: true },
+  { id: "EYAL", nameHe: "אייל", roleHe: "מנהל פרויקט", canWriteAllocation: true, channel: "whatsapp" },
+  { id: "ROI", nameHe: "רועי", roleHe: "סמנכ״ל ביצוע", canWriteAllocation: true, channel: "whatsapp" },
+  { id: "DANA", nameHe: "דנה", roleHe: "מנכ״לית", canWriteAllocation: false, channel: "email" },
+  { id: "SARIT", nameHe: "שרית", roleHe: "הנהלת חשבונות", canWriteAllocation: true, channel: "email" },
 ];
 
 interface SiteVendor {
@@ -111,25 +116,28 @@ export const suppliers: HSupplier[] = [
 ];
 
 export const sections: HSection[] = [
-  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", budget: 1_900_000, split: "shared", contractIds: [] },
-  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", budget: 12_600_000, split: "by_floors", contractIds: ["02-01"] },
-  { id: "03", nameHe: "אספקת ברזל זיון", budget: 3_000_000, split: "by_floors", contractIds: ["03-F"] },
-  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", budget: 2_900_000, split: "shared", contractIds: ["04-01"] },
-  { id: "05", nameHe: "איטום", budget: 900_000, split: "per_building", contractIds: ["05-01"] },
-  { id: "06", nameHe: "בנייה (בלוקים) וטיח", budget: 2_400_000, split: "by_floors", contractIds: ["06-01"] },
-  { id: "07", nameHe: "פיתוח ותשתיות חוץ", budget: 3_200_000, split: "shared", contractIds: ["07-01"] },
-  { id: "08", nameHe: "אינסטלציה ותברואה", budget: 2_300_000, split: "by_units", contractIds: ["08-01"] },
-  { id: "09", nameHe: "חשמל ותקשורת", budget: 2_600_000, split: "by_units", contractIds: ["09-01"] },
-  { id: "10", nameHe: "מיזוג אוויר", budget: 1_500_000, split: "by_units", contractIds: ["10-01"] },
-  { id: "11", nameHe: "אלומיניום", budget: 2_000_000, split: "by_units", contractIds: ["11-01"] },
-  { id: "12", nameHe: "ריצוף וחיפוי", budget: 2_700_000, split: "by_units", contractIds: [] },
-  { id: "13", nameHe: "נגרות, מסגרות ומעקות", budget: 1_700_000, split: "by_units", contractIds: [] },
-  { id: "14", nameHe: "מעליות", budget: 1_300_000, split: "per_building", contractIds: ["14-01"] },
-  { id: "15", nameHe: "צבע וגבס", budget: 1_100_000, split: "by_units", contractIds: [] },
-  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", budget: 1_200_000, split: "parking", contractIds: [] },
-  { id: "17", nameHe: "בלתי צפוי", budget: 1_500_000, split: "shared", contractIds: [] },
-  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", budget: 3_200_000, split: "shared", contractIds: [] },
+  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", shortHe: "ארגון אתר", budget: 1_900_000, kind: "works", split: "shared", contractIds: [] },
+  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", shortHe: "שלד", budget: 12_600_000, kind: "works", split: "by_floors", contractIds: ["02-01"] },
+  { id: "03", nameHe: "אספקת ברזל זיון", shortHe: "ברזל", budget: 3_000_000, kind: "works", split: "by_floors", contractIds: ["03-F"] },
+  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", shortHe: "עפר ודיפון", budget: 2_900_000, kind: "works", split: "shared", contractIds: ["04-01"] },
+  { id: "05", nameHe: "איטום", shortHe: "איטום", budget: 900_000, kind: "works", split: "per_building", contractIds: ["05-01"] },
+  { id: "06", nameHe: "בנייה (בלוקים) וטיח", shortHe: "בנייה וטיח", budget: 2_400_000, kind: "works", split: "by_floors", contractIds: ["06-01"] },
+  { id: "07", nameHe: "פיתוח ותשתיות חוץ", shortHe: "פיתוח", budget: 3_200_000, kind: "works", split: "shared", contractIds: ["07-01"] },
+  { id: "08", nameHe: "אינסטלציה ותברואה", shortHe: "אינסטלציה", budget: 2_300_000, kind: "works", split: "by_units", contractIds: ["08-01"] },
+  { id: "09", nameHe: "חשמל ותקשורת", shortHe: "חשמל", budget: 2_600_000, kind: "works", split: "by_units", contractIds: ["09-01"] },
+  { id: "10", nameHe: "מיזוג אוויר", shortHe: "מיזוג", budget: 1_500_000, kind: "works", split: "by_units", contractIds: ["10-01"] },
+  { id: "11", nameHe: "אלומיניום", shortHe: "אלומיניום", budget: 2_000_000, kind: "works", split: "by_units", contractIds: ["11-01"] },
+  { id: "12", nameHe: "ריצוף וחיפוי", shortHe: "ריצוף", budget: 2_700_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "13", nameHe: "נגרות, מסגרות ומעקות", shortHe: "נגרות", budget: 1_700_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "14", nameHe: "מעליות", shortHe: "מעליות", budget: 1_300_000, kind: "works", split: "per_building", contractIds: ["14-01"] },
+  { id: "15", nameHe: "צבע וגבס", shortHe: "צבע וגבס", budget: 1_100_000, kind: "works", split: "by_units", contractIds: [] },
+  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", shortHe: "מערכות חניון", budget: 1_200_000, kind: "works", split: "parking", contractIds: [] },
+  { id: "17", nameHe: "בלתי צפוי", shortHe: "בלתי צפוי", budget: 1_500_000, kind: "contingency", split: "shared", contractIds: [] },
+  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", shortHe: "הנהלה", budget: 3_200_000, kind: "overhead", split: "shared", contractIds: [] },
 ];
+
+/** The seed's "script invoice": present in variant A (re-allocated live in the demo), removed in variant B (keyed in live). */
+export const SCRIPT_INVOICE_ID = 1147;
 
 export const contracts: HContract[] = [
   {
@@ -260,7 +268,7 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
       descriptionHe: trap ? "מנוף צריח — שלד בניין A" : vendor.descHe(MONTH_HE[month]),
       amount: adjusted[i],
       retentionPct: 0,
-      building: "משותף",
+      building: project.buckets.shared.id,
       status: statusFor(date),
       quantity: 1,
       unit: "חודש",
@@ -310,9 +318,9 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
     const month = MONTHS[i];
     const [y, m] = month.split("-").map(Number);
     const date = i === 5 ? "2026-04-20" : lastDayOfMonth(y, m);
-    seeds.push({ supplierId: "SUP-DORON", supplierDocNo: `עפר-${i + 1}`, docType: "חשבון חלקי", partialNo: i + 1, period: month, date, sectionId: "04", contractId: "04-01", poId: null, descriptionHe: `חשבון חלקי מס׳ ${i + 1} — עבודות עפר, דיפון וכלונסאות`, amount, retentionPct: 5, building: "משותף", status: "שולם", cumulative: true });
+    seeds.push({ supplierId: "SUP-DORON", supplierDocNo: `עפר-${i + 1}`, docType: "חשבון חלקי", partialNo: i + 1, period: month, date, sectionId: "04", contractId: "04-01", poId: null, descriptionHe: `חשבון חלקי מס׳ ${i + 1} — עבודות עפר, דיפון וכלונסאות`, amount, retentionPct: 5, building: project.buckets.shared.id, status: "שולם", cumulative: true });
   });
-  seeds.push({ supplierId: "SUP-DORON", supplierDocNo: "עפר-סופי", docType: "חשבון סופי", partialNo: 7, period: "2026-04", date: "2026-04-30", sectionId: "04", contractId: "04-01", poId: null, descriptionHe: "חשבון סופי — עבודות עפר, דיפון וכלונסאות (סגירת חוזה 04-01)", amount: 100_000, retentionPct: 5, building: "משותף", status: "שולם", cumulative: true });
+  seeds.push({ supplierId: "SUP-DORON", supplierDocNo: "עפר-סופי", docType: "חשבון סופי", partialNo: 7, period: "2026-04", date: "2026-04-30", sectionId: "04", contractId: "04-01", poId: null, descriptionHe: "חשבון סופי — עבודות עפר, דיפון וכלונסאות (סגירת חוזה 04-01)", amount: 100_000, retentionPct: 5, building: project.buckets.shared.id, status: "שולם", cumulative: true });
 
   // Section 05: waterproofing partials
   [["2026-06-30", 90_000], ["2026-07-31", 110_000], ["2026-08-28", 120_000]].forEach(([date, amount], i) => {
@@ -342,7 +350,7 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
       descriptionHe: last ? "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳" : `חשבון חלקי מס׳ ${i + 1} — עבודות פיתוח ותשתיות חוץ`,
       amount,
       retentionPct: 5,
-      building: last ? null : "משותף",
+      building: last ? null : project.buckets.shared.id,
       status: statusFor(date),
       cumulative: true,
       attachmentId: last ? "inv_1147_ntb_partial7" : undefined,
@@ -360,13 +368,13 @@ function buildInvoiceSeeds(): InvoiceSeed[] {
   });
 
   // Section 14: elevator advance
-  seeds.push({ supplierId: "SUP-OREN", supplierDocNo: "מק-1", docType: "חשבון מקדמה", partialNo: null, period: "2026-03", date: "2026-03-15", sectionId: "14", contractId: "14-01", poId: null, descriptionHe: "חשבון מקדמה 20% — 4 מעליות (טרם נמדדה כמות בכתב הכמויות)", amount: 260_000, retentionPct: 0, building: "משותף", status: "שולם" });
+  seeds.push({ supplierId: "SUP-OREN", supplierDocNo: "מק-1", docType: "חשבון מקדמה", partialNo: null, period: "2026-03", date: "2026-03-15", sectionId: "14", contractId: "14-01", poId: null, descriptionHe: "חשבון מקדמה 20% — 4 מעליות (טרם נמדדה כמות בכתב הכמויות)", amount: 260_000, retentionPct: 0, building: project.buckets.shared.id, status: "שולם" });
 
   // Section 18: monthly allocations
   MONTHS.forEach((month, i) => {
     const [y, m] = month.split("-").map(Number);
     const date = lastDayOfMonth(y, m);
-    seeds.push({ supplierId: "INTERNAL", supplierDocNo: `הקצאה-${i + 1}`, docType: "חשבונית מס", partialNo: null, period: month, date, sectionId: "18", contractId: null, poId: null, descriptionHe: `הקצאת הנהלה, פיקוח, ביטוח ואגרות — ${MONTH_HE[month]}`, amount: 210_000, retentionPct: 0, building: "משותף", status: statusFor(date) });
+    seeds.push({ supplierId: "INTERNAL", supplierDocNo: `הקצאה-${i + 1}`, docType: "חשבונית מס", partialNo: null, period: month, date, sectionId: "18", contractId: null, poId: null, descriptionHe: `הקצאת הנהלה, פיקוח, ביטוח ואגרות — ${MONTH_HE[month]}`, amount: 210_000, retentionPct: 0, building: project.buckets.shared.id, status: statusFor(date) });
   });
 
   // One more invoice in review (lab)

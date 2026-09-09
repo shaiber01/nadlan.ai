@@ -9,7 +9,7 @@ The database is shared by the web app (local and hosted) and this agent. `reset_
 
 1. Ask: "לאפס את נתוני <project>? זה מוחק את הבקרה הנוכחית, את ההיסטוריה של היום ואת גרסאות הדוח השמורות." Wait for a yes.
 2. `reset_project` with `variant`: `A` (default — the seed as is, ready for the demo's live re-allocation) or `B` (the seed's last invoice removed so it can be keyed in live with `create_invoice`).
-3. Confirm from the result: `invoices`, `controlStatus: idle`, `headline` (for הדרים: 216 invoices in A, 215 in B, forecast 48,000,000 ₪).
+3. Confirm from the result: `invoices` (one fewer in variant B), `controlStatus: idle`, and `headline` (forecast equal to the budget when the seed carries no overrun).
 
 To redo only the control while keeping today's data edits: `run_control` with `force: true` (also confirm first — it discards the control's decisions).
 

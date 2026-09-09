@@ -18,7 +18,7 @@ function table(head: string[], rows: (string | number)[][]): string {
 export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "full"): string {
   const h = report.header;
   const out: string[] = [];
-  const title = tab === "ceo" ? "בקרה תקציבית — הדרים · גרסה למנכ״לית" : "דוח בקרה תקציבית — הדרים";
+  const title = tab === "ceo" ? `בקרה תקציבית — ${report.header.projectNameHe} · גרסה למנכ״לית` : `דוח בקרה תקציבית — ${report.header.projectNameHe}`;
   out.push(`# ${title}`, "", `${h.controlLabelHe} · ${h.cutoffHe} · ${h.previousControlHe}`, `${h.budgetVersionHe} · ${h.boqVersionHe}`, `${h.preparedByHe} · ${h.approvedByHe} · ${h.distributionHe}`, h.sourcesHe, "");
 
   const exec = report.executive;
@@ -46,7 +46,7 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
   rows.push(["", "**סה״כ**", nis(t.budget), "—", nis(t.updatedBudget), nis(t.recorded), nis(t.committed), nis(t.remainingCommitment), nis(t.uncovered), nis(t.eac), signed(t.variance), pct(t.variancePct), nis(t.previousEac), signed(t.change), `${t.basisPct}%`]);
   out.push(table(["#", "סעיף", "תקציב מאושר", "שינויים", "תקציב מעודכן", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "תחזית קודמת", "שינוי", "בסיס"], rows), report.sections.materialityHe, "");
   if (report.sections.byBuilding) {
-    out.push("### פילוח משני — לפי בניין", "", table(["בניין", "תקציב", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], report.sections.byBuilding.map((b) => [b.building, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), pct(b.variancePct), `${b.basisPct}%`])));
+    out.push("### פילוח משני — לפי בניין", "", table(["בניין", "תקציב", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס"], report.sections.byBuilding.map((b) => [b.labelHe, nis(b.budget), nis(b.recorded), nis(b.committed), nis(b.remainingCommitment), nis(b.uncovered), nis(b.eac), signed(b.variance), pct(b.variancePct), `${b.basisPct}%`])));
     if (report.sections.byBuildingNoteHe) out.push(`הערה: ${report.sections.byBuildingNoteHe}`, "");
   }
 
@@ -64,6 +64,12 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
   out.push("## 7. סיכונים והזדמנויות (מחוץ לתחזית)", "", table(["נושא", "סעיף", "תיאור", "חשיפה ₪", "סבירות", "מה יקבע", "אחראי"], report.risks.map((r) => [r.topicHe, r.sectionHe, r.descriptionHe, r.exposureHe, r.likelihoodHe, r.triggerHe, r.ownerHe])));
 
   out.push("## 8. נושאים לטיפול", "", table(["#", "נושא", "סעיף", "אחראי", "יעד", "נפתח בבקרה", "סטטוס", "השפעה אם לא יטופל"], report.issues.open.map((i, idx) => [idx + 1, i.stale ? `${i.titleHe} (פתוח יותר משתי בקרות)` : i.titleHe, i.sectionHe, i.ownerHe, i.dueHe, i.openedHe, i.statusHe, i.impactHe])));
+  if (report.openFindings.length || report.openQuestions.length) {
+    out.push("### 8א. ממצאים שטרם הוכרעו ושאלות פתוחות", "");
+    if (report.openFindings.length) out.push(table(["ממצא", "סעיף", "ההחלטה הנדרשת", "סטטוס"], report.openFindings.map((f) => [f.titleHe, f.sectionHe, f.questionHe, f.statusHe])));
+    if (report.openQuestions.length) out.push(table(["שאלה", "נשאל", "ערוץ", "נשלח"], report.openQuestions.map((q) => [q.textHe, q.toHe, q.channelHe, q.askedHe])));
+    out.push("הדוח אינו סופי כל עוד יש ממצאים שלא הוכרעו; הסכומים אינם כוללים תיקונים שטרם הוחלטו.", "");
+  }
   if (report.issues.closed.length) out.push("נסגרו מאז הבקרה הקודמת:", "", ...report.issues.closed.map((i) => `- ${i.titleHe} — נסגר ${i.closedHe ?? ""} · ${i.ownerHe}`), "");
 
   out.push("## 9. התאמות מאומתות", "", ...(report.verified.length ? report.verified.map((v) => `- **${v.titleHe}** — ${v.textHe}`) : ["- אין."]), "");

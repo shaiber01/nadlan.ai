@@ -36,9 +36,11 @@ describe("tool registry", () => {
     const adjust = z.object(tools.find((t) => t.name === "add_forecast_adjustment")!.input);
     expect(() => adjust.parse({ sectionId: "12", changeType: "bogus", descriptionHe: "x", basis: "quote", basisHe: "x", sourceRef: "x", amount: 1 })).toThrow();
     expect(adjust.parse({ sectionId: "12", changeType: "scope", descriptionHe: "x", basis: "quote", basisHe: "x", sourceRef: "x", amount: 1 }).projectId).toBe("HADARIM");
+    // building tags are any string at the schema level (validated at runtime against the project's buildings) and null clears
     const building = z.object(tools.find((t) => t.name === "set_invoice_building")!.input);
-    expect(() => building.parse({ invoiceId: 1, building: "C", byId: "EYAL" })).toThrow();
+    expect(building.parse({ invoiceId: 1, building: "C", byId: "EYAL" }).building).toBe("C");
     expect(building.parse({ invoiceId: 1, building: null, byId: "EYAL" }).building).toBeNull();
+    expect(() => building.parse({ invoiceId: 1, byId: "EYAL" })).toThrow();
   });
 });
 
