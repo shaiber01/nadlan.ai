@@ -30,7 +30,7 @@ export interface ReportSource {
   documentId?: string;
   anchor?: string;
   recordRef?: { type: "invoice" | "po" | "contract"; id: string };
-  erp?: { screen: "invoices" | "purchase_orders" | "contracts" | "budget" | "change_log"; sectionId?: SectionId; contractId?: string; invoiceId?: number; poId?: number };
+  erp?: { screen: "invoices" | "purchase_orders" | "contracts" | "boq" | "budget" | "change_log"; sectionId?: SectionId; contractId?: string; invoiceId?: number; poId?: number; boqLineId?: string };
 }
 
 export interface ReportHeader {
@@ -486,6 +486,7 @@ function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection,
     sources: [
       ...(contract ? [{ labelHe: `חוזה ${contract.id}${excluded[0]?.coverageRef ? ` — סעיף ${excluded[0].coverageRef}` : ""}`, documentId: contract.documentId, anchor: "exclusion", recordRef: { type: "contract" as const, id: contract.id } }] : []),
       ...excluded.map((l) => boqPageFor(pkg, l.id)).filter(Boolean).map((d) => ({ labelHe: d!.titleHe, documentId: d!.id, anchor: "line" })),
+      ...excluded.map((l) => ({ labelHe: `שורה ${l.id} בכתב הכמויות במערכת המידע`, erp: { screen: "boq" as const, sectionId: s.sectionId, boqLineId: l.id } })),
       ...adjustments.filter((a) => a.documentId).map((a) => ({ labelHe: a.basisHe.split(",")[0], documentId: a.documentId!, anchor: "line" })),
       ...state.control.corrections.filter((c) => c.recordType === "invoice" && c.afterHe.startsWith(s.sectionId)).map((c) => ({ labelHe: `חשבון ${c.recordId}`, recordRef: { type: "invoice" as const, id: c.recordId } })),
       { labelHe: "חשבונות הסעיף במערכת המידע", erp: { screen: "invoices", sectionId: s.sectionId } },
@@ -541,6 +542,7 @@ function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State
     sources: [
       ...contracts.map((c) => ({ labelHe: `חוזה ${c.id}`, recordRef: { type: "contract" as const, id: c.id } })),
       ...(openPos.length ? [{ labelHe: "הזמנות הסעיף", erp: { screen: "purchase_orders" as const, sectionId: s.sectionId } }] : []),
+      ...(boq.length ? [{ labelHe: "כתב הכמויות של הסעיף במערכת המידע", erp: { screen: "boq" as const, sectionId: s.sectionId } }] : []),
       { labelHe: invoices.length ? "חשבונות הסעיף במערכת המידע" : "הסעיף במערכת המידע", erp: { screen: invoices.length ? ("invoices" as const) : ("budget" as const), sectionId: s.sectionId } },
     ],
   };

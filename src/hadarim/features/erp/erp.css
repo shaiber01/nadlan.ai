@@ -523,3 +523,15 @@ table.erp-table.compact td {
 .erp-field-row input { flex: 1; min-width: 0; }
 .erp-doc-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .erp-doc-links li { display: flex; gap: 8px; align-items: center; }
+
+/* Bill of quantities: chapter group rows, and the line a deep link addresses */
+table.erp-table tr.erp-group-row td {
+  background: var(--erp-head);
+  font-weight: 700;
+  color: var(--erp-blue);
+  border-top: 1px solid var(--erp-line);
+}
+table.erp-table tr.erp-row-target td {
+  background: #fff6d6;
+  box-shadow: inset 3px 0 0 #d99a00;
+}

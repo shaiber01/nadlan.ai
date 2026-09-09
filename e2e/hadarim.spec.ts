@@ -72,6 +72,41 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     expect(errors).toEqual([]);
   });
 
+  test("the bill of quantities lists the lines by chapter with their coverage, and a line can be addressed by URL", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await fresh(page);
+    await page.getByTestId("erp-nav-boq").click();
+    await expect(page.getByTestId("erp-boq")).toBeVisible();
+    await expect(page.getByTestId("erp-boq-version")).toContainText("גרסה 4");
+    const rows = page.locator("[data-testid^='erp-boq-row-']");
+    expect(await rows.count()).toBeGreaterThan(50);
+    // the chapters of the seed are grouped; the excluded drainage line is flagged with its exclusion clause
+    await expect(page.getByTestId("erp-boq-chapter-57")).toContainText("מוחרג 1");
+    const excluded = page.getByTestId("erp-boq-row-57.03.040");
+    await expect(excluded).toHaveAttribute("data-coverage", "excluded");
+    await expect(excluded).toContainText("3.4");
+    await expect(excluded).toContainText("07 — פיתוח");
+    // filters narrow the list; the count follows
+    await page.getByTestId("erp-boq-coverage").selectOption("excluded");
+    await expect(page.getByTestId("erp-boq-count")).toHaveText("1 שורות");
+    await page.getByTestId("erp-boq-coverage").selectOption("");
+    await page.getByTestId("erp-boq-section").selectOption("03");
+    await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("03 — ברזל");
+    await shot(page, "08-boq");
+    // a covered line links to its contract
+    await page.getByTestId("erp-boq-section").selectOption("05");
+    await page.locator("[data-testid^='erp-boq-contract-']").first().click();
+    await expect(page.getByTestId("erp-contract-view")).toHaveAttribute("data-contract-id", "05-01");
+    // the report's source link addresses a line by URL: the screen opens on it, highlighted, and its document page is one click away
+    await page.goto("/hadarim.html?screen=boq&line=57.03.040");
+    await expect(page.getByTestId("erp-boq")).toBeVisible();
+    await expect(page.getByTestId("erp-boq-row-57.03.040")).toHaveClass(/erp-row-target/);
+    await page.getByTestId("erp-boq-document-57.03.040").click();
+    await expect(page.getByTestId("document-view")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test("the report tab is a read-only viewer: draft before any control, live ERP data, exports, no controls", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));

@@ -179,6 +179,8 @@ describe("Hadarim v2 engine — the report", () => {
     expect(r.material.find((m) => m.sectionId === "02")!.reasonHe).toContain("10%");
     expect(r.material.find((m) => m.sectionId === "12")!.reasonHe).toContain("בסיס 0%");
     expect(r.material.find((m) => m.sectionId === "03")!.sources.some((s) => s.documentId === "appendix_A2_steel_price_2026_07_15")).toBe(true);
+    // the coverage-gap section links the excluded BOQ line to the ERP's bill of quantities, addressed by line
+    expect(r.material.find((m) => m.sectionId === "07")!.sources.some((s) => s.erp?.screen === "boq" && s.erp.boqLineId === "57.03.040" && s.erp.sectionId === "07")).toBe(true);
     expect(r.material.every((m) => m.sources.length > 0 && m.table.length > 5 && m.paragraphsHe.length >= 3)).toBe(true);
     expect(r.verified[0].titleHe).toContain("איטום");
     expect(r.issues.open.map((i) => i.titleHe)).toEqual(expect.arrayContaining([expect.stringContaining("ביוב"), expect.stringContaining("ניקוז"), expect.stringContaining("2291")]));

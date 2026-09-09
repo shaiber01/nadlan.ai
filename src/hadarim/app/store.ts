@@ -18,11 +18,11 @@ import type { Scene1Variant, V2State } from "../engine/model";
  * the generator data in the browser only.
  */
 
-export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" | "change_log" | "documents";
+export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "boq" | "budget" | "change_log" | "documents";
 export type DbStatus = "offline" | "loading" | "online" | "error";
 
 export interface UiState {
-  erp: { screen: ErpScreen; invoiceId: number | null; editing: boolean; creating: boolean; poId: number | null; contractId: string | null; sectionId: string | null };
+  erp: { screen: ErpScreen; invoiceId: number | null; editing: boolean; creating: boolean; poId: number | null; contractId: string | null; sectionId: string | null; boqLineId: string | null };
   /** Document and record viewers, shared by the ERP and the report. */
   viewer: { documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null };
   report: { tab: "full" | "ceo"; versionId: number | null };
@@ -35,7 +35,7 @@ const UI_KEY = "hadarim-v2-ui";
 const OFFLINE_KEY = "hadarim-offline";
 
 export const defaultUi: UiState = {
-  erp: { screen: "invoices", invoiceId: null, editing: false, creating: false, poId: null, contractId: null, sectionId: null },
+  erp: { screen: "invoices", invoiceId: null, editing: false, creating: false, poId: null, contractId: null, sectionId: null, boqLineId: null },
   viewer: { documentId: null, documentAnchor: null, recordRef: null },
   report: { tab: "full", versionId: null },
   presenter: { showPresenterBar: true, scene1Variant: "A" },
@@ -76,8 +76,8 @@ export function isOfflineRequested(): boolean {
 
 /**
  * The ERP is opened by its own page (`hadarim.html`); a record can be addressed by URL — `?screen=invoices&invoice=1147`,
- * `?screen=purchase_orders&po=2291`, `?screen=contracts&contract=03-F`, `?screen=budget` — which is how the report's
- * source links open an ERP record in a new tab. The report has its own page (`report.html`).
+ * `?screen=purchase_orders&po=2291`, `?screen=contracts&contract=03-F`, `?screen=boq&line=57.03.040`, `?screen=budget` —
+ * which is how the report's source links open an ERP record in a new tab. The report has its own page (`report.html`).
  */
 export function erpRecordUrl(patch: Partial<UiState["erp"]>): string {
   const params = new URLSearchParams();
@@ -86,6 +86,7 @@ export function erpRecordUrl(patch: Partial<UiState["erp"]>): string {
   if (patch.poId != null) params.set("po", String(patch.poId));
   if (patch.contractId) params.set("contract", patch.contractId);
   if (patch.sectionId) params.set("section", patch.sectionId);
+  if (patch.boqLineId) params.set("line", patch.boqLineId);
   const q = params.toString();
   return `hadarim.html${q ? `?${q}` : ""}`;
 }
@@ -97,11 +98,12 @@ function requestedErp(): Partial<UiState["erp"]> | null {
     const q = new URLSearchParams(location.search);
     const screen = q.get("screen") as ErpScreen | null;
     const out: Partial<UiState["erp"]> = {};
-    if (screen && ["invoices", "purchase_orders", "contracts", "budget", "change_log", "documents"].includes(screen)) out.screen = screen;
+    if (screen && ["invoices", "purchase_orders", "contracts", "boq", "budget", "change_log", "documents"].includes(screen)) out.screen = screen;
     if (q.get("invoice")) out.invoiceId = Number(q.get("invoice"));
     if (q.get("po")) out.poId = Number(q.get("po"));
     if (q.get("contract")) out.contractId = q.get("contract");
     if (q.get("section")) out.sectionId = q.get("section");
+    if (q.get("line")) out.boqLineId = q.get("line");
     return Object.keys(out).length ? { ...out, editing: false, creating: false } : null;
   } catch {
     return null;

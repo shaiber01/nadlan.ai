@@ -1,5 +1,6 @@
 import { store, useUi, useV2State, type ErpScreen } from "../../app/store";
 import { pkg } from "../../engine/commands";
+import { BoqScreen } from "./BoqScreen";
 import { BudgetScreen } from "./BudgetScreen";
 import { ChangeLogScreen } from "./ChangeLogScreen";
 import { ContractsScreen } from "./ContractsScreen";
@@ -13,6 +14,7 @@ const NAV: { id: ErpScreen; labelHe: string; icon: string }[] = [
   { id: "invoices", labelHe: "חשבונות ספקים", icon: "🧾" },
   { id: "purchase_orders", labelHe: "הזמנות רכש", icon: "📦" },
   { id: "contracts", labelHe: "חוזי קבלני משנה", icon: "📑" },
+  { id: "boq", labelHe: "כתב כמויות", icon: "📐" },
   { id: "budget", labelHe: "תקציב ותחזית", icon: "📊" },
   { id: "change_log", labelHe: "יומן שינויים", icon: "🕘" },
   { id: "documents", labelHe: "תיקיית מסמכים", icon: "📁" },
@@ -54,7 +56,7 @@ export function ErpApp() {
         <nav className="erp-nav" aria-label="מודולים">
           <div className="erp-nav-title">מודולים</div>
           {NAV.map((n) => (
-            <button key={n.id} type="button" className={`erp-nav-item${n.id === screen ? " active" : ""}`} onClick={() => store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: n.id, editing: false, creating: false, invoiceId: null, poId: null, contractId: null } }))} data-testid={`erp-nav-${n.id}`}>
+            <button key={n.id} type="button" className={`erp-nav-item${n.id === screen ? " active" : ""}`} onClick={() => store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: n.id, editing: false, creating: false, invoiceId: null, poId: null, contractId: null, boqLineId: null } }))} data-testid={`erp-nav-${n.id}`}>
               <span className="erp-nav-icon" aria-hidden="true">
                 {n.icon}
               </span>
@@ -66,6 +68,7 @@ export function ErpApp() {
           {screen === "invoices" && <InvoicesScreen />}
           {screen === "purchase_orders" && <PurchaseOrdersScreen />}
           {screen === "contracts" && <ContractsScreen />}
+          {screen === "boq" && <BoqScreen />}
           {screen === "budget" && <BudgetScreen />}
           {screen === "change_log" && <ChangeLogScreen />}
           {screen === "documents" && <DocumentsScreen />}

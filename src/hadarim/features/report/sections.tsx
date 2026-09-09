@@ -34,7 +34,7 @@ export function SourceLink({ source }: { source: ReportSource }) {
     if (source.recordRef) return store.openRecord(source.recordRef);
     if (source.erp) {
       const erp = source.erp;
-      return window.open(erpRecordUrl({ screen: erp.screen, invoiceId: erp.invoiceId ?? null, poId: erp.poId ?? null, contractId: erp.contractId ?? null, sectionId: erp.sectionId ?? null }), "_blank", "noopener");
+      return window.open(erpRecordUrl({ screen: erp.screen, invoiceId: erp.invoiceId ?? null, poId: erp.poId ?? null, contractId: erp.contractId ?? null, sectionId: erp.sectionId ?? null, boqLineId: erp.boqLineId ?? null }), "_blank", "noopener");
     }
   };
   return (
