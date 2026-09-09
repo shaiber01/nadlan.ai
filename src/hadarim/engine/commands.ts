@@ -1,7 +1,7 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
-import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFixPatch } from "./checks";
+import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFix, type InvoiceFixPatch, type OrderFixPatch } from "./checks";
 import { workingForecast } from "./forecast";
 import { lineValue, pricePerUnitHe } from "./units";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
@@ -330,19 +330,49 @@ function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null,
   const reason = freeTextHe ? ` (${freeTextHe})` : "";
   const text = freeTextHe ?? "";
   const operator = pkg.people.find((p) => p.id === state.operatorId)!;
-  // the proposed fix, approved: written to the ERP, logged, recorded as a data correction (4ב), verified on re-read
-  if (f.proposedFix && f.record.type === "invoice" && (choiceId === "apply" || (!choiceId && /לתקן|לאשר|תקן|אשר/.test(text)))) {
-    const before = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
-    let s = updateInvoiceFields(state, before.id, f.proposedFix.patch, state.operatorId, `אישור ממצא ${f.id}`);
-    const after = s.erp.invoices.find((i) => i.id === before.id)!;
+  // the proposed fix, approved: written to the ERP through the same guarded commands the checks use, logged,
+  // recorded as a data correction (4ב), verified on re-read. A section move needs the allocation permission.
+  const wantsFix = !!f.proposedFix && (f.record.type === "invoice" || f.record.type === "po") && (choiceId === "apply" || (!choiceId && /לתקן|לאשר|תקן|אשר/.test(text)));
+  if (wantsFix && f.proposedFix!.patch.sectionId && !operator.canWriteAllocation) {
+    state = push(state, { role: "system", kind: "text", textHe: `⟳ בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, אינו מורשה לשינוי שיוך. מעביר לביצוע.` });
+  } else if (wantsFix) {
+    const fix = f.proposedFix!;
+    const note = `אישור ממצא ${f.id}`;
+    let s = state;
+    let crossSectionHe = "ללא השפעה בין סעיפים";
+    let recordHe: string;
+    let verifiedHe: string;
+    let recordRef: { type: "invoice" | "po"; id: string };
+    if (f.record.type === "invoice") {
+      const before = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
+      const { sectionId, ...fields } = fix.patch as InvoiceFix;
+      if (sectionId) s = updateInvoiceSection(s, before.id, sectionId, s.operatorId, note);
+      if (Object.keys(fields).length) s = updateInvoiceFields(s, before.id, fields, s.operatorId, note);
+      const after = s.erp.invoices.find((i) => i.id === before.id)!;
+      if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} −${nis(after.amount)} · ${sectionLabel(after.sectionId)} +${nis(after.amount)}`;
+      else if (f.kind === "review_aging") crossSectionHe = `${sectionLabel(after.sectionId)} +${nis(after.amount)} (אושר)`;
+      recordHe = `חשבון ${after.id}`;
+      verifiedHe = `חשבון ${after.id} נקרא מחדש — ${fix.labelHe}`;
+      recordRef = { type: "invoice", id: String(after.id) };
+    } else {
+      const before = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
+      const { sectionId, ...line } = fix.patch as OrderFixPatch;
+      if (sectionId) s = updatePurchaseOrderSection(s, before.id, sectionId, s.operatorId, note);
+      if (Object.keys(line).length) s = updatePurchaseOrder(s, before.id, line, s.operatorId, note);
+      const after = s.erp.purchaseOrders.find((p) => p.id === before.id)!;
+      if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} → ${sectionLabel(after.sectionId)} · התחייבות ${nis(after.amount)}`;
+      recordHe = `הזמנה ${after.id}`;
+      verifiedHe = `הזמנה ${after.id} נקראה מחדש — ${sectionLabel(after.sectionId)} · ${orderLineHe(after)} = ${nis(after.amount)}`;
+      recordRef = { type: "po", id: String(after.id) };
+    }
     const changed = s.erp.changeLog.slice(state.erp.changeLog.length);
     const beforeHe = changed.map((c) => `${c.field}: ${c.before}`).join(" · ");
     const afterHe = changed.map((c) => `${c.field}: ${c.after}`).join(" · ");
     const [s2, corrId] = nextId(s, "COR");
-    s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: "invoice", recordId: String(before.id), fieldHe: changed.map((c) => c.field).join(" / ") || f.proposedFix.labelHe, beforeHe, afterHe, approvedById: s2.operatorId, crossSectionHe: f.kind === "review_aging" ? `${sectionLabel(after.sectionId)} +${nis(after.amount)} (אושר)` : "ללא השפעה בין סעיפים", findingId: f.id, at: s2.clock, status: "applied" }] } };
-    s = setDecision(s, f.id, { status: "handled", routeId: "update", resolvedAt: s.clock, auditHe: `תוקן: ${f.proposedFix.labelHe} · אישר: ${operator.nameHe}${reason}`, verifiedHe: `חשבון ${after.id} נקרא מחדש — ${f.proposedFix.labelHe}` });
-    s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: חשבון ${after.id} נקרא מחדש — ${f.proposedFix.labelHe}`, done: true }] });
-    s = audit(s, s.operatorId, `חשבון ${after.id}: ${afterHe} (ממצא ${f.id})${reason}`, { type: "invoice", id: String(after.id) });
+    s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: recordRef.type, recordId: recordRef.id, fieldHe: changed.map((c) => c.field).join(" / ") || fix.labelHe, beforeHe, afterHe, approvedById: s2.operatorId, crossSectionHe, findingId: f.id, at: s2.clock, status: "applied" }] } };
+    s = setDecision(s, f.id, { status: "handled", routeId: "update", resolvedAt: s.clock, auditHe: `תוקן: ${fix.labelHe} · אישר: ${operator.nameHe}${reason}`, verifiedHe });
+    s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: ${verifiedHe}`, done: true }] });
+    s = audit(s, s.operatorId, `${recordHe}: ${afterHe || fix.labelHe} (ממצא ${f.id})${reason}`, recordRef);
     return nextFinding(tick(s));
   }
   if (choiceId === "accept" || (!choiceId && /תקין|לא כפול|בסדר|נכון/.test(text))) {

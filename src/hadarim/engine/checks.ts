@@ -40,6 +40,12 @@ export interface InvolvedPerson {
 
 /** Invoice fields a data-quality card may correct on approval. */
 export type InvoiceFixPatch = Partial<Pick<HInvoice, "amount" | "supplierDocNo" | "retentionPct" | "retentionAmt" | "netPayable" | "cumulativePrev" | "cumulativeNow" | "date" | "dateReceived" | "status" | "approvedBy">>;
+/** What a card may propose on an invoice: its fields, and/or a move to another budget section. */
+export type InvoiceFix = InvoiceFixPatch & { sectionId?: SectionId };
+/** What a card may propose on a purchase order: its line (the amount stays locked), and/or a move to another budget section. */
+export type OrderFixPatch = { sectionId?: SectionId; qty?: number; unit?: string; priceUnit?: string; unitPrice?: number };
+export const INVOICE_FIX_KEYS = ["sectionId", "amount", "supplierDocNo", "retentionPct", "retentionAmt", "netPayable", "cumulativePrev", "cumulativeNow", "date", "dateReceived", "status", "approvedBy"] as const;
+export const ORDER_FIX_KEYS = ["sectionId", "qty", "unit", "priceUnit", "unitPrice"] as const;
 
 export interface HFinding {
   id: string;
@@ -50,8 +56,8 @@ export interface HFinding {
   referToId?: PersonId;
   /** People who entered, approved or changed the record (from the record and the change log). */
   people?: InvolvedPerson[];
-  /** When the right values are determined by other stored data: the fix the card offers to apply. */
-  proposedFix?: { labelHe: string; patch: InvoiceFixPatch };
+  /** When the right values are determined by other stored data: the fix the card offers to apply (an invoice's fields or section; an order's line or section). */
+  proposedFix?: { labelHe: string; patch: InvoiceFix | OrderFixPatch };
   titleHe: string;
   problemHe: string;
   sources: HSource[];

@@ -968,7 +968,7 @@ define({
 define({
   name: "raise_finding",
   title: "Raise a finding from reading",
-  description: "Record a finding you found by reading — an invoice whose description does not match its contract's scope or lands on an exclusion, a quote that does not price the BOQ line it is attached to, facts that differ from the document — with the record, the sources you read, your reasoning and the decision needed. It joins the control like a check's finding: a card, the same decisions (apply when you give a proposedFix on an invoice, refer, accept), the report's open-findings table. Requires a running control.",
+  description: "Record a finding you found by reading — an invoice whose description does not match its contract's scope or lands on an exclusion, a quote that does not price the BOQ line it is attached to, facts that differ from the document — with the record, the sources you read, your reasoning and the decision needed. It joins the control like a check's finding: a card, the same decisions (apply when you give a proposedFix — a section move for an invoice or an order, the invoice's fields as the document states them, the order's line under the amount lock; refer; accept), the report's open-findings table. On approval the fix runs through the same guarded, logged and verified path as a check's fix. Requires a running control.",
   kind: "write",
   input: {
     projectId,
@@ -983,7 +983,29 @@ define({
     questionHe: z.string().optional(),
     options: z.array(z.object({ id: z.enum(["apply", "refer", "accept"]), labelHe: z.string() })).optional(),
     impact: z.object({ kind: z.enum(["none", "amount", "unknown"]), amount: z.number().optional(), labelHe: z.string().optional() }).optional(),
-    proposedFix: z.object({ labelHe: z.string(), patch: z.object({ retentionPct: z.number().optional(), retentionAmt: z.number().optional(), netPayable: z.number().optional(), cumulativePrev: z.number().nullable().optional(), cumulativeNow: z.number().nullable().optional(), date: isoDate.optional(), dateReceived: isoDate.optional(), status: z.enum(["אושר", "בבדיקה", "שולם"]).optional() }) }).optional(),
+    proposedFix: z
+      .object({
+        labelHe: z.string().describe("the fix in words, e.g. שיוך ל-07-פיתוח"),
+        patch: z.object({
+          sectionId: sectionId.optional().describe("move the invoice or the order to this budget section (the section its contract or description points to)"),
+          amount: z.number().optional(),
+          supplierDocNo: z.string().optional(),
+          retentionPct: z.number().optional(),
+          retentionAmt: z.number().optional(),
+          netPayable: z.number().optional(),
+          cumulativePrev: z.number().nullable().optional(),
+          cumulativeNow: z.number().nullable().optional(),
+          date: isoDate.optional(),
+          dateReceived: isoDate.optional(),
+          status: z.enum(["אושר", "בבדיקה", "שולם"]).optional(),
+          qty: z.number().optional().describe("order only"),
+          unit: z.string().optional().describe("order only"),
+          priceUnit: z.string().optional().describe("order only"),
+          unitPrice: z.number().optional().describe("order only — the amount stays locked"),
+        }),
+      })
+      .optional()
+      .describe("a fix that names stored data — the contract's section, the document's values, the quote's line — offered as 'apply' and written only after the user approves; refused when raised if it is not applicable"),
     referToId: personId.optional().describe("who a 'refer' decision goes to (default: bookkeeping)"),
   },
   run: async (a) => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
-import { DATA_QUALITY_KINDS, checkDocuments, runChecks } from "../src/hadarim/engine/checks";
+import { DATA_QUALITY_KINDS, checkDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
 import { tools } from "../src/hadarim/tools";
 
@@ -36,7 +36,7 @@ describe("checkDocuments", () => {
     expect(f.impact).toMatchObject({ kind: "amount", amount: 5_000 });
     expect(f.sources.some((s) => s.kind === "document" && s.documentId === doc.id)).toBe(true);
     expect(f.decision.options.map((o) => o.id)).toEqual(["apply", "refer", "accept"]);
-    const patch = f.proposedFix!.patch;
+    const patch = f.proposedFix!.patch as InvoiceFixPatch; // a document card patches the invoice's fields
     expect(patch.amount).toBe(inv.amount + 5_000);
     expect(patch.retentionAmt).toBe(Math.round(((inv.amount + 5_000) * inv.retentionPct) / 100));
     expect(patch.netPayable).toBe(inv.amount + 5_000 - patch.retentionAmt!);

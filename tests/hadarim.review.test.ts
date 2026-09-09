@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { checkUnits, findQuoteFor, quoteFacts } from "../src/hadarim/engine/checks";
-import { decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection } from "../src/hadarim/engine/commands";
+import { z } from "zod";
+import { checkUnits, findQuoteFor, quoteFacts, sectionShort } from "../src/hadarim/engine/checks";
+import { decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { raiseFinding, recordReviewPass } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -47,6 +48,51 @@ describe("findings raised by the agent", () => {
     const applied = decide(s2, f2.id, "apply");
     expect(applied.erp.invoices.find((i) => i.id === 1147)!.retentionAmt).toBe(0);
     expect(applied.control.corrections.at(-1)).toMatchObject({ recordId: "1147", findingId: f2.id });
+  });
+
+  it("a review finding may carry a section move or an order fix that names stored data; 'apply' runs the guarded path, 'refer' when the operator may not", () => {
+    const state = running();
+    const other = (id: string) => pkg.sections.find((s) => s.id !== id)!.id;
+    const base = { titleHe: "א", problemHe: "ב", meaningHe: "ג" };
+    // an invoice the agent read as belonging to its contract's section
+    const inv = state.erp.invoices.find((i) => i.contractId && i.id !== 1147 && pkg.contracts.find((c) => c.id === i.contractId)!.sectionId === i.sectionId)!;
+    const wrong = other(inv.sectionId);
+    const [s1, f1] = raiseFinding(updateInvoiceSection(state, inv.id, wrong, "SARIT"), { ...base, sectionId: wrong, record: { type: "invoice", id: String(inv.id) }, proposedFix: { labelHe: `שיוך ל${sectionShort(inv.sectionId)}`, patch: { sectionId: inv.sectionId } } });
+    expect(f1.decision.options[0].id).toBe("apply");
+    const applied = decide(s1, f1.id, "apply");
+    expect(applied.erp.invoices.find((i) => i.id === inv.id)!.sectionId).toBe(inv.sectionId);
+    expect(applied.control.decisions[f1.id]).toMatchObject({ status: "handled", routeId: "update" });
+    expect(applied.control.decisions[f1.id].verifiedHe).toContain(`חשבון ${inv.id}`);
+    expect(applied.control.corrections.at(-1)).toMatchObject({ recordType: "invoice", recordId: String(inv.id), fieldHe: "סעיף תקציבי", findingId: f1.id, status: "applied" });
+    expect(applied.control.corrections.at(-1)!.crossSectionHe).toContain(`${inv.sectionId}-`);
+    expect(applied.erp.changeLog.at(-1)).toMatchObject({ recordType: "invoice", recordId: String(inv.id), field: "סעיף תקציבי", byId: s1.operatorId });
+    expect(applied.audit.at(-1)!.textHe).toContain(`חשבון ${inv.id}`);
+    // an operator without the allocation permission gets a task instead of a write
+    const noPermission = decide({ ...s1, operatorId: pkg.people.find((p) => !p.canWriteAllocation)!.id }, f1.id, "apply");
+    expect(noPermission.erp.invoices.find((i) => i.id === inv.id)!.sectionId).toBe(wrong);
+    expect(noPermission.control.decisions[f1.id].status).toBe("pending_execution");
+    expect(noPermission.control.tasks.at(-1)).toMatchObject({ findingId: f1.id, status: "pending_execution" });
+    // an order: its section back to the contract's, on approval
+    const po = state.erp.purchaseOrders.find((p) => p.status === "פתוחה")!;
+    const poWrong = other(po.sectionId);
+    const [s2, f2] = raiseFinding(updatePurchaseOrderSection(state, po.id, poWrong, "EYAL"), { ...base, sectionId: poWrong, record: { type: "po", id: String(po.id) }, proposedFix: { labelHe: `שיוך ל${sectionShort(po.sectionId)}`, patch: { sectionId: po.sectionId } } });
+    const applied2 = decide(s2, f2.id, "apply");
+    const fixed = applied2.erp.purchaseOrders.find((p) => p.id === po.id)!;
+    expect([fixed.sectionId, fixed.qty, fixed.amount]).toEqual([po.sectionId, po.qty, po.amount]);
+    expect(applied2.control.corrections.at(-1)).toMatchObject({ recordType: "po", recordId: String(po.id), fieldHe: "סעיף תקציבי", findingId: f2.id, status: "applied" });
+    expect(applied2.control.decisions[f2.id].verifiedHe).toContain(`הזמנה ${po.id}`);
+    // an order's line under the amount lock: the same order stated per ton in kilograms keeps 57,600 — here a no-op restatement in its own units
+    const [s3, f3] = raiseFinding(state, { ...base, sectionId: po.sectionId, record: { type: "po", id: String(po.id) }, proposedFix: { labelHe: "אותה שורה", patch: { qty: po.qty, unit: po.unit, priceUnit: po.priceUnit, unitPrice: po.unitPrice } } });
+    expect(decide(s3, f3.id, "apply").erp.purchaseOrders.find((p) => p.id === po.id)!.amount).toBe(po.amount);
+    // refused when raised: a line that breaks the amount, a field the record does not have, a section that does not exist, an empty fix
+    expect(() => raiseFinding(state, { ...base, sectionId: po.sectionId, record: { type: "po", id: String(po.id) }, proposedFix: { labelHe: "x", patch: { qty: po.qty * 2 } } })).toThrow(/סכום ההזמנה/);
+    expect(() => raiseFinding(state, { ...base, sectionId: "02", record: { type: "invoice", id: "1147" }, proposedFix: { labelHe: "x", patch: { qty: 1 } as never } })).toThrow(/שדות/);
+    expect(() => raiseFinding(state, { ...base, sectionId: "02", record: { type: "invoice", id: "1147" }, proposedFix: { labelHe: "x", patch: { sectionId: "99" as never } } })).toThrow(/סעיף 99/);
+    expect(() => raiseFinding(state, { ...base, sectionId: "02", record: { type: "invoice", id: "1147" }, proposedFix: { labelHe: "x", patch: {} } })).toThrow(/ריק/);
+    expect(() => raiseFinding(state, { ...base, sectionId: "02", record: { type: "invoice", id: "1147" }, proposedFix: { labelHe: "x", patch: { retentionPct: 5, retentionAmt: 1, netPayable: 1 } } })).toThrow(/העכבון/);
+    // the tool schema accepts the section move and the order line
+    const schema = z.object(tools.find((t) => t.name === "raise_finding")!.input);
+    expect(schema.parse({ titleHe: "א", problemHe: "ב", meaningHe: "ג", sectionId: "03", record: { type: "po", id: "2291" }, proposedFix: { labelHe: "x", patch: { sectionId: "03", qty: 12, unit: "טון" } } }).proposedFix!.patch.sectionId).toBe("03");
   });
 
   it("raising a finding after all cards were handled reopens the control; invalid records and people are rejected", () => {

@@ -1,6 +1,7 @@
 import type { BuildingTag, ContactChannel, PersonId, SectionId } from "../data/types";
-import { peopleInvolved, sectionLabel, type HFinding, type HSource, type InvoiceFixPatch } from "./checks";
-import { orderLineHe, pkg, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "./commands";
+import { INVOICE_FIX_KEYS, ORDER_FIX_KEYS, peopleInvolved, sectionLabel, type HFinding, type HSource, type InvoiceFix, type OrderFixPatch } from "./checks";
+import { orderLineHe, pkg, updateInvoiceFields, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "./commands";
+import { lineValue } from "./units";
 import type { ChangeType, ControlNote, ControlQuestion, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
 
 /**
@@ -221,8 +222,35 @@ export interface RaisedFindingInput {
   questionHe?: string;
   options?: { id: "apply" | "refer" | "accept"; labelHe: string }[];
   impact?: { kind: "none" | "amount" | "unknown"; amount?: number; labelHe?: string };
-  proposedFix?: { labelHe: string; patch: InvoiceFixPatch };
+  /** A fix that names stored data — a section, the document's values, the quote's line — applied only on approval. */
+  proposedFix?: { labelHe: string; patch: InvoiceFix | OrderFixPatch };
   referToId?: string;
+}
+
+/** A raised fix must be applicable when raised: known fields only, an existing section, the order's amount kept, the invoice's arithmetic kept. */
+function validateProposedFix(state: V2State, record: HFinding["record"], fix: { labelHe: string; patch: InvoiceFix | OrderFixPatch }): void {
+  if (record.type !== "invoice" && record.type !== "po") throw new Error("תיקון מוצע אפשרי רק על חשבון או הזמנה");
+  if (!fix.labelHe.trim()) throw new Error("לתיקון המוצע נדרש תיאור");
+  const patch = fix.patch as Record<string, unknown>;
+  const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
+  if (!keys.length) throw new Error("התיקון המוצע ריק");
+  const allowed: readonly string[] = record.type === "invoice" ? INVOICE_FIX_KEYS : ORDER_FIX_KEYS;
+  const bad = keys.filter((k) => !allowed.includes(k));
+  if (bad.length) throw new Error(`שדות שאינם ניתנים לתיקון ב${record.type === "invoice" ? "חשבון" : "הזמנה"}: ${bad.join(", ")} (אפשריים: ${allowed.join(", ")})`);
+  if (patch.sectionId != null) requireSection(String(patch.sectionId));
+  if (record.type === "po") {
+    const po = state.erp.purchaseOrders.find((p) => String(p.id) === record.id)!;
+    const { sectionId: _s, ...line } = fix.patch as OrderFixPatch;
+    if (Object.keys(line).length) {
+      const value = lineValue({ ...po, ...line });
+      if (value.incommensurable) throw new Error(`התיקון המוצע: יחידת הכמות ויחידת המחיר אינן ניתנות להמרה זו לזו`);
+      if (value.amount !== po.amount) throw new Error(`התיקון המוצע אינו שומר על סכום ההזמנה ${nis(po.amount)}: הכמות המומרת ליחידת המחיר × מחיר היחידה נותנים ${nis(value.amount!)}`);
+    }
+  } else {
+    const { sectionId: _s, ...fields } = fix.patch as InvoiceFix;
+    // dry run of the field arithmetic (retention, cumulative) so the card cannot fail on approval
+    if (Object.keys(fields).length) updateInvoiceFields(state, Number(record.id), fields, state.operatorId);
+  }
 }
 
 /** Record a finding the agent raised; it enters the session like a check's finding and takes the same decisions. */
@@ -238,7 +266,7 @@ export function raiseFinding(state: V2State, input: RaisedFindingInput): [V2Stat
     : r.type === "document" ? pkg.documents.some((d) => d.id === r.id)
     : pkg.forecasts.some((f) => f.sections?.some((s) => s.lines.some((l) => l.id === r.id)));
   if (!exists) throw new Error(`הרשומה ${r.type} ${r.id} לא נמצאה`);
-  if (input.proposedFix && r.type !== "invoice") throw new Error("תיקון מוצע אפשרי רק על חשבון");
+  if (input.proposedFix) validateProposedFix(state, r, input.proposedFix);
   const referToId = input.referToId ? requirePerson(input.referToId) : undefined;
   if (!input.titleHe.trim() || !input.problemHe.trim()) throw new Error("נדרשים כותרת ותיאור הבעיה");
   const options = input.options?.length ? input.options : [...(input.proposedFix ? [{ id: "apply" as const, labelHe: `לתקן — ${input.proposedFix.labelHe}` }] : []), { id: "refer" as const, labelHe: referToId ? `להעביר ל${person(referToId)}` : "להעביר לתיקון" }, { id: "accept" as const, labelHe: "תקין — לא נדרש תיקון" }];
