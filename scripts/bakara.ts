@@ -5,7 +5,7 @@
  *   npm run bakara -- status
  *   npm run bakara -- reset [--variant A|B]
  *   npm run bakara -- erp set-section <invoiceId> <sectionId> --by SARIT [--note "..."]
- *   npm run bakara -- erp set-po <poId> --qty 12 --unit טון --price 4800 --by EYAL
+ *   npm run bakara -- erp set-po <poId> --qty 12 --unit טון --price 4800 --price-unit טון --by EYAL
  *   npm run bakara -- erp set-building <invoiceId> <A|B|משותף> --by EYAL
  *   npm run bakara -- erp new-invoice --supplier SUP-NTB --docno 2026-087 --date 2026-08-31 --amount 180000 --desc "..." --section 02 [--contract 07-01] [--attachment inv_1147_ntb_partial7] --by SARIT
  *   npm run bakara -- control run [--force]        # runs the checks on the live data, opens the session
@@ -51,6 +51,7 @@ const { values: opts, positionals } = parseArgs({
     variant: { type: "string" },
     qty: { type: "string" },
     unit: { type: "string" },
+    "price-unit": { type: "string" },
     price: { type: "string" },
     supplier: { type: "string" },
     docno: { type: "string" },
@@ -192,11 +193,12 @@ async function main() {
       state = await apply(state, (s) => updateInvoiceSection(s, Number(id), section as SectionId, actor, (opts.note as string | undefined) ?? "שינוי ידני במערכת המידע"));
     } else if (sub === "set-po") {
       const [id] = rest;
-      if (!id) fail("erp set-po <poId> [--qty] [--unit] [--price] --by <person>");
-      const patch: { qty?: number; unit?: string; unitPrice?: number } = {};
+      if (!id) fail("erp set-po <poId> [--qty] [--unit] [--price] [--price-unit] --by <person>");
+      const patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number } = {};
       if (opts.qty) patch.qty = Number(opts.qty);
       if (opts.unit) patch.unit = String(opts.unit);
       if (opts.price) patch.unitPrice = Number(opts.price);
+      if (opts["price-unit"]) patch.priceUnit = String(opts["price-unit"]);
       state = await apply(state, (s) => updatePurchaseOrder(s, Number(id), patch, actor, (opts.note as string | undefined) ?? "תיקון במערכת המידע"));
     } else if (sub === "set-building") {
       const [id, building] = rest;

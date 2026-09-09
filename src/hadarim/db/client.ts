@@ -89,6 +89,8 @@ export function rowToPurchaseOrder(r: Row<"purchase_orders">): HPurchaseOrder {
     descriptionHe: r.description_he,
     qty: Number(r.qty),
     unit: r.unit,
+    // price_unit was added after the first deploy: a row written before the migration has none
+    priceUnit: r.price_unit || r.unit,
     unitPrice: Number(r.unit_price),
     amount: Number(r.amount),
     deliveredQty: Number(r.delivered_qty),
@@ -266,7 +268,7 @@ export async function saveInvoice(invoice: HInvoice, meta: WriteMeta, isNew: boo
 export async function savePurchaseOrder(po: HPurchaseOrder, meta: WriteMeta, projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HPurchaseOrder> {
   const { data, error } = await supabase
     .from("purchase_orders")
-    .update({ qty: po.qty, unit: po.unit, unit_price: po.unitPrice, amount: po.amount, status: po.status, section_id: po.sectionId, description_he: po.descriptionHe, delivered_qty: po.deliveredQty, invoiced_amount: po.invoicedAmount, updated_by: meta.byId, update_note_he: meta.noteHe ?? null })
+    .update({ qty: po.qty, unit: po.unit, price_unit: po.priceUnit, unit_price: po.unitPrice, amount: po.amount, status: po.status, section_id: po.sectionId, description_he: po.descriptionHe, delivered_qty: po.deliveredQty, invoiced_amount: po.invoicedAmount, updated_by: meta.byId, update_note_he: meta.noteHe ?? null })
     .eq("project_id", projectId)
     .eq("id", po.id)
     .select()

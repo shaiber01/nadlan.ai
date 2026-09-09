@@ -98,7 +98,9 @@ Generation rules, so the totals in §2 reconcile exactly:
 
 ## 5\. Purchase orders (38 open) — `purchase_orders.csv`
 
-`po_id, date, supplier, section, contract_id, description, qty, unit, unit_price, amount, delivered_qty, invoiced_amount, status, attachment`
+`po_id, date, supplier, section, contract_id, description, qty, unit, price_unit, unit_price, amount, delivered_qty, invoiced_amount, status, attachment`
+
+`unit` is the unit the quantity is measured in; `price_unit` is the unit the price is quoted in. The order is worth the quantity converted into `price_unit`, times `unit_price` — so a supplier who quotes 4,800 ₪ לטון and delivers 12,000 ק״ג is recorded as keyed, and the order is still 57,600 ₪. Seeded orders all have `price_unit` \= `unit`; the correction of PO 2291 may use either form.
 
 - **PO 2291** — 22.8.2026, פלדות הצפון, ״ברזל זיון מצולע, קטרים 8–16 מ״מ״, qty **12,000**, unit **טון**, unit price **4.80**, amount 57,600. Attachment: supplier quote (12,000 kg \= 12 t × 4,800). This is the unit-error finding; the amount is right, the qty/unit/price fields are in kg against a ton unit.  
 - PO 2240 — closed, 60 t at 4,000, delivered in full (trap: old price, legitimate).  

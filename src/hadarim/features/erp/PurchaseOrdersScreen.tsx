@@ -2,11 +2,10 @@ import { useMemo, useState } from "react";
 import { Button } from "../../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HPurchaseOrder, PersonId } from "../../data/types";
-import { pkg, updatePurchaseOrder } from "../../engine/commands";
+import { orderLineHe, pkg, updatePurchaseOrder } from "../../engine/commands";
+import { ORDER_UNITS, lineValue, pricePerUnitHe } from "../../engine/units";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
 import { dateHe, dateTimeHe, nis, num, personName, sectionFull, sectionShort, supplierName } from "./format";
-
-const UNITS = ["ק״ג", "טון", "יח׳", "מ׳", "מ״ר", "מ״ק", "קומפ׳", "חודש", "שעה"];
 
 export function PurchaseOrdersScreen() {
   const ui = useUi();
@@ -66,6 +65,7 @@ function PurchaseOrderList() {
               <th className="num">כמות</th>
               <th>יחידה</th>
               <th className="num">מחיר יח׳</th>
+              <th>לפי יחידה</th>
               <th className="num">סכום</th>
               <th>סטטוס</th>
             </tr>
@@ -82,17 +82,45 @@ function PurchaseOrderList() {
                 <td className="num">{num(p.qty)}</td>
                 <td>{p.unit}</td>
                 <td className="num">{num(p.unitPrice)}</td>
-                <td className="num">{nis(p.amount)}</td>
+                <td>{p.priceUnit}</td>
+                <td className={`num${lineValue(p).amount === p.amount ? "" : " erp-warn-text"}`} title={lineValue(p).amount === p.amount ? undefined : "הסכום אינו שווה לכמות המומרת ליחידת המחיר × מחיר היחידה"}>
+                  {nis(p.amount)}
+                </td>
                 <td>
                   <span className={`erp-status erp-status-${p.status === "פתוחה" ? "ok" : "done"}`}>{p.status}</span>
                 </td>
               </tr>
             ))}
+            <tr className="total">
+              <td />
+              <td />
+              <td />
+              <td />
+              <td />
+              <td>סה״כ {num(rows.length)} הזמנות</td>
+              <td />
+              <td />
+              <td />
+              <td />
+              <td className="num" data-testid="erp-po-total">
+                {nis(rows.reduce((a, p) => a + p.amount, 0))}
+              </td>
+              <td />
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+/** "12,000 ק״ג = 12 טון × 4,800 ₪ לטון = 57,600 ₪" — the sum with the unit conversion spelled out. */
+function amountFormulaHe(po: HPurchaseOrder): string {
+  const value = lineValue(po);
+  if (value.incommensurable) return `יחידת הכמות (${po.unit}) ויחידת המחיר (${po.priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום`;
+  const converted = value.converted ? `${num(po.qty)} ${po.unit} = ${num(value.pricedQty!)} ${po.priceUnit} × ` : `${num(po.qty)} ${po.unit} × `;
+  const derived = `${converted}${pricePerUnitHe(po.unitPrice, po.priceUnit)} = ${nis(value.amount!)}`;
+  return value.amount === po.amount ? derived : `${derived} — אינו תואם את סכום ההזמנה ${nis(po.amount)}`;
 }
 
 function PurchaseOrderView({ poId }: { poId: number }) {
@@ -161,10 +189,11 @@ function PurchaseOrderView({ poId }: { poId: number }) {
             <Fieldv label="תיאור" value={po.descriptionHe} wide />
           </RecordSection>
           <RecordSection title="כמות ומחיר">
-            <Fieldv label="כמות" value={num(po.qty)} strong testId="erp-po-qty" />
-            <Fieldv label="יחידה" value={po.unit} strong testId="erp-po-unit" />
-            <Fieldv label="מחיר יחידה" value={nis(po.unitPrice)} strong testId="erp-po-unit-price" />
+            <Fieldv label="כמות" value={`${num(po.qty)} ${po.unit}`} strong testId="erp-po-qty" />
+            <Fieldv label="יחידת הכמות" value={po.unit} strong testId="erp-po-unit" />
+            <Fieldv label="מחיר יחידה" value={pricePerUnitHe(po.unitPrice, po.priceUnit)} strong testId="erp-po-unit-price" />
             <Fieldv label="סכום ההזמנה" value={nis(po.amount)} strong />
+            <Fieldv label="חישוב הסכום" value={amountFormulaHe(po)} wide testId="erp-po-formula" />
             <Fieldv label="סופק" value={`${num(po.deliveredQty)} ${po.unit}`} />
             <Fieldv label="חויב" value={nis(po.invoicedAmount)} />
           </RecordSection>
@@ -222,18 +251,22 @@ function PurchaseOrderView({ poId }: { poId: number }) {
 function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (note: string) => void; onCancel: () => void }) {
   const [qty, setQty] = useState(String(po.qty));
   const [unit, setUnit] = useState(po.unit);
+  const [priceUnit, setPriceUnit] = useState(po.priceUnit);
   const [unitPrice, setUnitPrice] = useState(String(po.unitPrice));
   const [byId, setById] = useState<PersonId>("EYAL");
   const [error, setError] = useState<string | null>(null);
   const q = Number(qty.replace(/[^\d.]/g, ""));
   const p = Number(unitPrice.replace(/[^\d.]/g, ""));
-  const computed = Math.round(q * p);
-  const mismatch = Number.isFinite(computed) && computed !== po.amount;
+  const draft = { qty: q, unit, priceUnit, unitPrice: p };
+  const value = Number.isFinite(q) && Number.isFinite(p) ? lineValue(draft) : null;
+  const computed = value?.amount ?? null;
+  const mismatch = computed !== po.amount;
+  const units = [...new Set([po.unit, po.priceUnit, ...ORDER_UNITS])];
 
   const save = () => {
     try {
-      store.dispatch((s) => updatePurchaseOrder(s, po.id, { qty: q, unit, unitPrice: p }, byId));
-      onDone(`נשמר. ${num(po.qty)} ${po.unit} × ${num(po.unitPrice)} ← ${num(q)} ${unit} × ${num(p)} (${personName(byId)}).`);
+      store.dispatch((s) => updatePurchaseOrder(s, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId));
+      onDone(`נשמר. ${orderLineHe(po)} ← ${orderLineHe(draft)} (${personName(byId)}).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -247,9 +280,9 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
           <input inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} data-testid="erp-po-qty-input" autoFocus />
         </label>
         <label className="erp-field erp-field-editable">
-          <span>יחידה *</span>
+          <span>יחידת הכמות *</span>
           <select value={unit} onChange={(e) => setUnit(e.target.value)} data-testid="erp-po-unit-input">
-            {[...new Set([po.unit, ...UNITS])].map((u) => (
+            {units.map((u) => (
               <option key={u} value={u}>
                 {u}
               </option>
@@ -260,13 +293,23 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
           <span>מחיר יחידה *</span>
           <input inputMode="decimal" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} data-testid="erp-po-price-input" />
         </label>
+        <label className="erp-field erp-field-editable">
+          <span>המחיר נקוב ל־*</span>
+          <select value={priceUnit} onChange={(e) => setPriceUnit(e.target.value)} data-testid="erp-po-price-unit-input">
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="erp-field">
           <span>סכום ההזמנה (קבוע)</span>
           <input value={nis(po.amount)} readOnly />
         </label>
-        <label className="erp-field">
-          <span>כמות × מחיר</span>
-          <input value={Number.isFinite(computed) ? nis(computed) : "—"} readOnly className={mismatch ? "erp-input-warn" : ""} />
+        <label className="erp-field erp-field-wide">
+          <span>הכמות ביחידת המחיר × מחיר היחידה</span>
+          <input value={computed == null ? "—" : `${num(value!.pricedQty!)} ${priceUnit} × ${pricePerUnitHe(p, priceUnit)} = ${nis(computed)}`} readOnly className={mismatch ? "erp-input-warn" : ""} data-testid="erp-po-computed" />
         </label>
         <label className="erp-field">
           <span>מבצע השינוי</span>
@@ -279,7 +322,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
           </select>
         </label>
       </div>
-      {mismatch && !error && <p className="erp-warn">כמות × מחיר יחידה ({nis(computed)}) אינם שווים לסכום ההזמנה ({nis(po.amount)}). השמירה תידחה.</p>}
+      {mismatch && !error && <p className="erp-warn">{computed == null ? `יחידת הכמות (${unit}) ויחידת המחיר (${priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום.` : `הכמות המומרת ליחידת המחיר × מחיר היחידה (${nis(computed)}) אינם שווים לסכום ההזמנה (${nis(po.amount)}).`} השמירה תידחה.</p>}
       {error && (
         <p className="erp-error" role="alert" data-testid="erp-po-error">
           {error}
@@ -292,7 +335,7 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
         <Button size="sm" variant="ghost" onClick={onCancel}>
           ביטול
         </Button>
-        <span className="erp-muted">סכום ההזמנה נעול לאחר אישור; ניתן לתקן כמות, יחידה ומחיר יחידה בלבד.</span>
+        <span className="erp-muted">סכום ההזמנה נעול לאחר אישור; ניתן לתקן כמות, יחידת הכמות, מחיר יחידה והיחידה שהמחיר נקוב לה. הכמות מומרת ליחידת המחיר לפני הכפל.</span>
       </div>
     </div>
   );

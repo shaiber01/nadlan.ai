@@ -53,8 +53,16 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await page.getByTestId("erp-po-price-input").fill("4800");
     await elementShot(page, "erp-po-edit-form", "erp-po-edit");
     await page.getByTestId("erp-po-save").click();
-    await expect(page.getByTestId("erp-po-view")).toContainText("4,800");
+    await expect(page.getByTestId("erp-po-view")).toContainText("4,800 ₪ לטון");
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("12 טון");
+
+    // the same order stated the way the quote states it: 12,000 ק״ג priced per טון, still 57,600 ₪
+    await page.getByTestId("erp-po-edit").click();
+    await page.getByTestId("erp-po-qty-input").fill("12000");
+    await page.getByTestId("erp-po-unit-input").selectOption("ק״ג");
+    await expect(page.getByTestId("erp-po-computed")).toHaveValue(/57,600/);
+    await page.getByTestId("erp-po-save").click();
+    await expect(page.getByTestId("erp-po-formula")).toContainText("12,000 ק״ג = 12 טון × 4,800 ₪ לטון = 57,600 ₪");
     await page.getByTestId("erp-nav-contracts").click();
     await page.getByTestId("erp-contract-row-07-01").click();
     await elementShot(page, "erp-contract-view", "erp-contract-07-01");

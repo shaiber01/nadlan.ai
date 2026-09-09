@@ -1,6 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
 import type { HBoqLine, HContract, HDocument, HForecastVersion, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, QuoteFacts, SectionId } from "../data/types";
 import type { ErpState } from "./model";
+import { convertQuantity, lineValue } from "./units";
 
 /**
  * The control checks: generic rules over any project's data. Each finding carries its sources (records
@@ -126,15 +127,16 @@ export function contractWithAppendices(pkg: HadarimPackage, sectionId: SectionId
  * What a purchase order should say, derived from its attached quote when there is one and otherwise from
  * the kg-keyed-as-tons reading (quantity and unit price off by a factor of 1000, amount unchanged).
  */
-export function proposedOrderCorrection(pkg: HadarimPackage, po: HPurchaseOrder): { qty: number; unit: string; unitPrice: number; fromQuote: boolean; documentId?: string } {
+export function proposedOrderCorrection(pkg: HadarimPackage, po: HPurchaseOrder): { qty: number; unit: string; priceUnit: string; unitPrice: number; fromQuote: boolean; documentId?: string } {
   const doc = documentById(pkg, po.attachmentId);
   const facts = quoteFacts(doc);
   if (facts && (facts.qty != null || facts.unitPrice != null)) {
     const qty = facts.qty ?? po.qty;
     const unitPrice = facts.unitPrice ?? (qty ? po.amount / qty : po.unitPrice);
-    return { qty, unit: facts.unit ?? po.unit, unitPrice, fromQuote: true, documentId: doc!.id };
+    const unit = facts.unit ?? po.unit;
+    return { qty, unit, priceUnit: unit, unitPrice, fromQuote: true, documentId: doc!.id };
   }
-  return { qty: po.qty / KG_PER_TON, unit: po.unit, unitPrice: po.unitPrice * KG_PER_TON, fromQuote: false };
+  return { qty: po.qty / KG_PER_TON, unit: po.unit, priceUnit: po.unit, unitPrice: po.unitPrice * KG_PER_TON, fromQuote: false };
 }
 
 /** A quote in the project folder for a BOQ line: by the extracted BOQ reference first, else by matching words in the title. */
@@ -218,15 +220,19 @@ export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number
     const amountMatchesQuote = facts?.amount != null && Math.abs(facts.amount - po.amount) < 1;
     const factsDisagree = !!facts && amountMatchesQuote && ((facts.qty != null && facts.qty !== po.qty) || (facts.unit && facts.unit !== po.unit) || (facts.unitPrice != null && Math.abs(facts.unitPrice - po.unitPrice) > 0.005));
     const kgLikeTon = !facts && !!appendix && po.unit === appendixUnit(appendix) && po.unitPrice > 0 && Math.abs(po.unitPrice * KG_PER_TON - appendix.pricePerTon) / appendix.pricePerTon < 0.1;
-    if (!factsDisagree && !kgLikeTon) continue;
+    // the order's own arithmetic, with the quantity converted into the unit the price is quoted in
+    const value = lineValue(po);
+    const misvalued = value.incommensurable || value.amount !== po.amount;
+    if (!factsDisagree && !kgLikeTon && !misvalued) continue;
 
     const rightQty = facts?.qty ?? po.qty / KG_PER_TON;
     const rightUnit = facts?.unit ?? po.unit;
     const rightPrice = facts?.unitPrice ?? po.unitPrice * KG_PER_TON;
     const item = po.descriptionHe.split(",")[0];
     const sources: HSource[] = [
-      { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · כמות: ${num(po.qty)} · יחידה: ${po.unit} · מחיר יח׳: ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 2 })} ₪ · סכום: ${nis(po.amount)}`, fieldHe: "כמות / יחידה / מחיר יח׳", valueHe: `${num(po.qty)} ${po.unit} × ${po.unitPrice}` },
+      { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · כמות: ${num(po.qty)} · יחידה: ${po.unit} · מחיר יח׳: ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 2 })} ₪${po.priceUnit && po.priceUnit !== po.unit ? ` ל${po.priceUnit}` : ""} · סכום: ${nis(po.amount)}`, fieldHe: "כמות / יחידה / מחיר יח׳", valueHe: `${num(po.qty)} ${po.unit} × ${po.unitPrice}` },
     ];
+    if (misvalued) sources.push({ kind: "po", refId: String(po.id), labelHe: value.incommensurable ? `יחידת הכמות (${po.unit}) ויחידת המחיר (${po.priceUnit}) אינן ניתנות להמרה — הסכום אינו ניתן לגזירה` : `הכמות ביחידת המחיר: ${num(value.pricedQty!)} ${po.priceUnit} × ${num(po.unitPrice)} ₪ = ${nis(value.amount!)}, ולא ${nis(po.amount)} כרשום`, fieldHe: "סכום גזור", valueHe: value.amount != null ? nis(value.amount) : "—" });
     if (quoteDoc && facts) sources.push({ kind: "document", refId: quoteDoc.id, labelHe: `הצעת ספק מצורפת: ״${item} — ${facts.qty != null ? `${num(facts.qty)} ${facts.unit ?? ""}` : ""}${facts.unitPrice != null ? ` × ${num(facts.unitPrice)} ₪/${facts.unit ?? "יח׳"}` : ""}${facts.amount != null ? ` = ${nis(facts.amount)}` : ""}״`, documentId: quoteDoc.id, anchor: "line" });
     if (appendix) sources.push({ kind: "document", refId: appendix.documentId, labelHe: `נספח מחיר ${supplier?.nameHe}: ${num(appendix.pricePerTon)} ₪/${appendixUnit(appendix)}`, documentId: appendix.documentId, anchor: "price" });
     out.push({
@@ -271,7 +277,7 @@ export function checkPrices(pkg: HadarimPackage, erp: ErpState, draft: HForecast
       const impact = newCost - oldCost;
       const openOrders = erp.purchaseOrders.filter((p) => p.contractId === contract.id && p.status === "פתוחה");
       const orderPrice = (p: (typeof openOrders)[number]) => quoteFacts(documentById(pkg, p.attachmentId))?.unitPrice ?? p.unitPrice;
-      const orderQty = (p: (typeof openOrders)[number]) => quoteFacts(documentById(pkg, p.attachmentId))?.qty ?? p.qty;
+      const orderQty = (p: (typeof openOrders)[number]) => quoteFacts(documentById(pkg, p.attachmentId))?.qty ?? convertQuantity(p.qty, p.unit, unit) ?? p.qty;
       const openAtOldPrice = openOrders.filter((p) => orderPrice(p) < current.pricePerTon);
       const closedOld = erp.purchaseOrders.filter((p) => p.contractId === contract.id && p.status === "סגורה" && p.unitPrice < current.pricePerTon && p.date < current.validFrom);
       const sources: HSource[] = [

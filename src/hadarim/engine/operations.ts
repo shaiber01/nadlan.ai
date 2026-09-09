@@ -1,6 +1,6 @@
 import type { BuildingTag, PersonId, SectionId } from "../data/types";
 import { sectionLabel } from "./checks";
-import { pkg, updateInvoiceSection, updatePurchaseOrder } from "./commands";
+import { orderLineHe, pkg, updateInvoiceSection, updatePurchaseOrder } from "./commands";
 import type { ChangeType, ControlNote, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
 
 /**
@@ -11,7 +11,6 @@ import type { ChangeType, ControlNote, ControlTask, DataCorrection, ForecastAdju
  */
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
-const num = (v: number) => v.toLocaleString("he-IL");
 
 function nextId(state: V2State, prefix: string): [V2State, string] {
   const n = (state.counters[prefix] ?? 0) + 1;
@@ -195,14 +194,14 @@ export function reallocateInvoice(state: V2State, invoiceId: number, sectionId: 
   return [audit(s, actor, `חשבון ${invoiceId}: שיוך ${before} → ${after} (${noteHe})`, { type: "invoice", id: String(invoiceId) }), correction];
 }
 
-export function correctPurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; unitPrice?: number }, byId: string, noteHe = "תיקון הזמנה לפי הנחיה", asCorrection = true): [V2State, DataCorrection | null] {
+export function correctPurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: string, noteHe = "תיקון הזמנה לפי הנחיה", asCorrection = true): [V2State, DataCorrection | null] {
   const actor = requirePerson(byId);
   const po = state.erp.purchaseOrders.find((p) => p.id === poId);
   if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
-  const before = `${num(po.qty)} ${po.unit} × ${po.unitPrice}`;
+  const before = orderLineHe(po);
   let s = updatePurchaseOrder(state, poId, patch, actor, noteHe);
   const next = s.erp.purchaseOrders.find((p) => p.id === poId)!;
-  const after = `${num(next.qty)} ${next.unit} × ${num(next.unitPrice)}`;
+  const after = orderLineHe(next);
   if (!asCorrection) return [s, null];
   const [s2, id] = nextId(s, "COR");
   const correction: DataCorrection = { id, recordType: "po", recordId: String(poId), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: actor, crossSectionHe: "ללא השפעה בין סעיפים", at: s2.clock, status: "applied" };

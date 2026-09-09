@@ -6,9 +6,10 @@ import { db, deleteInvoice, listProjects, resetProject, updateProject } from "..
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { SECTION_SHORT_HE, checkAllocation, checkCoverage, checkPrices, checkUnits, positives, quoteFacts, sectionLabel, type HFinding } from "../engine/checks";
-import { confirmQuote, createInvoice, decide, finalizeControl, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
+import { confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
+import { lineValue } from "../engine/units";
 import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { buildReport } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
@@ -103,7 +104,19 @@ function invoiceView(i: HInvoice) {
 }
 
 function poView(p: HPurchaseOrder) {
-  return { ...p, supplierHe: supplierName(p.supplierId), sectionHe: sectionLabel(p.sectionId), remainingAmount: p.amount - p.invoicedAmount };
+  const value = lineValue(p);
+  return {
+    ...p,
+    supplierHe: supplierName(p.supplierId),
+    sectionHe: sectionLabel(p.sectionId),
+    remainingAmount: p.amount - p.invoicedAmount,
+    lineHe: orderLineHe(p),
+    /** The quantity restated in the unit the price is quoted in, and what that makes the line worth. */
+    pricedQty: value.pricedQty,
+    derivedAmount: value.amount,
+    /** True when the recorded amount is not what the quantity and price give once the units are converted. */
+    amountDisagrees: value.amount !== p.amount,
+  };
 }
 
 function findingView(f: HFinding, state: V2State) {
@@ -666,15 +679,15 @@ define({
 define({
   name: "correct_purchase_order",
   title: "Correct a purchase order",
-  description: "Fix quantity / unit / unit price on a purchase order (the amount must stay equal to qty × unit price). Attributed to byId, trigger-logged and re-read. asCorrection=true (default) also records it as a data correction for report §4b; false = plain data entry by the ERP user.",
+  description: "Fix quantity / unit / price unit / unit price on a purchase order. The amount is locked: the quantity converted into priceUnit, times unitPrice, must still equal it — so an order quoted per טון and delivered in ק״ג is recorded as qty in ק״ג with priceUnit טון. Attributed to byId, trigger-logged and re-read. asCorrection=true (default) also records it as a data correction for report §4b; false = plain data entry by the ERP user.",
   kind: "write",
-  input: { projectId, controlDate, poId: z.number().int(), qty: z.number().optional(), unit: z.string().optional(), unitPrice: z.number().optional(), byId: personId, noteHe: z.string().optional(), asCorrection: z.boolean().default(true) },
+  input: { projectId, controlDate, poId: z.number().int(), qty: z.number().optional(), unit: z.string().optional(), priceUnit: z.string().optional(), unitPrice: z.number().optional(), byId: personId, noteHe: z.string().optional(), asCorrection: z.boolean().default(true) },
   run: async (a) => {
-    if (a.qty == null && !a.unit && a.unitPrice == null) throw new Error("נדרש לפחות שדה אחד לתיקון: qty, unit, unitPrice");
-    const patch = { ...(a.qty != null ? { qty: a.qty } : {}), ...(a.unit ? { unit: a.unit } : {}), ...(a.unitPrice != null ? { unitPrice: a.unitPrice } : {}) };
+    if (a.qty == null && !a.unit && !a.priceUnit && a.unitPrice == null) throw new Error("נדרש לפחות שדה אחד לתיקון: qty, unit, priceUnit, unitPrice");
+    const patch = { ...(a.qty != null ? { qty: a.qty } : {}), ...(a.unit ? { unit: a.unit } : {}), ...(a.priceUnit ? { priceUnit: a.priceUnit } : {}), ...(a.unitPrice != null ? { unitPrice: a.unitPrice } : {}) };
     const r = await write(a.projectId, a.controlDate, (s) => correctPurchaseOrder(s, a.poId, patch, a.byId, a.noteHe, a.asCorrection)[0]);
     const fresh = r.state.erp.purchaseOrders.find((p) => p.id === a.poId)!;
-    return outcome(r, { purchaseOrder: poView(fresh), verifiedHe: `הזמנה ${fresh.id} נקראה מחדש ממסד הנתונים — ${fresh.qty.toLocaleString("he-IL")} ${fresh.unit} × ${fresh.unitPrice.toLocaleString("he-IL")} ₪ = ${nis(fresh.amount)}`, correction: a.asCorrection ? r.state.control.corrections[r.state.control.corrections.length - 1] : null });
+    return outcome(r, { purchaseOrder: poView(fresh), verifiedHe: `הזמנה ${fresh.id} נקראה מחדש ממסד הנתונים — ${orderLineHe(fresh)} = ${nis(fresh.amount)}`, correction: a.asCorrection ? r.state.control.corrections[r.state.control.corrections.length - 1] : null });
   },
 });
 

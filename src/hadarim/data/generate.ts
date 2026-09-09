@@ -440,7 +440,7 @@ export function buildPurchaseOrders(invoices: HInvoice[]): HPurchaseOrder[] {
   let nextId = 2201;
   for (const vendor of SITE_VENDORS) {
     const invoiced = invoices.filter((i) => i.supplierId === vendor.id && i.status !== "בבדיקה").reduce((a, i) => a + i.amount, 0);
-    orders.push({ id: nextId++, date: "2025-11-01", supplierId: vendor.id, sectionId: "01", contractId: null, descriptionHe: `הזמנת מסגרת — ${vendor.descHe("").replace(" — ", "")} — ${BLANKET_MONTHS} חודשים`, qty: BLANKET_MONTHS, unit: "חודשים", unitPrice: vendor.base, amount: vendor.base * BLANKET_MONTHS, deliveredQty: 10, invoicedAmount: invoiced, status: "פתוחה", attachmentId: null, kind: "blanket" });
+    orders.push({ id: nextId++, date: "2025-11-01", supplierId: vendor.id, sectionId: "01", contractId: null, descriptionHe: `הזמנת מסגרת — ${vendor.descHe("").replace(" — ", "")} — ${BLANKET_MONTHS} חודשים`, qty: BLANKET_MONTHS, unit: "חודשים", priceUnit: "חודשים", unitPrice: vendor.base, amount: vendor.base * BLANKET_MONTHS, deliveredQty: 10, invoicedAmount: invoiced, status: "פתוחה", attachmentId: null, kind: "blanket" });
   }
   const oneOffs: [string, SectionId, string, number, string, number][] = [
     ["SUP-GEN", "01", "השכרת מלגזה טלסקופית — 3 חודשים", 3, "חודשים", 9_000],
@@ -469,12 +469,12 @@ export function buildPurchaseOrders(invoices: HInvoice[]): HPurchaseOrder[] {
   oneOffs.forEach(([supplierId, sectionId, descriptionHe, qty, unit, unitPrice], i) => {
     const amount = Math.round(qty * unitPrice);
     const date = addMonths("2025-12-10", Math.floor(i / 3));
-    orders.push({ id: nextId++, date, supplierId, sectionId, contractId: null, descriptionHe, qty, unit, unitPrice, amount, deliveredQty: i % 3 === 0 ? qty : Math.floor(qty / 2), invoicedAmount: 0, status: "פתוחה", attachmentId: null, kind: "one_off" });
+    orders.push({ id: nextId++, date, supplierId, sectionId, contractId: null, descriptionHe, qty, unit, priceUnit: unit, unitPrice, amount, deliveredQty: i % 3 === 0 ? qty : Math.floor(qty / 2), invoicedAmount: 0, status: "פתוחה", attachmentId: null, kind: "one_off" });
   });
   // PO 2240: closed, old price, legitimately issued before appendix A-2
-  orders.push({ id: 2240, date: "2026-07-01", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 10–16 מ״מ — 60 טון", qty: 60, unit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, invoicedAmount: 240_000, status: "סגורה", attachmentId: null, kind: "one_off" });
+  orders.push({ id: 2240, date: "2026-07-01", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 10–16 מ״מ — 60 טון", qty: 60, unit: "טון", priceUnit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, invoicedAmount: 240_000, status: "סגורה", attachmentId: null, kind: "one_off" });
   // PO 2291: the unit error
-  orders.push({ id: 2291, date: "2026-08-22", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 8–16 מ״מ", qty: 12000, unit: "טון", unitPrice: 4.8, amount: 57_600, deliveredQty: 0, invoicedAmount: 0, status: "פתוחה", attachmentId: "quote_pladot_12t", kind: "one_off" });
+  orders.push({ id: 2291, date: "2026-08-22", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 8–16 מ״מ", qty: 12000, unit: "טון", priceUnit: "טון", unitPrice: 4.8, amount: 57_600, deliveredQty: 0, invoicedAmount: 0, status: "פתוחה", attachmentId: "quote_pladot_12t", kind: "one_off" });
   return orders.sort((a, b) => a.id - b.id);
 }
 

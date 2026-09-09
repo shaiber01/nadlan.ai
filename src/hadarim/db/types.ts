@@ -1008,6 +1008,7 @@ export type Database = {
           invoiced_amount: number
           kind: string
           project_id: string
+          price_unit: string
           qty: number
           section_id: string
           status: string
@@ -1029,6 +1030,7 @@ export type Database = {
           invoiced_amount?: number
           kind: string
           project_id: string
+          price_unit?: string
           qty: number
           section_id: string
           status: string
@@ -1050,6 +1052,7 @@ export type Database = {
           invoiced_amount?: number
           kind?: string
           project_id?: string
+          price_unit?: string
           qty?: number
           section_id?: string
           status?: string

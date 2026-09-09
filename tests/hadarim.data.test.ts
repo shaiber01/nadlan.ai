@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateHadarimPackage, recordedBySection, CURRENT_CONTROL } from "../src/hadarim/data/generate";
 import { runChecks } from "../src/hadarim/engine/checks";
+import { lineAmount } from "../src/hadarim/engine/units";
 import type { SectionId } from "../src/hadarim/data/types";
 
 const pkg = generateHadarimPackage();
@@ -50,9 +51,13 @@ describe("Hadarim v2 data package", () => {
   it("purchase orders: 38 open plus the closed PO 2240; PO 2291 carries the unit error", () => {
     expect(pkg.purchaseOrders.filter((p) => p.status === "פתוחה")).toHaveLength(38);
     const closed = pkg.purchaseOrders.find((p) => p.id === 2240)!;
-    expect(closed).toMatchObject({ status: "סגורה", qty: 60, unit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, date: "2026-07-01" });
+    expect(closed).toMatchObject({ status: "סגורה", qty: 60, unit: "טון", priceUnit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, date: "2026-07-01" });
     const po = pkg.purchaseOrders.find((p) => p.id === 2291)!;
-    expect(po).toMatchObject({ qty: 12000, unit: "טון", unitPrice: 4.8, amount: 57_600, attachmentId: "quote_pladot_12t", status: "פתוחה", date: "2026-08-22" });
+    expect(po).toMatchObject({ qty: 12000, unit: "טון", priceUnit: "טון", unitPrice: 4.8, amount: 57_600, attachmentId: "quote_pladot_12t", status: "פתוחה", date: "2026-08-22" });
+  });
+
+  it("every seeded order adds up once its units are converted", () => {
+    for (const p of pkg.purchaseOrders) expect({ id: p.id, amount: lineAmount(p) }).toEqual({ id: p.id, amount: p.amount });
   });
 
   it("BOQ v4 has ~120 lines with the drainage line excluded and elevators covered by 14-01", () => {

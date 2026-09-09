@@ -2,6 +2,7 @@ import { CURRENT_CONTROL, DEMO_DAY, generateHadarimPackage, priceAppendixAt } fr
 import type { BuildingTag, HInvoice, HadarimPackage, PersonId, SectionId } from "../data/types";
 import { CHECK_STEPS_HE, SECTION_SHORT_HE, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding } from "./checks";
 import { workingForecast } from "./forecast";
+import { lineValue, pricePerUnitHe } from "./units";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
 
 /**
@@ -149,13 +150,20 @@ export function updateInvoiceBuilding(state: V2State, invoiceId: number, buildin
   return tick(audit(s2, byId, `חשבון ${invoiceId}: בניין ${entry.before} → ${entry.after} (פילוח הדוח)`, { type: "invoice", id: String(invoiceId) }));
 }
 
-export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
+/** How an order line reads in the change log and in prose: "12,000 ק״ג × 4,800 ₪ לטון". */
+export function orderLineHe(line: { qty: number; unit: string; priceUnit: string; unitPrice: number }): string {
+  return `${num(line.qty)} ${line.unit} × ${pricePerUnitHe(line.unitPrice, line.priceUnit || line.unit)}`;
+}
+
+export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
   const po = state.erp.purchaseOrders.find((p) => p.id === poId);
   if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
   const next = { ...po, ...patch };
-  if (Math.round(next.qty * next.unitPrice) !== po.amount) throw new Error(`הסכום חייב להישאר ${nis(po.amount)}: כמות × מחיר יחידה אינם תואמים`);
+  const value = lineValue(next);
+  if (value.incommensurable) throw new Error(`יחידת הכמות (${next.unit}) ויחידת המחיר (${next.priceUnit}) אינן ניתנות להמרה זו לזו`);
+  if (value.amount !== po.amount) throw new Error(`הסכום חייב להישאר ${nis(po.amount)}: הכמות המומרת ליחידת המחיר × מחיר היחידה נותנים ${nis(value.amount!)}`);
   const [s1, logId] = nextId(state, "CL");
-  const entry = { id: logId, recordType: "po" as const, recordId: String(poId), field: "כמות / יחידה / מחיר יח׳", before: `${num(po.qty)} ${po.unit} × ${po.unitPrice}`, after: `${num(next.qty)} ${next.unit} × ${num(next.unitPrice)}`, at: state.clock, byId, noteHe };
+  const entry = { id: logId, recordType: "po" as const, recordId: String(poId), field: "כמות / יחידה / מחיר יח׳", before: orderLineHe(po), after: orderLineHe(next), at: state.clock, byId, noteHe };
   return tick({ ...s1, erp: { ...s1.erp, purchaseOrders: s1.erp.purchaseOrders.map((p) => (p.id === poId ? next : p)), changeLog: [...s1.erp.changeLog, entry] } });
 }
 
@@ -516,10 +524,10 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
   if (f.kind === "unit") {
     const po = s.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
     const proposed = proposedOrderCorrection(pkg, po);
-    const before = `${num(po.qty)} ${po.unit} × ${po.unitPrice}`;
-    const after = `${num(proposed.qty)} ${proposed.unit} × ${num(proposed.unitPrice)} ₪`;
+    const before = orderLineHe(po);
+    const after = orderLineHe(proposed);
     if (routeId === "update") {
-      s = updatePurchaseOrder(s, po.id, { qty: proposed.qty, unit: proposed.unit, unitPrice: proposed.unitPrice }, s.operatorId, `אישור ממצא ${f.id}`);
+      s = updatePurchaseOrder(s, po.id, { qty: proposed.qty, unit: proposed.unit, priceUnit: proposed.priceUnit, unitPrice: proposed.unitPrice }, s.operatorId, `אישור ממצא ${f.id}`);
       const [s2, corrId] = nextId(s, "COR");
       s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: "po", recordId: String(po.id), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: "ללא השפעה בין סעיפים", findingId, at: s.clock, status: "applied" }] } };
       s = setDecision(s, findingId, { pending: undefined, status: "handled", routeId, resolvedAt: s.clock, auditHe: `הזמנה ${po.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe}`, verifiedHe: `הזמנה ${po.id} נקראה מחדש — ${after}` });
