@@ -8,7 +8,7 @@ import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed } from "../engine/heartbeat";
-import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
 import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
@@ -634,7 +634,7 @@ define({
 define({
   name: "run_check",
   title: "Run a check (no save)",
-  description: "Run one check, a group, or all of them on the live data without opening a control. Control checks: allocation (invoices vs contracts and supplier history), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
+  description: "Run one check, a group, or all of them on the live data without opening a control. Control checks: allocation (an invoice vs its contract and the supplier's history; an order vs its contract, the invoices billed against it, or the supplier's other records), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
   kind: "check",
   input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "data_quality", "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), contractId: z.string().optional(), sectionId: sectionId.optional() },
   run: async (a) => {
@@ -645,7 +645,7 @@ define({
     const today = state.clock.slice(0, 10);
     const bySection = (list: HFinding[]) => list.filter((f) => !sec || f.sectionId === sec);
     const findings: HFinding[] = [
-      ...(want("allocation") ? bySection(checkAllocation(pkg, state.erp, a.invoiceId)) : []),
+      ...(want("allocation") ? bySection([...(a.poId == null ? checkAllocation(pkg, state.erp, a.invoiceId) : []), ...(a.invoiceId == null ? checkOrderAllocation(pkg, state.erp, a.poId) : [])]) : []),
       ...(want("unit") ? bySection(checkUnits(pkg, state.erp, a.poId)) : []),
       ...(want("price") ? checkPrices(pkg, state.erp, draft, state.control.controlDate, sec) : []),
       ...(want("coverage") ? checkCoverage(pkg, draft, sec) : []),
@@ -700,7 +700,7 @@ define({
   title: "Decide on a finding",
   description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. The engine replies with what follows (a route question, a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
   kind: "decision",
-  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
+  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-ALLOC-PO-<order>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
   run: async (a) => {
     if (!a.choiceId && !a.freeTextHe) throw new Error("נדרש choiceId או freeTextHe");
     let f!: HFinding;
@@ -716,7 +716,7 @@ define({
 define({
   name: "route_finding",
   title: "Route a correction",
-  description: "After a 'yes' on an allocation or unit finding: apply the correction in the ERP (update — attributed to the control's operator, permission-checked, re-read from the database as verification), or refer it (refer_accounting / refer_roi opens a pending task for the owner), or keep it in the forecast only (forecast_only).",
+  description: "After a 'yes' on an allocation or unit finding: apply the correction in the ERP (update — attributed to the control's operator, permission-checked, re-read from the database as verification), or refer it (refer_accounting / refer_roi opens a pending task for the owner), or keep it in the forecast only (forecast_only). For an order's allocation (F-ALLOC-PO-…) the routes are update and refer_roi.",
   kind: "write",
   input: { projectId, controlDate, findingId: z.string(), routeId: z.enum(["update", "refer_accounting", "forecast_only", "refer_roi"]) },
   run: async (a) => {
@@ -766,15 +766,15 @@ define({
 define({
   name: "correct_purchase_order",
   title: "Correct a purchase order",
-  description: "Fix quantity / unit / price unit / unit price on a purchase order. The amount is locked: the quantity converted into priceUnit, times unitPrice, must still equal it — so an order quoted per טון and delivered in ק״ג is recorded as qty in ק״ג with priceUnit טון. Attributed to byId, trigger-logged and re-read. asCorrection=true (default) also records it as a data correction for report §4b; false = plain data entry by the ERP user.",
+  description: "Fix quantity / unit / price unit / unit price on a purchase order, and/or move it to another budget section (sectionId). The amount is locked: the quantity converted into priceUnit, times unitPrice, must still equal it — so an order quoted per טון and delivered in ק״ג is recorded as qty in ק״ג with priceUnit טון. A section move is permission-checked like an invoice re-allocation; the invoices booked against the order keep their own section. Attributed to byId, trigger-logged and re-read. asCorrection=true (default) also records it as a data correction for report §4b; false = plain data entry by the ERP user.",
   kind: "write",
-  input: { projectId, controlDate, poId: z.number().int(), qty: z.number().optional(), unit: z.string().optional(), priceUnit: z.string().optional(), unitPrice: z.number().optional(), byId: personId, noteHe: z.string().optional(), asCorrection: z.boolean().default(true) },
+  input: { projectId, controlDate, poId: z.number().int(), qty: z.number().optional(), unit: z.string().optional(), priceUnit: z.string().optional(), unitPrice: z.number().optional(), sectionId: sectionId.optional().describe("move the order to this budget section"), byId: personId, noteHe: z.string().optional(), asCorrection: z.boolean().default(true) },
   run: async (a) => {
-    if (a.qty == null && !a.unit && !a.priceUnit && a.unitPrice == null) throw new Error("נדרש לפחות שדה אחד לתיקון: qty, unit, priceUnit, unitPrice");
-    const patch = { ...(a.qty != null ? { qty: a.qty } : {}), ...(a.unit ? { unit: a.unit } : {}), ...(a.priceUnit ? { priceUnit: a.priceUnit } : {}), ...(a.unitPrice != null ? { unitPrice: a.unitPrice } : {}) };
+    if (a.qty == null && !a.unit && !a.priceUnit && a.unitPrice == null && !a.sectionId) throw new Error("נדרש לפחות שדה אחד לתיקון: qty, unit, priceUnit, unitPrice, sectionId");
+    const patch = { ...(a.qty != null ? { qty: a.qty } : {}), ...(a.unit ? { unit: a.unit } : {}), ...(a.priceUnit ? { priceUnit: a.priceUnit } : {}), ...(a.unitPrice != null ? { unitPrice: a.unitPrice } : {}), ...(a.sectionId ? { sectionId: a.sectionId } : {}) };
     const r = await write(a.projectId, a.controlDate, (s) => correctPurchaseOrder(s, a.poId, patch, a.byId, a.noteHe, a.asCorrection)[0]);
     const fresh = r.state.erp.purchaseOrders.find((p) => p.id === a.poId)!;
-    return outcome(r, { purchaseOrder: poView(fresh), verifiedHe: `הזמנה ${fresh.id} נקראה מחדש ממסד הנתונים — ${orderLineHe(fresh)} = ${nis(fresh.amount)}`, correction: a.asCorrection ? r.state.control.corrections[r.state.control.corrections.length - 1] : null });
+    return outcome(r, { purchaseOrder: poView(fresh), verifiedHe: `הזמנה ${fresh.id} נקראה מחדש ממסד הנתונים — ${sectionLabel(fresh.sectionId)} · ${orderLineHe(fresh)} = ${nis(fresh.amount)}`, correction: a.asCorrection ? r.state.control.corrections[r.state.control.corrections.length - 1] : null });
   },
 });
 

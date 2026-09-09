@@ -82,6 +82,38 @@ describe("Hadarim v2 engine — ERP edits", () => {
     expect(() => updatePurchaseOrderSection(base, po.id, other, "DANA")).toThrow(/אינו מורשה/);
     expect(() => updatePurchaseOrderSection(base, po.id, "99" as never, "EYAL")).toThrow(/לא קיים/);
   });
+
+  it("an order on the wrong section: the control raises the card; yes → update writes it back, verified and logged; refer opens a task; no closes it", () => {
+    const seed = initialState();
+    const po = seed.erp.purchaseOrders.find((p) => p.contractId && pkg.contracts.find((c) => c.id === p.contractId)!.sectionId === p.sectionId)!;
+    const wrong = pkg.sections.find((s) => s.id !== po.sectionId)!.id;
+    const open = () => revealAllSteps(startControl(updatePurchaseOrderSection(seed, po.id, wrong, "EYAL"), "בקרה"));
+    let s = open();
+    const f = s.control.findings.find((x) => x.kind === "allocation" && x.record.type === "po")!;
+    expect(f.id).toBe(`F-ALLOC-PO-${po.id}`);
+    expect(f.people?.some((p) => p.id === "EYAL")).toBe(true);
+    s = decide(s, f.id, "yes_target");
+    expect(s.control.decisions[f.id].pending).toEqual({ kind: "route" });
+    s = route(s, f.id, "update");
+    expect(s.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(po.sectionId);
+    expect(s.control.decisions[f.id]).toMatchObject({ status: "handled", routeId: "update" });
+    expect(s.control.decisions[f.id].verifiedHe).toContain(`הזמנה ${po.id}`);
+    expect(s.control.corrections.at(-1)).toMatchObject({ recordType: "po", recordId: String(po.id), fieldHe: "סעיף תקציבי", findingId: f.id, status: "applied" });
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ recordType: "po", recordId: String(po.id), field: "סעיף תקציבי", byId: s.operatorId });
+    expect(s.audit.at(-1)!.textHe).toContain(`הזמנה ${po.id}`);
+    // the invoices billed against the order were never touched
+    expect(s.erp.invoices.filter((i) => i.poId === po.id).map((i) => i.sectionId)).toEqual(seed.erp.invoices.filter((i) => i.poId === po.id).map((i) => i.sectionId));
+
+    const referred = route(decide(open(), f.id, "yes_target"), f.id, "refer_roi");
+    expect(referred.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(wrong);
+    expect(referred.control.tasks.at(-1)).toMatchObject({ findingId: f.id, status: "pending_execution", sectionId: po.sectionId });
+    expect(referred.control.decisions[f.id].status).toBe("pending_execution");
+
+    const stays = decide(open(), f.id, "no_stay");
+    expect(stays.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(wrong);
+    expect(stays.control.decisions[f.id].status).toBe("handled");
+    expect(decide(open(), f.id, "unsure").control.decisions[f.id].status).toBe("referred");
+  });
 });
 
 describe("Hadarim v2 engine — the scripted control", () => {

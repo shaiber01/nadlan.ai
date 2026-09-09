@@ -213,6 +213,69 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
 }
 
 // ---------------------------------------------------------------------------
+// Check 1b — a purchase order's section against its contract, the invoices billed against it, and the supplier's records
+// ---------------------------------------------------------------------------
+
+/**
+ * The section an order belongs to when other stored data determines it: its contract's section; else the one
+ * section of the invoices billed against it; else, for an order with neither, the one section every other
+ * record of the supplier is on (two or more). Null when nothing determines it.
+ */
+export function orderTargetSection(pkg: HadarimPackage, erp: ErpState, po: HPurchaseOrder): { sectionId: SectionId; basis: "contract" | "invoices" | "history" } | null {
+  const contract = po.contractId ? pkg.contracts.find((c) => c.id === po.contractId) : undefined;
+  if (contract) return { sectionId: contract.sectionId, basis: "contract" };
+  const against = erp.invoices.filter((i) => i.poId === po.id);
+  const invoiceSections = [...new Set(against.map((i) => i.sectionId))];
+  if (invoiceSections.length === 1) return { sectionId: invoiceSections[0], basis: "invoices" };
+  if (against.length) return null;
+  const history = [...erp.purchaseOrders.filter((p) => p.supplierId === po.supplierId && p.id !== po.id), ...erp.invoices.filter((i) => i.supplierId === po.supplierId)].map((r) => r.sectionId);
+  const historySections = [...new Set(history)];
+  if (history.length >= 2 && historySections.length === 1) return { sectionId: historySections[0], basis: "history" };
+  return null;
+}
+
+/** An order on a section other than the one its contract, its invoices or the supplier's other records point to. */
+export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number): HFinding[] {
+  const out: HFinding[] = [];
+  for (const po of erp.purchaseOrders) {
+    if (onlyPoId != null && po.id !== onlyPoId) continue;
+    const target = orderTargetSection(pkg, erp, po);
+    if (!target || target.sectionId === po.sectionId) continue;
+    const wrong = po.sectionId;
+    const right = target.sectionId;
+    const supplier = pkg.suppliers.find((s) => s.id === po.supplierId);
+    const contract = po.contractId ? pkg.contracts.find((c) => c.id === po.contractId) : undefined;
+    const against = erp.invoices.filter((i) => i.poId === po.id);
+    const otherOrders = erp.purchaseOrders.filter((p) => p.supplierId === po.supplierId && p.id !== po.id);
+    const otherInvoices = erp.invoices.filter((i) => i.supplierId === po.supplierId && i.poId !== po.id);
+    const historySections = [...new Set([...otherOrders, ...otherInvoices].map((r) => r.sectionId))];
+    const log = erp.changeLog.filter((c) => c.recordType === "po" && c.recordId === String(po.id));
+    const sources: HSource[] = [
+      { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · ${nis(po.amount)} · סעיף: ${sectionLabel(wrong)} · תיאור: ״${po.descriptionHe}״`, fieldHe: "סעיף תקציבי", valueHe: sectionLabel(wrong), documentId: po.attachmentId ?? undefined },
+    ];
+    if (contract) sources.push({ kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · ${sectionLabel(contract.sectionId)}`, documentId: contract.documentId, anchor: "included" });
+    if (against.length) sources.push({ kind: "history", refId: `po-${po.id}-invoices`, labelHe: `${num(against.length)} חשבונות כנגד ההזמנה (${against.map((i) => i.id).join(", ")}) — ${[...new Set(against.map((i) => i.sectionId))].map((id) => sectionLabel(id)).join(", ")}` });
+    if (otherOrders.length + otherInvoices.length) sources.push({ kind: "history", refId: po.supplierId, labelHe: `${num(otherOrders.length)} הזמנות ו-${num(otherInvoices.length)} חשבונות אחרים של ${supplier?.nameHe} — ${historySections.map((id) => sectionLabel(id)).join(", ")}` });
+    for (const entry of log) sources.push({ kind: "changelog", refId: entry.id, labelHe: `יומן שינויים: ${entry.field} · ${entry.before} → ${entry.after} · ${dateHe(entry.at)} ${entry.at.slice(11, 16)} · ${pkg.people.find((p) => p.id === entry.byId)?.nameHe ?? entry.byId}` });
+    const basisHe = target.basis === "contract" ? `ההזמנה מחויבת לחוזה ${contract!.id}, השייך ל${sectionLabel(right)}` : target.basis === "invoices" ? `החשבונות שנרשמו כנגד ההזמנה משויכים ל${sectionLabel(right)}` : `כל הרשומות האחרות של ${supplier?.nameHe} משויכות ל${sectionLabel(right)}`;
+    out.push({
+      id: `F-ALLOC-PO-${po.id}`,
+      kind: "allocation",
+      titleHe: `שיוך הזמנה ${po.id} — ${supplier?.nameHe}`,
+      problemHe: `הזמנה ${po.id} של ${supplier?.nameHe}, ${nis(po.amount)}, משויכת לסעיף ${sectionLabel(wrong)}. ${basisHe}.`,
+      sources,
+      checkHe: target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו." : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה." : "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק.",
+      meaningHe: `התחייבות של ${nis(po.amount)} תוצג ב${sectionShort(wrong)} במקום ב${sectionShort(right)}${against.length ? `; החשבונות כנגד ההזמנה נשארים בסעיפם` : ""}. הסה״כ לפרויקט לא משתנה.`,
+      impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן, ל${sectionShort(right)}` }, { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      sectionId: wrong,
+      record: { type: "po", id: String(po.id) },
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Check 2 — units and quantities on purchase orders versus the attached quote and the price appendix
 // ---------------------------------------------------------------------------
 
@@ -794,10 +857,10 @@ export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, control
   return [...checkDuplicates(pkg, erp), ...checkContractOverrun(pkg, erp), ...checkCumulative(pkg, erp), ...checkRetention(pkg, erp), ...checkDates(pkg, erp, today), ...checkReviewAging(pkg, erp, controlDate), ...checkDocuments(pkg, erp)];
 }
 
-export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
+export const CHECK_STEPS_HE = ["שיוך חשבונות והזמנות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
 
 /** All checks. `today` bounds the date check (the control date when the run is not "live"). */
 export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {
-  const findings = withPeople(pkg, erp, [...checkAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)]);
+  const findings = withPeople(pkg, erp, [...checkAllocation(pkg, erp), ...checkOrderAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)]);
   return { findings, positives: positives(pkg, draft), checkedHe: CHECK_STEPS_HE };
 }

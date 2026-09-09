@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkAllocation, checkUnits, isContingency, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
-import { createInvoice, initialState, pkg, setReportConfig, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder } from "../src/hadarim/engine/commands";
+import { checkAllocation, checkOrderAllocation, checkUnits, isContingency, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
+import { createInvoice, initialState, pkg, setReportConfig, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import { recordedBySection, workingForecast } from "../src/hadarim/engine/forecast";
 import { addAdjustment } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -60,6 +60,49 @@ describe("generic checks", () => {
     expect(findings[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(victim.sectionId)}`);
     const back = updateInvoiceSection(moved, victim.id, victim.sectionId, "SARIT");
     expect(checkAllocation(pkg, back.erp)).toHaveLength(0);
+  });
+
+  it("the seed's orders are all where their contract, their invoices or their supplier's records put them", () => {
+    expect(checkOrderAllocation(pkg, initialState().erp)).toHaveLength(0);
+  });
+
+  it("an order moved to a section its contract does not belong to becomes an allocation finding on the order, and only it", () => {
+    const seed = initialState();
+    const po = seed.erp.purchaseOrders.find((p) => p.contractId && pkg.contracts.find((c) => c.id === p.contractId)!.sectionId === p.sectionId)!;
+    const wrong = pkg.sections.find((s) => s.id !== po.sectionId)!.id;
+    const moved = updatePurchaseOrderSection(seed, po.id, wrong, "EYAL");
+    const findings = checkOrderAllocation(pkg, moved.erp);
+    expect(findings.map((f) => f.record)).toEqual([{ type: "po", id: String(po.id) }]);
+    expect(findings[0]).toMatchObject({ id: `F-ALLOC-PO-${po.id}`, kind: "allocation", sectionId: wrong, impact: { kind: "none" } });
+    expect(findings[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(po.sectionId)}`);
+    expect(findings[0].sources.map((x) => x.kind)).toEqual(expect.arrayContaining(["po", "contract", "changelog"]));
+    // the invoice check is untouched by an order move
+    expect(checkAllocation(pkg, moved.erp)).toHaveLength(0);
+    expect(checkOrderAllocation(pkg, updatePurchaseOrderSection(moved, po.id, po.sectionId, "EYAL").erp)).toHaveLength(0);
+  });
+
+  it("an order without a contract follows the invoices billed against it, else the supplier's other records, else nothing", () => {
+    const seed = initialState();
+    const other = (id: string) => pkg.sections.find((s) => s.id !== id)!.id;
+    // (a) invoices against it: detach the contract from an order that has invoices and move the order alone
+    const withInvoices = seed.erp.purchaseOrders.find((p) => seed.erp.invoices.some((i) => i.poId === p.id))!;
+    const split = { ...seed, erp: { ...seed.erp, purchaseOrders: seed.erp.purchaseOrders.map((p) => (p.id === withInvoices.id ? { ...p, contractId: null, sectionId: other(p.sectionId) } : p)) } };
+    const a = checkOrderAllocation(pkg, split.erp, withInvoices.id);
+    expect(a).toHaveLength(1);
+    expect(a[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(withInvoices.sectionId)}`);
+    expect(a[0].sources.some((x) => x.kind === "history" && x.labelHe.includes("כנגד ההזמנה"))).toBe(true);
+    // (b) neither contract nor invoices: the supplier's other records, when they all sit on one section
+    const lone = seed.erp.purchaseOrders.find((p) => {
+      if (p.contractId || seed.erp.invoices.some((i) => i.poId === p.id)) return false;
+      const records = [...seed.erp.purchaseOrders.filter((x) => x.supplierId === p.supplierId && x.id !== p.id), ...seed.erp.invoices.filter((i) => i.supplierId === p.supplierId)];
+      return records.length >= 2 && new Set(records.map((r) => r.sectionId)).size === 1;
+    })!;
+    const b = checkOrderAllocation(pkg, updatePurchaseOrderSection(seed, lone.id, other(lone.sectionId), "EYAL").erp, lone.id);
+    expect(b).toHaveLength(1);
+    expect(b[0].decision.options[0].labelHe).toBe(`כן, ל${sectionShort(lone.sectionId)}`);
+    // (c) a supplier with a single other record determines nothing
+    const single = { ...seed, erp: { ...seed.erp, purchaseOrders: [...seed.erp.purchaseOrders.filter((p) => p.supplierId !== lone.supplierId), { ...lone, id: 99_001, sectionId: other(lone.sectionId) }, { ...lone, id: 99_002 }], invoices: seed.erp.invoices.filter((i) => i.supplierId !== lone.supplierId) } };
+    expect(checkOrderAllocation(pkg, single.erp, 99_001)).toHaveLength(0);
   });
 
   it("an order re-keyed with kilograms as tons on any framework agreement is caught by the unit check", () => {

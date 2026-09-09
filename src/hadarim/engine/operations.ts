@@ -1,6 +1,6 @@
 import type { BuildingTag, ContactChannel, PersonId, SectionId } from "../data/types";
 import { peopleInvolved, sectionLabel, type HFinding, type HSource, type InvoiceFixPatch } from "./checks";
-import { orderLineHe, pkg, updateInvoiceSection, updatePurchaseOrder } from "./commands";
+import { orderLineHe, pkg, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "./commands";
 import type { ChangeType, ControlNote, ControlQuestion, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
 
 /**
@@ -298,17 +298,28 @@ export function reallocateInvoice(state: V2State, invoiceId: number, sectionId: 
   return [audit(s, actor, `חשבון ${invoiceId}: שיוך ${before} → ${after} (${noteHe})`, { type: "invoice", id: String(invoiceId) }), correction];
 }
 
-export function correctPurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: string, noteHe = "תיקון הזמנה לפי הנחיה", asCorrection = true): [V2State, DataCorrection | null] {
+/**
+ * An instructed correction of a purchase order: its line (quantity / units / unit price, amount locked) and/or
+ * its budget section. The invoices booked against the order keep their own section.
+ */
+export function correctPurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number; sectionId?: string }, byId: string, noteHe = "תיקון הזמנה לפי הנחיה", asCorrection = true): [V2State, DataCorrection | null] {
   const actor = requirePerson(byId);
   const po = state.erp.purchaseOrders.find((p) => p.id === poId);
   if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
-  const before = orderLineHe(po);
-  let s = updatePurchaseOrder(state, poId, patch, actor, noteHe);
+  const { sectionId, ...line } = patch;
+  const target = sectionId ? requireSection(sectionId) : null;
+  const lineChanged = Object.keys(line).length > 0;
+  if (target && target === po.sectionId && !lineChanged) throw new Error(`הזמנה ${poId} כבר משויכת ל-${sectionLabel(target)}`);
+  let s = target ? updatePurchaseOrderSection(state, poId, target, actor, noteHe) : state;
+  if (lineChanged) s = updatePurchaseOrder(s, poId, line, actor, noteHe);
   const next = s.erp.purchaseOrders.find((p) => p.id === poId)!;
-  const after = orderLineHe(next);
+  const moved = next.sectionId !== po.sectionId;
+  const fields = [...(moved ? ["סעיף תקציבי"] : []), ...(lineChanged ? ["כמות / יחידה / מחיר יח׳"] : [])];
+  const before = [...(moved ? [sectionLabel(po.sectionId)] : []), ...(lineChanged ? [orderLineHe(po)] : [])].join(" · ");
+  const after = [...(moved ? [sectionLabel(next.sectionId)] : []), ...(lineChanged ? [orderLineHe(next)] : [])].join(" · ");
   if (!asCorrection) return [s, null];
   const [s2, id] = nextId(s, "COR");
-  const correction: DataCorrection = { id, recordType: "po", recordId: String(poId), fieldHe: "כמות / יחידה / מחיר יח׳", beforeHe: before, afterHe: after, approvedById: actor, crossSectionHe: "ללא השפעה בין סעיפים", at: s2.clock, status: "applied" };
+  const correction: DataCorrection = { id, recordType: "po", recordId: String(poId), fieldHe: fields.join(" / "), beforeHe: before, afterHe: after, approvedById: actor, crossSectionHe: moved ? `${sectionLabel(po.sectionId)} → ${sectionLabel(next.sectionId)} · התחייבות ${nis(po.amount)}` : "ללא השפעה בין סעיפים", at: s2.clock, status: "applied" };
   s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, correction] } };
   return [audit(s, actor, `הזמנה ${poId}: ${before} → ${after} (${noteHe})`, { type: "po", id: String(poId) }), correction];
 }

@@ -45,6 +45,25 @@ describe("tool registry", () => {
 });
 
 describe("free-standing operations", () => {
+  it("correct_purchase_order moves an order's budget section on instruction: permission-checked, one correction for §4b, the line untouched", () => {
+    const seed = initialState();
+    const po = seed.erp.purchaseOrders.find((p) => p.status === "פתוחה")!;
+    const wrong = pkg.sections.find((s) => s.id !== po.sectionId)!.id;
+    const [s, correction] = correctPurchaseOrder(seed, po.id, { sectionId: wrong }, "EYAL");
+    const moved = s.erp.purchaseOrders.find((p) => p.id === po.id)!;
+    expect(moved.sectionId).toBe(wrong);
+    expect([moved.qty, moved.unit, moved.unitPrice, moved.amount]).toEqual([po.qty, po.unit, po.unitPrice, po.amount]);
+    expect(correction).toMatchObject({ recordType: "po", recordId: String(po.id), fieldHe: "סעיף תקציבי", status: "applied" });
+    expect(correction!.crossSectionHe).toContain(`${po.sectionId}-`);
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ recordType: "po", field: "סעיף תקציבי", byId: "EYAL" });
+    expect(() => correctPurchaseOrder(seed, po.id, { sectionId: wrong }, "DANA")).toThrow(/אינו מורשה/);
+    expect(() => correctPurchaseOrder(seed, po.id, { sectionId: po.sectionId }, "EYAL")).toThrow(/כבר משויכת/);
+    expect(() => correctPurchaseOrder(seed, po.id, { sectionId: "99" }, "EYAL")).toThrow(/סעיף 99/);
+    // the schema accepts a section-only correction
+    const schema = z.object(tools.find((t) => t.name === "correct_purchase_order")!.input);
+    expect(schema.parse({ poId: po.id, sectionId: wrong, byId: "EYAL" }).sectionId).toBe(wrong);
+  });
+
   it("adds a typed forecast adjustment that moves the section and the total, and removes it again", () => {
     const seed = initialState();
     const before = workingForecast(pkg, seed.erp, seed.control.adjustments, seed.control.controlDate);

@@ -1,7 +1,7 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
-import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFixPatch } from "./checks";
+import { CHECK_STEPS_HE, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFixPatch } from "./checks";
 import { workingForecast } from "./forecast";
 import { lineValue, pricePerUnitHe } from "./units";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
@@ -310,7 +310,7 @@ export function decide(state: V2State, findingId: string, choiceId: string | nul
   s = setDecision(s, findingId, { choiceId: choiceId ?? undefined, freeTextHe });
   switch (f.kind) {
     case "allocation":
-      return decideAllocation(s, f, choiceId, freeTextHe);
+      return f.record.type === "po" ? decideOrderAllocation(s, f, choiceId, freeTextHe) : decideAllocation(s, f, choiceId, freeTextHe);
     case "unit":
       return decideUnit(s, f, choiceId);
     case "price":
@@ -403,6 +403,36 @@ function executionOwnerId(state: V2State): PersonId {
 
 function personName(id: PersonId | undefined): string {
   return pkg.people.find((p) => p.id === id)?.nameHe ?? id ?? "";
+}
+
+/** An order on the wrong section: stays, is referred, or — after "yes" — is corrected in the ERP or handed to execution. */
+function decideOrderAllocation(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
+  const po = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
+  const right = orderTargetSection(pkg, state.erp, po)?.sectionId ?? po.sectionId;
+  const yes = choiceId === "yes_target" || (!!freeTextHe && /כן|שייך/.test(freeTextHe));
+  if (choiceId === "no_stay") {
+    let s = setDecision(state, f.id, { status: "handled", routeId: undefined, auditHe: `השיוך נשאר ${sectionLabel(po.sectionId)} לפי החלטת ${personName(state.operatorId)}`, resolvedAt: state.clock });
+    s = push(s, { role: "system", kind: "text", textHe: `הבנתי. הזמנה ${po.id} נשארת ב-${sectionLabel(po.sectionId)}. ההחלטה נרשמה בדוח כהערה, כי היא סותרת את מה שמצביע על ${sectionLabel(right)}.` });
+    return nextFinding(s);
+  }
+  if (!yes) {
+    const owner = f.referToId ?? executionOwnerId(state);
+    let s = setDecision(state, f.id, { status: "referred", ownerId: owner, auditHe: "הועבר לבירור" });
+    s = push(s, { role: "system", kind: "text", textHe: `נרשם כ״לא בטוח״. הממצא יישאר פתוח ויועבר ל${personName(owner)} לבירור; הדוח יציג את הזמנה ${po.id} כ״בבירור״ בין ${sectionLabel(po.sectionId)} ל-${sectionLabel(right)}.` });
+    return nextFinding(s);
+  }
+  const executor = executionOwnerId(state);
+  let s = setDecision(state, f.id, { pending: { kind: "route" } });
+  s = push(s, {
+    role: "system",
+    kind: "text",
+    textHe: `לעדכן את השיוך במערכת המידע? (הזמנה ${po.id}: ${sectionLabel(po.sectionId)} → ${sectionLabel(right)})`,
+    options: [
+      { id: "update", labelHe: "עדכן", action: { type: "route", findingId: f.id, routeId: "update" } },
+      { id: "refer_roi", labelHe: `העבר ל${personName(executor)} לביצוע`, action: { type: "route", findingId: f.id, routeId: "refer_roi" } },
+    ],
+  });
+  return s;
 }
 
 function decideUnit(state: V2State, f: HFinding, choiceId: string | null): V2State {
@@ -589,6 +619,7 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
   const executor = executionOwnerId(state);
   const accountant = pkg.people.find((p) => p.roleHe.includes("חשבונות") || p.canWriteAllocation)?.id ?? state.operatorId;
   let s = push(state, { role: "user", kind: "text", textHe: { update: "עדכן", refer_accounting: "העבר להנהלת חשבונות", forecast_only: "רק בתחזית", refer_roi: `העבר ל${personName(executor)} לביצוע` }[routeId] });
+  if (f.kind === "allocation" && f.record.type === "po") return routeOrderAllocation(s, f, routeId);
   if (f.kind === "allocation") {
     const invoice = s.erp.invoices.find((i) => i.id === Number(f.record.id))!;
     const contract = pkg.contracts.find((c) => c.id === invoice.contractId)!;
@@ -648,6 +679,42 @@ export function route(state: V2State, findingId: string, routeId: RouteId): V2St
     return nextFinding(s);
   }
   return s;
+}
+
+/**
+ * The routes of an order's allocation card: `update` writes the section back (permission-checked, logged,
+ * recorded as a data correction, verified by re-read); anything else hands the fix to whoever executes
+ * orders as a pending task — the forecast carries no order sections, so "forecast only" has no meaning here.
+ */
+function routeOrderAllocation(state: V2State, f: HFinding, routeId: RouteId): V2State {
+  const operator = pkg.people.find((p) => p.id === state.operatorId)!;
+  const po = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
+  const right = orderTargetSection(pkg, state.erp, po)?.sectionId ?? po.sectionId;
+  const before = sectionLabel(po.sectionId);
+  const after = sectionLabel(right);
+  let s = state;
+  if (routeId === "update") {
+    if (!operator.canWriteAllocation) {
+      s = push(s, { role: "system", kind: "text", textHe: `⟳ בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, אינו מורשה לשינוי שיוך. מעביר לביצוע.` });
+      return routeOrderAllocation(s, f, "refer_roi");
+    }
+    s = updatePurchaseOrderSection(s, po.id, right, s.operatorId, `אישור ממצא ${f.id} בבקרה ${dateHe(s.control.controlDate)}`);
+    const verified = s.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId === right;
+    const [s2, corrId] = nextId(s, "COR");
+    const correction: DataCorrection = { id: corrId, recordType: "po", recordId: String(po.id), fieldHe: "סעיף תקציבי", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: `${before} → ${after} · התחייבות ${nis(po.amount)}`, findingId: f.id, at: s.clock, status: "applied" };
+    s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, correction] } };
+    s = setDecision(s, f.id, { pending: undefined, status: "handled", routeId, resolvedAt: s.clock, auditHe: `הזמנה ${po.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe} · ${dateHe(s.clock)} ${s.clock.slice(11, 16)}`, verifiedHe: verified ? `הזמנה ${po.id} נקראה מחדש — סעיף = ${after}` : "האימות נכשל" });
+    s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, מורשה לשינוי שיוך בפרויקט ${pkg.project.nameHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: הזמנה ${po.id} נקראה מחדש — סעיף = ${after}`, done: true }] });
+    s = push(s, { role: "system", kind: "log", textHe: `תיעוד: הזמנה ${po.id} · לפני: ${before} · אחרי: ${after} · אישר: ${operator.nameHe} · ${dateHe(s.clock)} ${s.clock.slice(11, 16)}` });
+    s = audit(s, s.operatorId, `הזמנה ${po.id}: שיוך ${before} → ${after} (ממצא ${f.id}); אימות בקריאה חוזרת`, { type: "po", id: String(po.id) });
+    return nextFinding(tick(s));
+  }
+  const owner = routeId === "refer_accounting" ? accountantId() : executionOwnerId(s);
+  const [s2, taskId] = nextId(s, "TASK");
+  s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון שיוך הזמנה ${po.id} (${before} → ${after})`, sectionId: right, ownerId: owner, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId: f.id }] } };
+  s = setDecision(s, f.id, { pending: undefined, status: "pending_execution", routeId, ownerId: owner, auditHe: `הועבר ל${personName(owner)} לביצוע: ${before} → ${after}` });
+  s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(owner)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע; התחזית אינה נושאת סעיפי הזמנות, כך שאין בה מה לתקן בינתיים.` });
+  return nextFinding(s);
 }
 
 /** After each decision: introduce the next open finding, or announce the report. */
