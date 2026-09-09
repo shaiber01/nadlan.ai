@@ -49,14 +49,14 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
   });
 
-  test("ERP: PO correction keeps the amount fixed; contracts and budget screens render", async ({ page }) => {
+  test("ERP: PO correction warns when the amount no longer matches the line; contracts and budget screens render", async ({ page }) => {
     await fresh(page);
     await page.getByTestId("erp-nav-purchase_orders").click();
     await page.getByTestId("erp-po-row-2291").click();
     await page.getByTestId("erp-po-edit").click();
     await page.getByTestId("erp-po-qty-input").fill("12");
-    await page.getByTestId("erp-po-save").click();
-    await expect(page.getByTestId("erp-po-error")).toContainText("57,600");
+    // a manual ERP edit may leave the amount inconsistent (the controller's tool stays guarded): the screen warns, the amount stays
+    await expect(page.locator(".erp-warn")).toContainText("57,600");
     await page.getByTestId("erp-po-unit-input").selectOption("טון");
     await page.getByTestId("erp-po-price-input").fill("4800");
     await elementShot(page, "erp-po-edit-form", "erp-po-edit");
