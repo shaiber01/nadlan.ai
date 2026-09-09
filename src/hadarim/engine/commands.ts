@@ -186,13 +186,19 @@ export function updateInvoiceFields(state: V2State, invoiceId: number, patch: In
   return tick({ ...s, erp: { ...s.erp, invoices: s.erp.invoices.map((i) => (i.id === invoiceId ? next : i)), changeLog: [...s.erp.changeLog, ...entries] } });
 }
 
-export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע"): V2State {
+/**
+ * `validateAmount` (default on) rejects a correction that leaves the recorded amount inconsistent with the
+ * line's own arithmetic — the guard the controller's `correct_purchase_order` tool relies on. The ERP's own
+ * manual edit screen passes `false`: a human fixing a purchase order there can leave that inconsistency
+ * behind (a real-world data-entry fault), and checkUnits (misvalued) is what surfaces it in the next control.
+ */
+export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?: number; unit?: string; priceUnit?: string; unitPrice?: number }, byId: PersonId, noteHe = "תיקון במערכת המידע", validateAmount = true): V2State {
   const po = state.erp.purchaseOrders.find((p) => p.id === poId);
   if (!po) throw new Error(`הזמנה ${poId} לא נמצאה`);
   const next = { ...po, ...patch };
   const value = lineValue(next);
   if (value.incommensurable) throw new Error(`יחידת הכמות (${next.unit}) ויחידת המחיר (${next.priceUnit}) אינן ניתנות להמרה זו לזו`);
-  if (value.amount !== po.amount) throw new Error(`הסכום חייב להישאר ${nis(po.amount)}: הכמות המומרת ליחידת המחיר × מחיר היחידה נותנים ${nis(value.amount!)}`);
+  if (validateAmount && value.amount !== po.amount) throw new Error(`הסכום חייב להישאר ${nis(po.amount)}: הכמות המומרת ליחידת המחיר × מחיר היחידה נותנים ${nis(value.amount!)}`);
   const [s1, logId] = nextId(state, "CL");
   const entry = { id: logId, recordType: "po" as const, recordId: String(poId), field: "כמות / יחידה / מחיר יח׳", before: orderLineHe(po), after: orderLineHe(next), at: state.clock, byId, noteHe };
   return tick({ ...s1, erp: { ...s1.erp, purchaseOrders: s1.erp.purchaseOrders.map((p) => (p.id === poId ? next : p)), changeLog: [...s1.erp.changeLog, entry] } });
