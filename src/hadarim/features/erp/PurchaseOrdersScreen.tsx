@@ -265,7 +265,8 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
 
   const save = () => {
     try {
-      store.dispatch((s) => updatePurchaseOrder(s, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId));
+      // a manual ERP correction may leave the amount inconsistent with the line's own arithmetic (unlike the controller's own correction tool, which stays guarded)
+      store.dispatch((s) => updatePurchaseOrder(s, po.id, { qty: q, unit, priceUnit, unitPrice: p }, byId, undefined, false));
       onDone(`נשמר. ${orderLineHe(po)} ← ${orderLineHe(draft)} (${personName(byId)}).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -322,7 +323,13 @@ function PoEditForm({ po, onDone, onCancel }: { po: HPurchaseOrder; onDone: (not
           </select>
         </label>
       </div>
-      {mismatch && !error && <p className="erp-warn">{computed == null ? `יחידת הכמות (${unit}) ויחידת המחיר (${priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום.` : `הכמות המומרת ליחידת המחיר × מחיר היחידה (${nis(computed)}) אינם שווים לסכום ההזמנה (${nis(po.amount)}).`} השמירה תידחה.</p>}
+      {mismatch && !error && (
+        <p className="erp-warn">
+          {computed == null
+            ? `יחידת הכמות (${unit}) ויחידת המחיר (${priceUnit}) אינן ניתנות להמרה זו לזו — לא ניתן לגזור את הסכום. השמירה תידחה.`
+            : `הכמות המומרת ליחידת המחיר × מחיר היחידה (${nis(computed)}) אינם שווים לסכום ההזמנה (${nis(po.amount)}). הסכום ההזמנה יישאר ${nis(po.amount)} ולא יתעדכן אוטומטית לפי החישוב.`}
+        </p>
+      )}
       {error && (
         <p className="erp-error" role="alert" data-testid="erp-po-error">
           {error}
