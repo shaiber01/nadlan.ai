@@ -7,7 +7,8 @@ import { isUnprocessed } from "../engine/heartbeat";
 const METHOD_HE: Record<string, string> = { seed: "נתוני הבסיס", agent: "נקרא על ידי הסוכן", extraction: "חילוץ אוטומטי" };
 
 /** A document's processing status, as the ERP and the report show it: processing itself is the agent's. */
-export function documentStatusHe(d: HDocument): { labelHe: string; tone: "pending" | "done" } {
+export function documentStatusHe(d: HDocument): { labelHe: string; tone: "pending" | "done" | "replaced" } {
+  if (d.supersededBy) return { labelHe: `הוחלף ב-${d.supersededBy}`, tone: "replaced" };
   if (isUnprocessed(d)) return { labelHe: "טרם עובד", tone: "pending" };
   const src = d.factsSource!;
   const by = src.byId ? pkg.people.find((p) => p.id === (src.byId as PersonId))?.nameHe ?? src.byId : null;

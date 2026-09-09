@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
 import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, documentRecord, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
+import { isUnprocessed } from "../src/hadarim/engine/heartbeat";
 import { tools } from "../src/hadarim/tools";
 
 /**
@@ -37,6 +38,25 @@ describe("compareDocument — the record against its document, the way the cards
     expect(documentRecord(pkg, state.erp, pkg.documents.find((d) => d.id === framework.priceAppendices![0].documentId)!)).toEqual({ type: "contract", id: framework.id });
     const boqPage = pkg.documents.find((d) => d.kind === "boq_page")!;
     expect(documentRecord(pkg, state.erp, boqPage)).toBeNull();
+  });
+
+  it("a replaced document is history: not pending, not compared; the document that replaced it stands for the record", () => {
+    const state = seedState();
+    const po = state.erp.purchaseOrders.find((p) => p.attachmentId && pkg.documents.find((d) => d.id === p.attachmentId)?.facts)!;
+    const old = pkg.documents.find((d) => d.id === po.attachmentId)!;
+    const fresh: HDocument = { ...old, id: "upload_9", fileName: "quote_v2.pdf", filePath: "HADARIM/upload_9/quote_v2.pdf", recordRef: { type: "po", id: String(po.id) }, facts: undefined, factsSource: undefined };
+    const replaced: HDocument = { ...old, supersededBy: "upload_9" };
+    const p: HadarimPackage = { ...pkg, documents: [...pkg.documents.filter((d) => d.id !== old.id), replaced, fresh] };
+    const record = { type: "po" as const, id: String(po.id) };
+    expect(recordDocuments(p, state.erp, record).map((d) => d.id)).toEqual(["upload_9"]);
+    expect(isUnprocessed(replaced)).toBe(false);
+    expect(isUnprocessed(fresh)).toBe(true);
+    // the old facts no longer feed the check; once the new document is read, its facts do
+    expect(checkDocuments(p, state.erp, { poId: po.id })).toEqual([]);
+    const read: HadarimPackage = { ...p, documents: p.documents.map((d) => (d.id === "upload_9" ? { ...d, facts: { amount: po.amount + 1_000, supplierId: po.supplierId }, factsSource: { method: "agent" as const, byId: "EYAL" } } : d)) };
+    const [f] = checkDocuments(read, state.erp, { poId: po.id });
+    expect(f.sources.some((s) => s.kind === "document" && s.refId === "upload_9")).toBe(true);
+    expect(f.sources.some((s) => s.kind === "document" && s.refId === old.id)).toBe(false);
   });
 
   it("every compared fact of the seed invoice matches, with Hebrew labels; the rows the document check reads are exactly its mismatches", () => {

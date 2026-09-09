@@ -335,6 +335,8 @@ export interface HDocument {
   facts?: Record<string, unknown>;
   /** Where the facts came from: the seed, the agent reading the document, or an extraction service. */
   factsSource?: { method: "seed" | "agent" | "extraction"; byId?: string; at?: string; noteHe?: string };
+  /** Set when a newer upload replaced this document: the id of the current one. A replaced document stays in the folder, marked, and is neither pending nor compared. */
+  supersededBy?: string;
 }
 
 /** Normalised quote/order facts used by the checks; derived from `HDocument.facts`. */

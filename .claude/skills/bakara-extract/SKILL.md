@@ -18,3 +18,6 @@ The checks compare structured fields; a document's facts are those fields for th
    - `noteHe`: where in the document you read it.
    Record only what the document says; leave out what it does not. Do not compute a value the document does not state (the checks do the arithmetic).
 4. Re-run the check that needed it (`run_check` with the kind and the record) and, if it now raises or clears a finding, walk it as a card. Say that the facts came from your reading (`factsSource.method = agent`).
+
+## Replaced documents
+A record's document can be replaced by a newer upload (from the record's card in the ERP, or `add_document` with `replacesDocumentId`). The replaced document keeps its row, marked (`supersededBy`); `search_documents` hides it unless `includeReplaced`, it is never pending, and the checks and the record's card use the current document only. When a heartbeat brings a pending document that replaced another, read the new one and record its facts as usual — do not re-read the replaced one.

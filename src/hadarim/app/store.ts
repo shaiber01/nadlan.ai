@@ -186,7 +186,7 @@ class HadarimStore {
    * Upload a real document to the project folder (Storage + a folder row). The row stays unprocessed until the
    * agent reads it; the browser never extracts or interprets anything. Needs the database.
    */
-  uploadDocument = async (file: File, meta: { kind: HDocument["kind"]; titleHe: string; date: string; supplierId: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null; byId: string }): Promise<HDocument> => {
+  uploadDocument = async (file: File, meta: { kind: HDocument["kind"]; titleHe: string; date: string; supplierId: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null; byId: string; replacesDocumentId?: string | null }): Promise<HDocument> => {
     if (this.ui.db.status !== "online") throw new Error("העלאת מסמכים דורשת חיבור למסד הנתונים (כבה ״עבודה מקומית״).");
     this.writesInFlight += 1;
     this.setDb({ syncing: true });
@@ -194,7 +194,7 @@ class HadarimStore {
       const id = await nextDocumentId(this.projectId);
       const mimeType = mimeTypeFor(file.name, file.type);
       const filePath = await uploadDocumentFile(documentFilePath(this.projectId, id, file.name), file, mimeType);
-      const doc = await addDocument(this.projectId, { id, kind: meta.kind, titleHe: meta.titleHe || file.name, date: meta.date, supplierId: meta.supplierId, fileName: file.name, filePath, mimeType, sizeBytes: file.size, uploadedById: meta.byId, recordRef: meta.recordRef });
+      const doc = await addDocument(this.projectId, { id, kind: meta.kind, titleHe: meta.titleHe || file.name, date: meta.date, supplierId: meta.supplierId, fileName: file.name, filePath, mimeType, sizeBytes: file.size, uploadedById: meta.byId, recordRef: meta.recordRef, replacesDocumentId: meta.replacesDocumentId ?? null });
       this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
       await this.loadFromDb();
       return doc;

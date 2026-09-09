@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useV2State } from "../app/store";
+import { store, useV2State } from "../app/store";
 import { DOCUMENT_KIND_HE, type HDocument } from "../data/types";
 import { documentFileUrl } from "../db/client";
 import { isImage, isPdf, mimeTypeFor } from "../documents/mime";
@@ -16,12 +16,21 @@ function DocumentMeta({ doc }: { doc: HDocument }) {
   const status = documentStatusHe(doc);
   const at = doc.factsSource?.at ? ` · ${new Date(doc.factsSource.at).toLocaleString("he-IL")}` : "";
   const uploader = doc.uploadedById ? pkg.people.find((p) => p.id === doc.uploadedById) : null;
-  const record = documentRecord(pkg, state.erp, doc);
+  const record = doc.supersededBy ? null : documentRecord(pkg, state.erp, doc);
   const facts = doc.facts && Object.keys(doc.facts).length ? (doc.facts as Record<string, unknown>) : null;
   return (
     <div className="h2-doc-meta" data-testid="document-meta">
+      {doc.supersededBy ? (
+        <div className="h2-doc-meta-row h2-doc-replaced" data-testid="document-replaced">
+          <strong>הוחלף:</strong> מסמך זה הוחלף במסמך{" "}
+          <button type="button" className="h2-docfacts-link" onClick={() => store.openDocument(doc.supersededBy!)}>
+            {doc.supersededBy}
+          </button>
+          ; הרשומה והבדיקות משתמשות במסמך הנוכחי.
+        </div>
+      ) : null}
       <div className="h2-doc-meta-row">
-        <strong>עיבוד:</strong> {isUnprocessed(doc) ? "טרם עובד — ממתין לסוכן הבקרה" : `${status.labelHe}${at}`}
+        <strong>עיבוד:</strong> {isUnprocessed(doc) ? "טרם עובד — ממתין לסוכן הבקרה" : doc.supersededBy ? (doc.factsSource ? `נקרא לפני ההחלפה — ${status.labelHe.replace(/^הוחלף.*$/, "")}${at}`.replace("— ", "") : "לא נקרא לפני ההחלפה") : `${status.labelHe}${at}`}
         {uploader ? ` · הועלה על ידי ${uploader.nameHe}` : ""}
       </div>
       {doc.summaryHe ? <div className="h2-doc-meta-row">{doc.summaryHe}</div> : null}

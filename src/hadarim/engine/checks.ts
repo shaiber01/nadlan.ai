@@ -798,7 +798,8 @@ export function recordDocuments(pkg: HadarimPackage, erp: ErpState, record: Reco
     for (const a of c?.priceAppendices ?? []) ids.add(a.documentId);
   }
   for (const d of pkg.documents) if (d.recordRef?.type === record.type && d.recordRef.id === record.id) ids.add(d.id);
-  return pkg.documents.filter((d) => ids.has(d.id));
+  // a replaced document is history: the current one stands for the record
+  return pkg.documents.filter((d) => ids.has(d.id) && !d.supersededBy);
 }
 
 /** The record a document belongs to — its recordRef, or the invoice, order or contract that points at it. Null for a free-standing page (BOQ, a quote nobody ordered). */

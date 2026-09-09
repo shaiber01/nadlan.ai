@@ -122,6 +122,7 @@ export function rowToDocument(d: Row<"documents">): HDocument {
     ...(d.uploaded_at ? { uploadedAt: d.uploaded_at } : {}),
     ...(d.record_type && d.record_id ? { recordRef: { type: d.record_type as "invoice" | "po" | "contract", id: d.record_id } } : {}),
     ...(d.summary_he ? { summaryHe: d.summary_he } : {}),
+    ...(d.superseded_by ? { supersededBy: d.superseded_by } : {}),
   };
 }
 
@@ -362,6 +363,8 @@ export interface NewDocument {
   uploadedById: string;
   recordRef?: { type: "invoice" | "po" | "contract"; id: string } | null;
   text?: string | null;
+  /** The document this upload replaces (same project): marked as superseded once the new row exists. */
+  replacesDocumentId?: string | null;
 }
 
 export type DocumentPatch = Partial<Pick<NewDocument, "kind" | "titleHe" | "date" | "supplierId" | "recordRef" | "text">> & { summaryHe?: string | null };
@@ -433,7 +436,20 @@ export async function addDocument(projectId: string, doc: NewDocument, supabase:
   };
   const { data, error } = await supabase.from("documents").insert(row).select("*").single();
   if (error) throw new Error(`documents ${doc.id}: ${error.message}`);
-  return rowToDocument(data);
+  const created = rowToDocument(data);
+  if (doc.replacesDocumentId) await supersedeDocument(projectId, doc.replacesDocumentId, created.id, supabase);
+  return created;
+}
+
+/** Mark a document as replaced by a newer one (same project). The old row stays in the folder, marked; it is neither pending nor compared. */
+export async function supersedeDocument(projectId: string, oldId: string, newId: string, supabase: Db = db()): Promise<void> {
+  if (oldId === newId) throw new Error("מסמך אינו יכול להחליף את עצמו");
+  const { data: old, error: readError } = await supabase.from("documents").select("id, superseded_by").eq("project_id", projectId).eq("id", oldId).maybeSingle();
+  if (readError) throw new Error(`documents ${oldId}: ${readError.message}`);
+  if (!old) throw new Error(`המסמך ${oldId} לא נמצא`);
+  if (old.superseded_by) throw new Error(`המסמך ${oldId} כבר הוחלף ב-${old.superseded_by}`);
+  const { error } = await supabase.from("documents").update({ superseded_by: newId }).eq("project_id", projectId).eq("id", oldId);
+  if (error) throw new Error(`documents ${oldId}: ${error.message}`);
 }
 
 /** Change a document's description (kind, title, date, supplier, linked record, summary) or store its extracted text. */

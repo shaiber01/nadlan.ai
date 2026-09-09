@@ -32,6 +32,14 @@ describe("tool registry", () => {
     expect(() => z.object(tools.find((t) => t.name === "get_section")!.input).parse({})).toThrow();
   });
 
+  it("add_document takes the document it replaces; search_documents hides replaced documents unless asked", () => {
+    const add = z.object(tools.find((t) => t.name === "add_document")!.input);
+    expect(add.parse({ path: "/tmp/x.pdf", replacesDocumentId: "quote_pladot_12t" }).replacesDocumentId).toBe("quote_pladot_12t");
+    const search = z.object(tools.find((t) => t.name === "search_documents")!.input);
+    expect(search.parse({}).includeReplaced).toBe(false);
+    expect(search.parse({ includeReplaced: true }).includeReplaced).toBe(true);
+  });
+
   it("write tools validate their enumerations", () => {
     const adjust = z.object(tools.find((t) => t.name === "add_forecast_adjustment")!.input);
     expect(() => adjust.parse({ sectionId: "12", changeType: "bogus", descriptionHe: "x", basis: "quote", basisHe: "x", sourceRef: "x", amount: 1 })).toThrow();

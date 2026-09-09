@@ -535,3 +535,8 @@ table.erp-table tr.erp-row-target td {
   background: #fff6d6;
   box-shadow: inset 3px 0 0 #d99a00;
 }
+.erp-doc-status.is-replaced { background: #eeeeee; color: #555; border: 1px solid #dcdcdc; }
+.erp-doc-facts { display: grid; gap: 8px; }
+.erp-doc-item { display: grid; gap: 4px; }
+.erp-doc-replace { justify-self: start; font-size: 12px; }
+.erp-doc-actions { display: flex; gap: 8px; }

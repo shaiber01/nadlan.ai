@@ -230,3 +230,5 @@
 .h2-docfacts-table tr.is-match .h2-docfacts-mark { color: #1d5c34; }
 .h2-docfacts-table tr.is-mismatch .h2-docfacts-mark { color: #a11c1c; }
 .h2-docfacts.is-compact { padding: 0; border: 0; background: transparent; }
+.h2-docfacts-status.is-replaced { background: #eeeeee; color: #555; border: 1px solid #dcdcdc; }
+.h2-doc-replaced { color: #7a5200; }

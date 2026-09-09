@@ -81,6 +81,12 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("סעיף תקציבי");
     // the order's quote: the card shows the facts read from it against the order, and the viewer shows the same under the page
     await expect(page.getByTestId("erp-record-documents")).toContainText("כמות ויחידה");
+    // a file can be uploaded for the record, or replace its document, from the card (the record is preset)
+    await page.getByTestId("erp-doc-replace-quote_pladot_12t").click();
+    await expect(page.getByTestId("erp-doc-replaces")).toContainText("quote_pladot_12t.pdf");
+    await expect(page.getByTestId("erp-doc-record")).toHaveValue("הזמנה 2291");
+    await page.getByTestId("erp-doc-cancel").click();
+    await expect(page.getByTestId("erp-doc-upload-open")).toBeVisible();
     await page.getByTestId("erp-po-attachment").click();
     await expect(page.getByTestId("document-meta")).toContainText("עיבוד");
     await expect(page.getByTestId("document-meta").getByTestId("document-facts")).toContainText("12 טון");

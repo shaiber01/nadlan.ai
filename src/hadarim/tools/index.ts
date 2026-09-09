@@ -188,7 +188,7 @@ function documentText(d: HDocument): string {
 }
 
 function documentView(d: HDocument) {
-  return { id: d.id, kind: d.kind, kindHe: DOCUMENT_KIND_HE[d.kind] ?? d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, processed: !isUnprocessed(d), facts: d.facts ?? null, factsSource: d.factsSource ?? null, recordRef: d.recordRef ?? null, summaryHe: d.summaryHe ?? null, hasFile: !!d.filePath, mimeType: d.mimeType ?? null, uploadedById: d.uploadedById ?? null, uploadedByHe: personName(d.uploadedById), uploadedAt: d.uploadedAt ?? null };
+  return { id: d.id, kind: d.kind, kindHe: DOCUMENT_KIND_HE[d.kind] ?? d.kind, titleHe: d.titleHe, date: d.date, supplierId: d.supplierId, supplierHe: supplierName(d.supplierId), fileName: d.fileName, processed: !isUnprocessed(d), supersededBy: d.supersededBy ?? null, facts: d.facts ?? null, factsSource: d.factsSource ?? null, recordRef: d.recordRef ?? null, summaryHe: d.summaryHe ?? null, hasFile: !!d.filePath, mimeType: d.mimeType ?? null, uploadedById: d.uploadedById ?? null, uploadedByHe: personName(d.uploadedById), uploadedAt: d.uploadedAt ?? null };
 }
 
 /** Local cache of a real file, so the agent can Read it (PDFs and images) — one folder per project and document. */
@@ -577,10 +577,10 @@ define({
   title: "Project folder",
   description: "Search the project folder — the seed's pages and the real files people uploaded (invoices, quotes, price appendices, contract excerpts, BOQ pages, delivery notes, letters) — by text, kind, supplier, BOQ line or the record they belong to. unprocessed=true lists the documents nobody read yet (no facts recorded): those are yours to process (get_document → classify_document → set_document_facts). Returns titles, dates, the record, whether processed and the extracted facts.",
   kind: "read",
-  input: { projectId, query: z.string().optional().describe("text in the title or body"), kind: documentKind.optional(), supplierId: z.string().optional(), boqLineId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional().describe("with recordType: the invoice/order number or contract id the document belongs to"), unprocessed: z.boolean().optional().describe("true: only documents not processed yet; false: only processed") },
+  input: { projectId, includeReplaced: z.boolean().default(false).describe("also list documents replaced by a newer upload (supersededBy set); by default only current documents"), query: z.string().optional().describe("text in the title or body"), kind: documentKind.optional(), supplierId: z.string().optional(), boqLineId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional().describe("with recordType: the invoice/order number or contract id the document belongs to"), unprocessed: z.boolean().optional().describe("true: only documents not processed yet; false: only processed") },
   run: async (a) => {
     await loadState(a.projectId);
-    const rows = pkg.documents.filter((d) => (!a.kind || d.kind === a.kind) && (!a.supplierId || d.supplierId === a.supplierId) && (!a.boqLineId || quoteFacts(d)?.boqLineId === a.boqLineId || JSON.stringify(d.blocks).includes(a.boqLineId)) && (!a.recordType || d.recordRef?.type === a.recordType) && (!a.recordId || d.recordRef?.id === a.recordId) && (a.unprocessed === undefined || isUnprocessed(d) === a.unprocessed) && (!a.query || d.titleHe.includes(a.query) || documentText(d).includes(a.query)));
+    const rows = pkg.documents.filter((d) => (a.includeReplaced || !d.supersededBy) && (!a.kind || d.kind === a.kind) && (!a.supplierId || d.supplierId === a.supplierId) && (!a.boqLineId || quoteFacts(d)?.boqLineId === a.boqLineId || JSON.stringify(d.blocks).includes(a.boqLineId)) && (!a.recordType || d.recordRef?.type === a.recordType) && (!a.recordId || d.recordRef?.id === a.recordId) && (a.unprocessed === undefined || isUnprocessed(d) === a.unprocessed) && (!a.query || d.titleHe.includes(a.query) || documentText(d).includes(a.query)));
     return { total: rows.length, unprocessed: pkg.documents.filter(isUnprocessed).length, documents: rows.map(documentView) };
   },
 });
@@ -1048,9 +1048,9 @@ define({
 define({
   name: "add_document",
   title: "Add a real document to the folder",
-  description: "Put a file the user handed you (a path on this machine: PDF, image, text) into the project folder: uploads it to storage, opens its folder row (unprocessed), extracts what text it has and caches it locally. Give what you already know — kind, title, date, supplier, the invoice/order/contract it belongs to — and process it afterwards (get_document → classify_document → set_document_facts). The ERP users upload from the web app's תיקיית מסמכים screen; this is the same operation from the session.",
+  description: "Put a file the user handed you (a path on this machine: PDF, image, text) into the project folder: uploads it to storage, opens its folder row (unprocessed), extracts what text it has and caches it locally. Give what you already know — kind, title, date, supplier, the invoice/order/contract it belongs to — and process it afterwards (get_document → classify_document → set_document_facts). replacesDocumentId makes it the record's current document instead of that one (the replaced document stays in the folder marked, neither pending nor compared; the record link is inherited when not given). The ERP users upload from the web app's תיקיית מסמכים screen or from a record's card; this is the same operation from the session.",
   kind: "write",
-  input: { projectId, path: z.string().describe("local file path"), fileName: z.string().optional().describe("name to keep (default: the file's name)"), kind: documentKind.default("other"), titleHe: z.string().optional(), date: isoDate.optional().describe("the document's date (default: today)"), supplierId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional(), byId: personId.optional().describe("who adds it (default: the operator)") },
+  input: { projectId, path: z.string().describe("local file path"), fileName: z.string().optional().describe("name to keep (default: the file's name)"), kind: documentKind.default("other"), titleHe: z.string().optional(), date: isoDate.optional().describe("the document's date (default: today)"), supplierId: z.string().optional(), recordType: recordType.optional(), recordId: z.string().optional(), replacesDocumentId: z.string().optional().describe("the document this file replaces (same record)"), byId: personId.optional().describe("who adds it (default: the operator)") },
   run: async (a) => {
     const state = await loadState(a.projectId);
     const source = resolve(a.path);
@@ -1058,13 +1058,16 @@ define({
     if (a.supplierId && !pkg.suppliers.some((x) => x.id === a.supplierId)) throw new Error(`ספק ${a.supplierId} לא נמצא`);
     if ((a.recordType && !a.recordId) || (!a.recordType && a.recordId)) throw new Error("recordType ו-recordId באים יחד");
     if (a.recordType && a.recordId && !findRecord(state, a.recordType, a.recordId)) throw new Error(`רשומה ${a.recordType} ${a.recordId} לא נמצאה`);
+    const replaced = a.replacesDocumentId ? pkg.documents.find((d) => d.id === a.replacesDocumentId) : undefined;
+    if (a.replacesDocumentId && !replaced) throw new Error(`המסמך ${a.replacesDocumentId} לא נמצא`);
+    if (replaced?.supersededBy) throw new Error(`המסמך ${replaced.id} כבר הוחלף ב-${replaced.supersededBy}`);
     const fileName = a.fileName ?? basename(source);
     const bytes = new Uint8Array(readFileSync(source));
     const mimeType = mimeTypeFor(fileName);
     const id = await nextDocumentId(a.projectId);
     const filePath = await uploadDocumentFile(documentFilePath(a.projectId, id, fileName), bytes, mimeType);
     const extracted = isImage(mimeType) ? { text: null } : await extractText(bytes, mimeType);
-    const created = await addDocument(a.projectId, { id, kind: a.kind, titleHe: a.titleHe ?? fileName, date: a.date ?? nowStamp().slice(0, 10), supplierId: a.supplierId ?? null, fileName, filePath, mimeType, sizeBytes: bytes.byteLength, uploadedById: a.byId ?? state.operatorId, recordRef: a.recordType && a.recordId ? { type: a.recordType, id: a.recordId } : null, text: extracted.text });
+    const created = await addDocument(a.projectId, { id, kind: a.kind, titleHe: a.titleHe ?? fileName, date: a.date ?? nowStamp().slice(0, 10), supplierId: a.supplierId ?? null, fileName, filePath, mimeType, sizeBytes: bytes.byteLength, uploadedById: a.byId ?? state.operatorId, recordRef: a.recordType && a.recordId ? { type: a.recordType, id: a.recordId } : (replaced?.recordRef ?? null), replacesDocumentId: a.replacesDocumentId ?? null, text: extracted.text });
     const localPath = documentCachePath(a.projectId, created);
     mkdirSync(dirname(localPath), { recursive: true });
     writeFileSync(localPath, bytes);

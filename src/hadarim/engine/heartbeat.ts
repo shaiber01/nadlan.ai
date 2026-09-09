@@ -39,7 +39,7 @@ export interface HeartbeatWork {
 export const INTAKE_FIELD_HE = "קליטה";
 
 export function isUnprocessed(d: HDocument): boolean {
-  return !d.factsSource;
+  return !d.factsSource && !d.supersededBy;
 }
 
 /** The numeric part of a change-log id: the database's identity ("123") or the offline engine's "CL-123". */
