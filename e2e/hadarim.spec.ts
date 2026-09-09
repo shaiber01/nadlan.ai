@@ -17,6 +17,12 @@ async function fresh(page: Page) {
   await page.getByTestId("presenter-bar").waitFor();
 }
 
+/** The ERP has no link to the report; `?app=` is how each screen is opened. */
+async function goTo(page: Page, app: "erp" | "report") {
+  await page.goto(`/hadarim.html?app=${app}`);
+  await page.getByTestId("presenter-bar").waitFor();
+}
+
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e/screenshots/hadarim-${name}.png`, fullPage: false });
 }
@@ -35,7 +41,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await fresh(page);
-    await expect(page.getByTestId("go-erp")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("erp-app")).toBeVisible();
     await page.getByTestId("erp-invoice-row-1147").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("07 — פיתוח");
     await shot(page, "01-invoice-1147");
@@ -49,7 +55,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await fresh(page);
-    await page.getByTestId("go-report").click();
+    await goTo(page, "report");
     await expect(page.getByTestId("report-view")).toBeVisible();
     await expect(page.getByTestId("report-view")).toHaveAttribute("data-source", "live");
     await expect(page.getByTestId("report-idle-notice")).toContainText("טרם הופעלה");
@@ -67,10 +73,10 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await shot(page, "03-report-viewer-draft");
 
     // an ERP edit shows up in the live report's recorded amounts
-    await page.getByTestId("go-erp").click();
+    await goTo(page, "erp");
     await page.getByTestId("erp-invoice-row-1147").click();
     await moveInvoiceToSheled(page);
-    await page.getByTestId("go-report").click();
+    await goTo(page, "report");
     await expect(page.getByTestId("report-view")).toBeVisible();
     await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
     await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
@@ -104,7 +110,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
     await page.getByTestId("reset-demo").click();
     await page.getByTestId("reset-confirm").click();
-    await expect(page.getByTestId("go-erp")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("erp-app")).toBeVisible();
     await page.getByTestId("erp-invoice-row-1147").click();
     await expect(page.getByTestId("erp-invoice-view")).toContainText("07 — פיתוח");
     expect(errors).toEqual([]);

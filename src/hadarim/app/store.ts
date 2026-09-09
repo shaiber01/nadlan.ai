@@ -74,6 +74,20 @@ export function isOfflineRequested(): boolean {
   }
 }
 
+/**
+ * Which of the two screens to open: `?app=report` for the read-only report viewer, `?app=erp` for the
+ * ERP. The ERP has no link to the report — the two are separate seats — so the URL is how a presenter
+ * puts the report on the second screen; without the parameter the last screen used is restored.
+ */
+export function requestedApp(): UiState["app"] | null {
+  try {
+    const v = typeof location !== "undefined" ? new URLSearchParams(location.search).get("app") : null;
+    return v === "report" || v === "erp" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 const isState = (v: unknown): v is V2State => !!v && typeof v === "object" && (v as V2State).version === 1 && Array.isArray((v as V2State).erp?.invoices) && Array.isArray((v as V2State).control?.notes) && Array.isArray((v as V2State).control?.tasks);
 
 class HadarimStore {
@@ -88,7 +102,7 @@ class HadarimStore {
   constructor() {
     this.state = load(STATE_KEY, initialState, isState);
     const ui = load(UI_KEY, () => defaultUi, (v) => !!v && typeof v === "object" && "app" in (v as object)) as Partial<UiState>;
-    this.ui = { ...defaultUi, ...ui, app: ui.app === "report" ? "report" : "erp", erp: { ...defaultUi.erp, ...(ui.erp ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
+    this.ui = { ...defaultUi, ...ui, app: requestedApp() ?? (ui.app === "report" ? "report" : "erp"), erp: { ...defaultUi.erp, ...(ui.erp ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
   }
 
   getState = (): V2State => this.state;
@@ -199,7 +213,6 @@ class HadarimStore {
     this.emit();
   };
 
-  go = (app: UiState["app"]): void => this.setUi((u) => ({ ...u, app }));
 
   openDocument = (documentId: string, anchor?: string): void => this.setUi((u) => ({ ...u, viewer: { ...u.viewer, documentId, documentAnchor: anchor ?? null } }));
 

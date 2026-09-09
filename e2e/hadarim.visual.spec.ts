@@ -37,7 +37,7 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("erp-invoice-view")).toHaveAttribute("data-invoice-id", "1147");
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("נקלט");
     // the report viewer sees the new invoice in the live recorded amounts
-    await page.getByTestId("go-report").click();
+    await page.goto("/hadarim.html?app=report");
     await expect(page.getByTestId("report-row-02")).toContainText("12,600,000");
   });
 
