@@ -116,24 +116,24 @@ export const suppliers: HSupplier[] = [
 ];
 
 export const sections: HSection[] = [
-  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", shortHe: "ארגון אתר", budget: 1_900_000, kind: "works", split: "shared", contractIds: [] },
-  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", shortHe: "שלד", budget: 12_600_000, kind: "works", split: "by_floors", contractIds: ["02-01"] },
-  { id: "03", nameHe: "אספקת ברזל זיון", shortHe: "ברזל", budget: 3_000_000, kind: "works", split: "by_floors", contractIds: ["03-F"] },
-  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", shortHe: "עפר ודיפון", budget: 2_900_000, kind: "works", split: "shared", contractIds: ["04-01"] },
-  { id: "05", nameHe: "איטום", shortHe: "איטום", budget: 900_000, kind: "works", split: "per_building", contractIds: ["05-01"] },
-  { id: "06", nameHe: "בנייה (בלוקים) וטיח", shortHe: "בנייה וטיח", budget: 2_400_000, kind: "works", split: "by_floors", contractIds: ["06-01"] },
-  { id: "07", nameHe: "פיתוח ותשתיות חוץ", shortHe: "פיתוח", budget: 3_200_000, kind: "works", split: "shared", contractIds: ["07-01"] },
-  { id: "08", nameHe: "אינסטלציה ותברואה", shortHe: "אינסטלציה", budget: 2_300_000, kind: "works", split: "by_units", contractIds: ["08-01"] },
-  { id: "09", nameHe: "חשמל ותקשורת", shortHe: "חשמל", budget: 2_600_000, kind: "works", split: "by_units", contractIds: ["09-01"] },
-  { id: "10", nameHe: "מיזוג אוויר", shortHe: "מיזוג", budget: 1_500_000, kind: "works", split: "by_units", contractIds: ["10-01"] },
-  { id: "11", nameHe: "אלומיניום", shortHe: "אלומיניום", budget: 2_000_000, kind: "works", split: "by_units", contractIds: ["11-01"] },
-  { id: "12", nameHe: "ריצוף וחיפוי", shortHe: "ריצוף", budget: 2_700_000, kind: "works", split: "by_units", contractIds: [] },
-  { id: "13", nameHe: "נגרות, מסגרות ומעקות", shortHe: "נגרות", budget: 1_700_000, kind: "works", split: "by_units", contractIds: [] },
-  { id: "14", nameHe: "מעליות", shortHe: "מעליות", budget: 1_300_000, kind: "works", split: "per_building", contractIds: ["14-01"] },
-  { id: "15", nameHe: "צבע וגבס", shortHe: "צבע וגבס", budget: 1_100_000, kind: "works", split: "by_units", contractIds: [] },
-  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", shortHe: "מערכות חניון", budget: 1_200_000, kind: "works", split: "parking", contractIds: [] },
-  { id: "17", nameHe: "בלתי צפוי", shortHe: "בלתי צפוי", budget: 1_500_000, kind: "contingency", split: "shared", contractIds: [] },
-  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", shortHe: "הנהלה", budget: 3_200_000, kind: "overhead", split: "shared", contractIds: [] },
+  { id: "01", nameHe: "ארגון אתר, מנוף, שמירה ושירותי אתר", shortHe: "ארגון אתר", budget: 1_900_000, kind: "works", split: "shared", contractIds: [], chapters: ["00"] },
+  { id: "02", nameHe: "שלד — עבודה ובטון (קבלן משנה)", shortHe: "שלד", budget: 12_600_000, kind: "works", split: "by_floors", contractIds: ["02-01"], chapters: ["02", "03"] },
+  { id: "03", nameHe: "אספקת ברזל זיון", shortHe: "ברזל", budget: 3_000_000, kind: "works", split: "by_floors", contractIds: ["03-F"], chapters: ["02"] },
+  { id: "04", nameHe: "עבודות עפר, דיפון וכלונסאות", shortHe: "עפר ודיפון", budget: 2_900_000, kind: "works", split: "shared", contractIds: ["04-01"], chapters: ["01", "23"] },
+  { id: "05", nameHe: "איטום", shortHe: "איטום", budget: 900_000, kind: "works", split: "per_building", contractIds: ["05-01"], chapters: ["05"] },
+  { id: "06", nameHe: "בנייה (בלוקים) וטיח", shortHe: "בנייה וטיח", budget: 2_400_000, kind: "works", split: "by_floors", contractIds: ["06-01"], chapters: ["04", "09"] },
+  { id: "07", nameHe: "פיתוח ותשתיות חוץ", shortHe: "פיתוח", budget: 3_200_000, kind: "works", split: "shared", contractIds: ["07-01"], chapters: ["40", "51", "57"] },
+  { id: "08", nameHe: "אינסטלציה ותברואה", shortHe: "אינסטלציה", budget: 2_300_000, kind: "works", split: "by_units", contractIds: ["08-01"], chapters: ["07"] },
+  { id: "09", nameHe: "חשמל ותקשורת", shortHe: "חשמל", budget: 2_600_000, kind: "works", split: "by_units", contractIds: ["09-01"], chapters: ["08"] },
+  { id: "10", nameHe: "מיזוג אוויר", shortHe: "מיזוג", budget: 1_500_000, kind: "works", split: "by_units", contractIds: ["10-01"], chapters: ["15"] },
+  { id: "11", nameHe: "אלומיניום", shortHe: "אלומיניום", budget: 2_000_000, kind: "works", split: "by_units", contractIds: ["11-01"], chapters: ["12"] },
+  { id: "12", nameHe: "ריצוף וחיפוי", shortHe: "ריצוף", budget: 2_700_000, kind: "works", split: "by_units", contractIds: [], chapters: ["10"] },
+  { id: "13", nameHe: "נגרות, מסגרות ומעקות", shortHe: "נגרות", budget: 1_700_000, kind: "works", split: "by_units", contractIds: [], chapters: ["06"] },
+  { id: "14", nameHe: "מעליות", shortHe: "מעליות", budget: 1_300_000, kind: "works", split: "per_building", contractIds: ["14-01"], chapters: ["16"] },
+  { id: "15", nameHe: "צבע וגבס", shortHe: "צבע וגבס", budget: 1_100_000, kind: "works", split: "by_units", contractIds: [], chapters: ["11", "22"] },
+  { id: "16", nameHe: "מערכות חניון (שערים, אוורור, כיבוי)", shortHe: "מערכות חניון", budget: 1_200_000, kind: "works", split: "parking", contractIds: [], chapters: ["34", "08"] },
+  { id: "17", nameHe: "בלתי צפוי", shortHe: "בלתי צפוי", budget: 1_500_000, kind: "contingency", split: "shared", contractIds: [], chapters: [] },
+  { id: "18", nameHe: "הנהלה, פיקוח, ביטוח ואגרות", shortHe: "הנהלה", budget: 3_200_000, kind: "overhead", split: "shared", contractIds: [], chapters: [] },
 ];
 
 /** The seed's "script invoice": present in variant A (re-allocated live in the demo), removed in variant B (keyed in live). */
@@ -685,5 +685,5 @@ export function generateHadarimPackage(): HadarimPackage {
     const facts = (documentFacts as Record<string, Record<string, unknown> | undefined>)[d.id];
     return { ...d, ...(facts ? { facts } : {}), factsSource: { method: "seed" as const } };
   });
-  return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents };
+  return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents, budgetChanges: [] };
 }

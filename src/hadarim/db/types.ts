@@ -120,6 +120,80 @@ export type Database = {
           },
         ]
       }
+      budget_changes: {
+        Row: {
+          amount: number
+          approved_by: string
+          created_at: string
+          created_by: string
+          date: string
+          from_section_id: string | null
+          id: string
+          kind: string
+          project_id: string
+          reason_he: string
+          reference_he: string | null
+          to_section_id: string | null
+        }
+        Insert: {
+          amount: number
+          approved_by: string
+          created_at?: string
+          created_by: string
+          date: string
+          from_section_id?: string | null
+          id: string
+          kind: string
+          project_id: string
+          reason_he: string
+          reference_he?: string | null
+          to_section_id?: string | null
+        }
+        Update: {
+          amount?: number
+          approved_by?: string
+          created_at?: string
+          created_by?: string
+          date?: string
+          from_section_id?: string | null
+          id?: string
+          kind?: string
+          project_id?: string
+          reason_he?: string
+          reference_he?: string | null
+          to_section_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_changes_project_id_approved_by_fkey"
+            columns: ["project_id", "approved_by"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["project_id", "id"]
+          },
+          {
+            foreignKeyName: "budget_changes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_changes_project_id_from_section_id_fkey"
+            columns: ["project_id", "from_section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["project_id", "id"]
+          },
+          {
+            foreignKeyName: "budget_changes_project_id_to_section_id_fkey"
+            columns: ["project_id", "to_section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["project_id", "id"]
+          },
+        ]
+      }
       change_log: {
         Row: {
           after: string
@@ -1306,6 +1380,7 @@ export type Database = {
       sections: {
         Row: {
           budget: number
+          chapters: string[]
           id: string
           kind: string
           name_he: string
@@ -1316,6 +1391,7 @@ export type Database = {
         }
         Insert: {
           budget: number
+          chapters?: string[]
           id: string
           kind?: string
           name_he: string
@@ -1326,6 +1402,7 @@ export type Database = {
         }
         Update: {
           budget?: number
+          chapters?: string[]
           id?: string
           kind?: string
           name_he?: string

@@ -82,6 +82,8 @@ export interface ControlTask extends Omit<HOpenIssue, "status"> {
 export interface ReportConfig {
   includeTrends: boolean;
   splitByBuilding: boolean;
+  /** Secondary view by the chapters of the Interministerial Specification (sections by their primary chapter). */
+  byChapter?: boolean;
   ceoVersion: boolean;
   execSummaryMaxLines: number;
   savedAs: string | null;
@@ -186,7 +188,7 @@ export interface V2State {
   counters: Record<string, number>;
 }
 
-export const DEFAULT_REPORT_CONFIG: ReportConfig = { includeTrends: false, splitByBuilding: false, ceoVersion: false, execSummaryMaxLines: 5, savedAs: null };
+export const DEFAULT_REPORT_CONFIG: ReportConfig = { includeTrends: false, splitByBuilding: false, byChapter: false, ceoVersion: false, execSummaryMaxLines: 5, savedAs: null };
 
 export function emptySession(controlDate: string): ControlSession {
   return { controlDate, notes: [], questions: [], status: "idle", requestedAt: null, findings: [], positives: [], checkedHe: [], decisions: {}, adjustments: [], corrections: [], tasks: [], messages: [], reportConfig: { ...DEFAULT_REPORT_CONFIG }, finalized: false, stepsRevealed: 0 };

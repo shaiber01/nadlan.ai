@@ -77,6 +77,14 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("erp-contract-exclusions")).toContainText("3.4");
     await page.getByTestId("erp-nav-budget").click();
     await expect(page.getByTestId("erp-recorded-total")).toContainText("20,070,000");
+    // original = updated while no budget change is recorded; the chapters column shows the Blue Book codes
+    await expect(page.getByTestId("erp-updated-budget-total")).toContainText("48,000,000");
+    await expect(page.getByTestId("erp-budget-row-07")).toContainText("40, 51, 57");
+    await expect(page.getByTestId("erp-budget-changes")).toContainText("אין שינויי תקציב מאושרים");
+    await page.getByTestId("erp-budget-change-toggle").click();
+    await expect(page.getByTestId("erp-budget-change-form")).toContainText("דורש חיבור למסד הנתונים");
+    await expect(page.getByTestId("erp-budget-change-submit")).toBeDisabled();
+    await page.getByTestId("erp-budget-change-toggle").click();
     await elementShot(page, "erp-budget", "erp-budget");
     await page.getByTestId("erp-nav-invoices").click();
     await elementShot(page, "erp-invoice-list", "erp-invoice-list");

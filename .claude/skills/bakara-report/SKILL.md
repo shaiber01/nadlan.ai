@@ -34,7 +34,9 @@ What the data cannot know, the controller records — each note lands in the rig
 Risks the data itself implies (quote expiry, appendix-priced remainders, stale issues) are already derived; do not duplicate them.
 
 ## Adapt the structure
-`set_report_config`: `includeTrends` (§10 comparison to the previous control and trends), `splitByBuilding` (sections table also per building — the note names invoices that could not be split at source; tag them with `set_invoice_building` if the user wants), `ceoVersion` (one-page CEO version: `build_report` with `tab: "ceo"`), `execSummaryMaxLines`. Rebuild after each change and describe what was added.
+`set_report_config`: `includeTrends` (§10 comparison to the previous control and trends), `splitByBuilding` (sections table also per building — the note names invoices that could not be split at source; tag them with `set_invoice_building` if the user wants), `byChapter` (sections table also by the chapters of the Interministerial Specification, הספר הכחול — each section under its primary chapter, with the BOQ lines per chapter), `ceoVersion` (one-page CEO version: `build_report` with `tab: "ceo"`), `execSummaryMaxLines`. Rebuild after each change and describe what was added.
+
+The sections table's "תקציב מאושר / שינויים / תקציב מעודכן" columns come from the original budget and the approved budget changes (`list_budget_changes`); when changes exist the key table also shows the original budget and the net change. Budget changes are recorded through `/bakara-erp` on instruction, never to absorb a variance.
 
 `save: true` keeps the structure for the project's next controls. Say what is kept (structure: sections, comparison, building split, CEO version, summary length, the separation of corrections from forecast changes) and what is never kept (the data and conclusions — recomputed every control).
 

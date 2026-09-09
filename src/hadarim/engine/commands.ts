@@ -171,6 +171,8 @@ export function updateInvoiceFields(state: V2State, invoiceId: number, patch: In
   if (next.retentionAmt !== Math.round((next.amount * next.retentionPct) / 100) || next.netPayable !== next.amount - next.retentionAmt) throw new Error("העכבון חייב להתחבר: סכום × שיעור, ולתשלום = סכום − עכבון");
   if (next.cumulativeNow != null && (next.cumulativePrev ?? 0) + next.amount !== next.cumulativeNow) throw new Error("המצטבר חייב להתחבר: מצטבר קודם + סכום = מצטבר נוכחי");
   const labels: { field: string; before: string; after: string }[] = [];
+  if (next.amount !== invoice.amount) labels.push({ field: "סכום", before: nis(invoice.amount), after: nis(next.amount) });
+  if (next.supplierDocNo !== invoice.supplierDocNo) labels.push({ field: "מס׳ מסמך ספק", before: invoice.supplierDocNo, after: next.supplierDocNo });
   if (next.retentionPct !== invoice.retentionPct || next.retentionAmt !== invoice.retentionAmt || next.netPayable !== invoice.netPayable) labels.push({ field: "עכבון", before: `${invoice.retentionPct}% · ${nis(invoice.retentionAmt)} · לתשלום ${nis(invoice.netPayable)}`, after: `${next.retentionPct}% · ${nis(next.retentionAmt)} · לתשלום ${nis(next.netPayable)}` });
   if (next.cumulativePrev !== invoice.cumulativePrev || next.cumulativeNow !== invoice.cumulativeNow) labels.push({ field: "מצטבר", before: `${invoice.cumulativePrev != null ? num(invoice.cumulativePrev) : "—"} → ${invoice.cumulativeNow != null ? num(invoice.cumulativeNow) : "—"}`, after: `${next.cumulativePrev != null ? num(next.cumulativePrev) : "—"} → ${next.cumulativeNow != null ? num(next.cumulativeNow) : "—"}` });
   if (next.date !== invoice.date || next.dateReceived !== invoice.dateReceived) labels.push({ field: "תאריכים", before: `${dateHe(invoice.date)} / התקבל ${dateHe(invoice.dateReceived)}`, after: `${dateHe(next.date)} / התקבל ${dateHe(next.dateReceived)}` });
@@ -655,7 +657,7 @@ function nextFinding(state: V2State): V2State {
 
 /** The scene-8 prompt: what a saved configuration keeps (structure) and what it never keeps (data). */
 export function savePromptHe(config: V2State["control"]["reportConfig"]): string {
-  const kept = ["מבנה הסעיפים לפי התקן", config.includeTrends ? "השוואה לבקרה קודמת ומגמות" : "", config.splitByBuilding ? "פילוח לפי בניין" : "", `סיכום מנהלים עד ${config.execSummaryMaxLines} שורות`, "טבלת אחריות (נושאים לטיפול)", "הפרדה בין תיקוני נתונים לשינויי תחזית", config.ceoVersion ? "גרסה נפרדת למנכ״לית" : ""].filter(Boolean);
+  const kept = ["מבנה הסעיפים לפי התקן", config.includeTrends ? "השוואה לבקרה קודמת ומגמות" : "", config.splitByBuilding ? "פילוח לפי בניין" : "", config.byChapter ? "פילוח לפי פרקי המפרט הבינמשרדי" : "", `סיכום מנהלים עד ${config.execSummaryMaxLines} שורות`, "טבלת אחריות (נושאים לטיפול)", "הפרדה בין תיקוני נתונים לשינויי תחזית", config.ceoVersion ? "גרסה נפרדת למנכ״לית" : ""].filter(Boolean);
   return `לשמור את התצורה הזו לבקרות הבאות של ${pkg.project.nameHe}? מה יישמר: ${kept.join(" · ")}. מה לא יישמר: הנתונים והמסקנות — יחושבו מחדש בכל בקרה.`;
 }
 

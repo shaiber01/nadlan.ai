@@ -24,3 +24,7 @@ An estimate stays an estimate until an order or contract exists; say so.
 - Never write with SQL. Never delete records.
 - Section ids are two digits ("01"–"18"); people and suppliers by their ids (`list_people`, `list_suppliers`).
 - A write is visible to the web app immediately and to the next `run_control` ("ברשומה ששונתה היום").
+
+## Budget changes
+The budget is not the forecast. On the user's instruction only — "אושרה העברה של 200 אלף מבלתי צפוי לשלד", "המזמין אישר תוספת" — record it with `add_budget_change`: `kind` (transfer between two sections, addition to one, reduction from one), the sections, the amount, the approval date, `reasonHe`, `referenceHe` (the decision, change order or letter) and `approvedById` (who approved; ask if not said). Quote the tool's `verifiedHe` (the change re-read from the database and its change-log row) and `sectionsAfter` (original, changes, updated per section). `list_budget_changes` shows the history and the net per section. A transfer or reduction cannot take a section below zero. The report's sections table shows original, changes and updated budget; the variance is against the updated budget.
+

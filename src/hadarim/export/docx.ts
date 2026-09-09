@@ -166,6 +166,12 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
   ];
 
   const part2: Block[] = [h("3. טבלת הסעיפים — ליבת הדוח", 1), sectionsTable(report), p(`${report.sections.materialityHe}. שורות מודגשות: שינוי מבקרה קודמת או סטייה מעל הסף — ההסבר בסעיף 4.`, { size: 16, color: "5B6478", before: 120 })];
+  if (report.sections.byChapter) {
+    part2.push(h("פילוח משני — לפי פרקי המפרט הבינמשרדי (הספר הכחול)", 2));
+    part2.push(
+      table(["פרק", "סעיפים", "תקציב מקורי", "שינויים", "תקציב מעודכן", "נרשם", "התחייבויות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס", "כתב כמויות (לא מכוסות)"], [...report.sections.byChapter.map((c) => [c.labelHe, c.sectionsHe, nis(c.budget), c.changes === 0 ? "—" : signed(c.changes), nis(c.updatedBudget), nis(c.recorded), nis(c.committed), nis(c.uncovered), nis(c.eac), signed(c.variance), signedPct(c.variancePct), `${c.basisPct}%`, c.boqLines ? `${c.boqLines} (${c.boqUncoveredLines})` : "—"]), ["סה״כ", "", nis(report.sections.totals.budget), report.sections.totals.changes === 0 ? "—" : signed(report.sections.totals.changes), nis(report.sections.totals.updatedBudget), nis(report.sections.totals.recorded), nis(report.sections.totals.committed), nis(report.sections.totals.uncovered), nis(report.sections.totals.eac), signed(report.sections.totals.variance), signedPct(report.sections.totals.variancePct), `${report.sections.totals.basisPct}%`, ""]], { textWidth: LANDSCAPE_TEXT_WIDTH, boldLast: true }),
+    );
+  }
   if (report.sections.byBuilding) {
     part2.push(h("פילוח משני — לפי בניין", 2));
     part2.push(

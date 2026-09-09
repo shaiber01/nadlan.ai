@@ -3,14 +3,16 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { DOCUMENT_KIND_HE, type DocumentKind, type HDocument, type HInvoice, type HPurchaseOrder } from "../data/types";
-import { addDocument, db, deleteInvoice, documentFilePath, documentFileUrl, downloadDocumentFile, latestChangeLogId, listHeartbeats, listProjects, nextDocumentId, recordHeartbeat, resetProject, updateDocument, updateDocumentFacts, updateProject, uploadDocumentFile } from "../db/client";
+import { addBudgetChange, addDocument, db, deleteInvoice, documentFilePath, documentFileUrl, downloadDocumentFile, latestChangeLogId, listHeartbeats, listProjects, nextDocumentId, recordHeartbeat, resetProject, updateDocument, updateDocumentFacts, updateProject, uploadDocumentFile } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed } from "../engine/heartbeat";
-import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
+import { chapterNameHe } from "../data/bluebook";
+import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
-import { uncoveredByBasis, workingForecast } from "../engine/forecast";
+import { budgetChangesBySection, uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
 import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, raiseFinding, reallocateInvoice, recordReviewPass, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { lineValue } from "../engine/units";
@@ -58,7 +60,7 @@ const personId = z.string().describe("Person id (see list_people), e.g. EYAL");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const CHANGE_TYPES = Object.keys(CHANGE_TYPE_HE) as [keyof typeof CHANGE_TYPE_HE, ...(keyof typeof CHANGE_TYPE_HE)[]];
 const BASES = ["contract", "po", "quote", "appendix", "estimate"] as const;
-const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"] as const;
+const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"] as const;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const signed = (v: number) => (v === 0 ? "0 ₪" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
@@ -226,6 +228,22 @@ function findRecord(state: V2State, type: "invoice" | "po" | "contract", id: str
   return pkg.contracts.some((k) => k.id === id);
 }
 
+function chapterInfo(s: HSection) {
+  return (s.chapters ?? []).map((code, i) => ({ code, nameHe: chapterNameHe(code), primary: i === 0 }));
+}
+
+/** BOQ lines rolled up by their Blue Book chapter. */
+function boqByChapter(lines: HBoqLine[]) {
+  const map = new Map<string, HBoqLine[]>();
+  for (const l of lines) map.set(l.chapter, [...(map.get(l.chapter) ?? []), l]);
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([chapter, rows]) => ({ chapter, nameHe: rows[0]?.chapterNameHe ?? chapterNameHe(chapter), lines: rows.length, covered: rows.filter((l) => l.coverage === "covered").length, excluded: rows.filter((l) => l.coverage === "excluded").length, notContracted: rows.filter((l) => l.coverage === "not_contracted").length, sectionIds: [...new Set(rows.map((l) => l.sectionId))] }));
+}
+
+function budgetChangeView(c: HBudgetChangeLike) {
+  return { ...c, kindHe: BUDGET_CHANGE_KIND_HE[c.kind], fromHe: c.fromSectionId ? sectionLabel(c.fromSectionId) : null, toHe: c.toSectionId ? sectionLabel(c.toSectionId) : null, approvedByHe: personName(c.approvedById), createdByHe: personName(c.createdById) };
+}
+type HBudgetChangeLike = (typeof pkg.budgetChanges)[number];
+
 function controlView(state: V2State) {
   const c = state.control;
   return {
@@ -316,7 +334,8 @@ define({
     return {
       project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, checkPolicy: p.checkPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
-      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, split: s.split, contractIds: s.contractIds })),
+      sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, kind: s.kind, split: s.split, contractIds: s.contractIds, chapters: chapterInfo(s) })),
+      budgetChanges: { count: pkg.budgetChanges.length, net: pkg.budgetChanges.reduce((n, c) => n + (c.kind === "addition" ? c.amount : c.kind === "reduction" ? -c.amount : 0), 0) },
       counts: { invoices: state.erp.invoices.length, invoicesInReview: state.erp.invoices.filter((i) => i.status === "בבדיקה").length, openPurchaseOrders: state.erp.purchaseOrders.filter((x) => x.status === "פתוחה").length, contracts: pkg.contracts.length, boqLines: pkg.boq.length, documents: pkg.documents.length, changeLog: state.erp.changeLog.length },
       forecastVersions: pkg.forecasts.map((f) => ({ controlDate: f.controlDate, status: f.status, totalEac: f.totalEac })),
       control: { controlDate: c.controlDate, status: c.status, finalized: c.finalized, findings: c.findings.length, openFindings: c.findings.filter((f) => !c.decisions[f.id] || c.decisions[f.id].status === "open" || c.decisions[f.id].pending).length, adjustments: c.adjustments.length, corrections: c.corrections.length, openTasks: c.tasks.filter((t) => t.status !== "closed").length },
@@ -358,12 +377,12 @@ define({
     const wf = workingForecast(pkg, state.erp, state.control.adjustments, state.control.controlDate);
     const sections = wf.sections
       .filter((s) => !a.sectionId || s.sectionId === a.sectionId)
-      .map((s) => ({ sectionId: s.sectionId, nameHe: pkg.sections.find((x) => x.id === s.sectionId)!.nameHe, budget: s.budget, recorded: s.recorded, committed: s.committed, remainingCommitment: s.remainingCommitment, uncovered: s.uncovered, eac: s.eac, variance: s.variance, previousEac: s.previousEac, change: s.change, basisPct: s.basisPct, ...(s.coverageNoteHe ? { coverageNoteHe: s.coverageNoteHe } : {}), ...(a.includeLines || a.sectionId ? { lines: s.lines } : {}) }));
+      .map((s) => ({ sectionId: s.sectionId, nameHe: pkg.sections.find((x) => x.id === s.sectionId)!.nameHe, budget: s.budget, originalBudget: s.originalBudget, budgetChanges: s.budgetChanges, recorded: s.recorded, committed: s.committed, remainingCommitment: s.remainingCommitment, uncovered: s.uncovered, eac: s.eac, variance: s.variance, previousEac: s.previousEac, change: s.change, basisPct: s.basisPct, ...(s.coverageNoteHe ? { coverageNoteHe: s.coverageNoteHe } : {}), ...(a.includeLines || a.sectionId ? { lines: s.lines } : {}) }));
     const u = uncoveredByBasis(wf);
     return {
       controlDate: wf.controlDate,
       previousControlDate: wf.previousControlDate,
-      totals: { budget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance: wf.totalEac - wf.totalBudget, previousEac: wf.previousTotalEac, change: wf.totalEac - wf.previousTotalEac },
+      totals: { budget: wf.totalBudget, originalBudget: wf.totalOriginalBudget, budgetChanges: wf.totalBudgetChanges, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance: wf.totalEac - wf.totalBudget, previousEac: wf.previousTotalEac, change: wf.totalEac - wf.previousTotalEac },
       invoicesInReview: wf.invoicesInReview,
       uncoveredByBasis: { total: u.total, estimate: u.estimate, quote: u.quote, appendix: u.appendix, lines: u.lines, allocationTotal: u.allocationTotal, allocations: u.allocations },
       sections,
@@ -386,12 +405,14 @@ define({
     const invoices = state.erp.invoices.filter((i) => i.sectionId === section.id);
     const approved = invoices.filter((i) => i.status !== "בבדיקה" && i.dateReceived < state.control.controlDate);
     return {
-      section: { ...section, shortHe: sectionShort(section.id) },
-      forecast: { budget: ws.budget, recorded: ws.recorded, committed: ws.committed, remainingCommitment: ws.remainingCommitment, uncovered: ws.uncovered, eac: ws.eac, variance: ws.variance, previousEac: ws.previousEac, change: ws.change, basisPct: ws.basisPct, lines: ws.lines },
+      section: { ...section, shortHe: sectionShort(section.id), chapters: chapterInfo(section) },
+      budgetChanges: pkg.budgetChanges.filter((c) => c.fromSectionId === section.id || c.toSectionId === section.id).map(budgetChangeView),
+      forecast: { budget: ws.budget, originalBudget: ws.originalBudget, budgetChanges: ws.budgetChanges, recorded: ws.recorded, committed: ws.committed, remainingCommitment: ws.remainingCommitment, uncovered: ws.uncovered, eac: ws.eac, variance: ws.variance, previousEac: ws.previousEac, change: ws.change, basisPct: ws.basisPct, lines: ws.lines },
       contracts: pkg.contracts.filter((c) => c.sectionId === section.id).map((c) => ({ ...c, supplierHe: supplierName(c.supplierId) })),
       invoices: { count: invoices.length, recordedBeforeCutoff: approved.reduce((s, i) => s + i.amount, 0), inReview: invoices.filter((i) => i.status === "בבדיקה").length, rows: invoices.map(invoiceView) },
       purchaseOrders: state.erp.purchaseOrders.filter((p) => p.sectionId === section.id).map(poView),
       boq: pkg.boq.filter((l) => l.sectionId === section.id),
+      boqByChapter: boqByChapter(pkg.boq.filter((l) => l.sectionId === section.id)),
       adjustments: state.control.adjustments.filter((x) => x.sectionId === section.id),
       corrections: state.control.corrections.filter((x) => x.crossSectionHe.includes(`${section.id}-`) || x.afterHe.startsWith(section.id) || x.beforeHe.startsWith(section.id)),
       tasks: state.control.tasks.filter((t) => t.sectionId === section.id),
@@ -480,13 +501,13 @@ define({
 define({
   name: "query_boq",
   title: "Bill of quantities",
-  description: "BOQ lines with coverage (covered / excluded / not_contracted), the covering contract or exclusion clause, quantities and units; filter by section, coverage or a text fragment.",
+  description: "BOQ lines with coverage (covered / excluded / not_contracted), the covering contract or exclusion clause, quantities and units; filter by section, Blue Book chapter (the Interministerial Specification chapter the line belongs to), coverage or a text fragment. byChapter rolls the lines up per chapter.",
   kind: "read",
-  input: { projectId, sectionId: sectionId.optional(), coverage: z.enum(["covered", "excluded", "not_contracted"]).optional(), query: z.string().optional().describe("text fragment of the description") },
+  input: { projectId, sectionId: sectionId.optional(), chapter: z.string().optional().describe("Blue Book chapter code, e.g. '57'"), coverage: z.enum(["covered", "excluded", "not_contracted"]).optional(), query: z.string().optional().describe("text fragment of the description") },
   run: async (a) => {
     await loadState(a.projectId);
-    const rows = pkg.boq.filter((l) => (!a.sectionId || l.sectionId === a.sectionId) && (!a.coverage || l.coverage === a.coverage) && (!a.query || l.descriptionHe.includes(a.query)));
-    return { boqVersion: pkg.project.boqVersion, total: rows.length, lines: rows.map((l) => ({ ...l, sectionHe: sectionLabel(l.sectionId) })) };
+    const rows = pkg.boq.filter((l) => (!a.sectionId || l.sectionId === a.sectionId) && (!a.chapter || l.chapter === a.chapter) && (!a.coverage || l.coverage === a.coverage) && (!a.query || l.descriptionHe.includes(a.query)));
+    return { boqVersion: pkg.project.boqVersion, total: rows.length, byChapter: boqByChapter(rows), lines: rows.map((l) => ({ ...l, sectionHe: sectionLabel(l.sectionId) })) };
   },
 });
 
@@ -530,7 +551,7 @@ define({
   title: "Change log",
   description: "Who changed what in the ERP and when (written by database triggers): filter by date, record type, record id or person. Use it to see what changed since the last control or today.",
   kind: "read",
-  input: { projectId, since: z.string().optional().describe("yyyy-mm-dd or yyyy-mm-ddTHH:MM (Israel time)"), recordType: z.enum(["invoice", "po", "contract"]).optional(), recordId: z.string().optional(), byId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) },
+  input: { projectId, since: z.string().optional().describe("yyyy-mm-dd or yyyy-mm-ddTHH:MM (Israel time)"), recordType: z.enum(["invoice", "po", "contract", "budget"]).optional(), recordId: z.string().optional(), byId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) },
   run: async (a) => {
     const state = await loadState(a.projectId);
     const rows = state.erp.changeLog.filter((c) => (!a.since || c.at >= a.since) && (!a.recordType || c.recordType === a.recordType) && (!a.recordId || c.recordId === a.recordId) && (!a.byId || c.byId === a.byId));
@@ -634,6 +655,7 @@ define({
       ...(want("retention") ? bySection(checkRetention(pkg, state.erp, a.invoiceId)) : []),
       ...(want("dates") ? bySection(checkDates(pkg, state.erp, today, a.invoiceId)) : []),
       ...(want("review_aging") ? bySection(checkReviewAging(pkg, state.erp, state.control.controlDate, a.invoiceId)) : []),
+      ...(want("document") ? bySection(checkDocuments(pkg, state.erp, { invoiceId: a.invoiceId, poId: a.poId })) : []),
     ];
     return { controlDate: state.control.controlDate, findings: withPeople(pkg, state.erp, findings).map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
   },
@@ -1057,6 +1079,54 @@ define({
 });
 
 // ---------------------------------------------------------------------------
+// Budget changes
+// ---------------------------------------------------------------------------
+
+define({
+  name: "list_budget_changes",
+  title: "Approved budget changes",
+  description: "The approved changes to the budget — transfers between sections, additions, reductions — with who approved them and why, and the net effect per section (original budget, changes, updated budget). The report's sections table shows the same in its שינויים / תקציב מעודכן columns.",
+  kind: "read",
+  input: { projectId, sectionId: sectionId.optional() },
+  run: async (a) => {
+    await loadState(a.projectId);
+    const rows = pkg.budgetChanges.filter((c) => !a.sectionId || c.fromSectionId === a.sectionId || c.toSectionId === a.sectionId);
+    const deltas = budgetChangesBySection(pkg.budgetChanges);
+    return { total: rows.length, changes: rows.map(budgetChangeView), perSection: pkg.sections.filter((s) => deltas[s.id]).map((s) => ({ sectionId: s.id, sectionHe: sectionLabel(s.id), originalBudget: s.budget, changes: deltas[s.id], updatedBudget: s.budget + deltas[s.id] })), totals: { originalBudget: pkg.sections.reduce((n, s) => n + s.budget, 0), changes: Object.values(deltas).reduce((n, v) => n + v, 0) } };
+  },
+});
+
+define({
+  name: "add_budget_change",
+  title: "Record an approved budget change",
+  description: "Record a change to the budget on the user's instruction, with who approved it: a transfer between two sections (fromSectionId → toSectionId), an addition to a section (toSectionId only; an owner-approved increase or funding from outside the project) or a reduction (fromSectionId only). The original budget stays; the updated budget is original plus changes, used by the report, the variance and the materiality thresholds. Logged in the change log. A transfer or reduction may not take a section's updated budget below zero. A change counts in a control when its date is on or before that control's date (the result says whether it counts). Never on your own initiative.",
+  kind: "write",
+  input: { projectId, kind: z.enum(["transfer", "addition", "reduction"]), fromSectionId: sectionId.optional(), toSectionId: sectionId.optional(), amount: z.number().int().positive(), date: isoDate.optional().describe("approval date (default: today)"), reasonHe: z.string().min(3), referenceHe: z.string().optional().describe("the approval: a decision, a change order, a letter"), approvedById: personId, byId: personId.optional().describe("who records it (default: the operator)") },
+  run: async (a) => {
+    const state = await loadState(a.projectId);
+    const from = a.kind === "addition" ? null : a.fromSectionId ?? null;
+    const to = a.kind === "reduction" ? null : a.toSectionId ?? null;
+    if (a.kind === "transfer" && (!from || !to || from === to)) throw new Error("העברה דורשת fromSectionId ו-toSectionId שונים");
+    if (a.kind === "addition" && !to) throw new Error("תוספת דורשת toSectionId");
+    if (a.kind === "reduction" && !from) throw new Error("הפחתה דורשת fromSectionId");
+    for (const id of [from, to]) if (id && !pkg.sections.some((s) => s.id === id)) throw new Error(`סעיף ${id} לא קיים`);
+    if (!pkg.people.some((p) => p.id === a.approvedById)) throw new Error(`${a.approvedById} אינו מוגדר בפרויקט`);
+    if (from) {
+      const current = pkg.sections.find((s) => s.id === from)!.budget + (budgetChangesBySection(pkg.budgetChanges)[from] ?? 0);
+      if (current - a.amount < 0) throw new Error(`התקציב המעודכן של סעיף ${sectionLabel(from as SectionId)} הוא ${current.toLocaleString("he-IL")} ₪ — אי אפשר להוריד ממנו ${a.amount.toLocaleString("he-IL")} ₪`);
+    }
+    const created = await addBudgetChange(a.projectId, { date: a.date ?? nowStamp().slice(0, 10), kind: a.kind, fromSectionId: from as HBudgetChangeLike["fromSectionId"], toSectionId: to as HBudgetChangeLike["toSectionId"], amount: a.amount, reasonHe: a.reasonHe, referenceHe: a.referenceHe, approvedById: a.approvedById as HBudgetChangeLike["approvedById"], createdById: (a.byId ?? state.operatorId) as HBudgetChangeLike["createdById"] });
+    const fresh = await loadState(a.projectId);
+    const deltas = budgetChangesBySection(pkg.budgetChanges);
+    const after = [from, to].filter((id): id is string => !!id).map((id) => ({ sectionId: id, sectionHe: sectionLabel(id as SectionId), originalBudget: pkg.sections.find((s) => s.id === id)!.budget, changes: deltas[id] ?? 0, updatedBudget: pkg.sections.find((s) => s.id === id)!.budget + (deltas[id] ?? 0) }));
+    const logged = fresh.erp.changeLog.find((e) => e.recordType === "budget" && e.recordId === created.id);
+    const controlDate = fresh.control.controlDate;
+    const countsInControl = created.date <= controlDate;
+    return { ok: true, change: budgetChangeView(created), sectionsAfter: after, countsInControl, ...(countsInControl ? {} : { noteHe: `השינוי מתוארך ${created.date.split("-").reverse().join(".")} — אחרי מועד הבקרה ${controlDate.split("-").reverse().join(".")} — ולכן אינו נכלל בתקציב המעודכן של בקרה זו (ייכלל בבקרה הבאה). אם אושר לפני מועד הבקרה, רשום אותו עם date מתאים.` }), verifiedHe: `נקרא מחדש: ${created.id} · ${BUDGET_CHANGE_KIND_HE[created.kind]} · ${created.amount.toLocaleString("he-IL")} ₪ · אישר ${personName(created.approvedById)}${logged ? ` · נרשם ביומן השינויים (${logged.after})` : ""}`, headline: headline(fresh) };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // The heartbeat — everything new since the last pass
 // ---------------------------------------------------------------------------
 
@@ -1165,10 +1235,10 @@ define({
   title: "Report structure",
   description: "Change the report's structure: comparison to the previous control and trends (§10), per-building split of the sections table (§3), the one-page CEO version, the executive-summary length; save=true keeps the structure (never the data) for the project's next controls.",
   kind: "write",
-  input: { projectId, controlDate, includeTrends: z.boolean().optional(), splitByBuilding: z.boolean().optional(), ceoVersion: z.boolean().optional(), execSummaryMaxLines: z.number().int().min(3).max(10).optional(), save: z.boolean().default(false) },
+  input: { projectId, controlDate, includeTrends: z.boolean().optional(), splitByBuilding: z.boolean().optional(), byChapter: z.boolean().optional().describe("secondary view of the sections table by the chapters of the Interministerial Specification (הספר הכחול)"), ceoVersion: z.boolean().optional(), execSummaryMaxLines: z.number().int().min(3).max(10).optional(), save: z.boolean().default(false) },
   run: async (a) => {
     const r = await write(a.projectId, a.controlDate, (s) => {
-      const patch = { ...(a.includeTrends !== undefined ? { includeTrends: a.includeTrends } : {}), ...(a.splitByBuilding !== undefined ? { splitByBuilding: a.splitByBuilding } : {}), ...(a.ceoVersion !== undefined ? { ceoVersion: a.ceoVersion } : {}), ...(a.execSummaryMaxLines !== undefined ? { execSummaryMaxLines: a.execSummaryMaxLines } : {}) };
+      const patch = { ...(a.includeTrends !== undefined ? { includeTrends: a.includeTrends } : {}), ...(a.splitByBuilding !== undefined ? { splitByBuilding: a.splitByBuilding } : {}), ...(a.byChapter !== undefined ? { byChapter: a.byChapter } : {}), ...(a.ceoVersion !== undefined ? { ceoVersion: a.ceoVersion } : {}), ...(a.execSummaryMaxLines !== undefined ? { execSummaryMaxLines: a.execSummaryMaxLines } : {}) };
       let next = Object.keys(patch).length ? setReportConfig(s, patch) : s;
       if (a.save) next = saveConfig(next, true);
       return next;

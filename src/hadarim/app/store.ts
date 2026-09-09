@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { HInvoice, HPurchaseOrder } from "../data/types";
-import { addDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
+import { addBudgetChange, addDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
 import { mimeTypeFor } from "../documents/mime";
-import type { HDocument } from "../data/types";
+import type { HBudgetChange, HDocument } from "../data/types";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState } from "../db/session";
 import { SCRIPT_INVOICE_ID, initialState } from "../engine/commands";
@@ -196,6 +196,24 @@ class HadarimStore {
       this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
       await this.loadFromDb();
       return doc;
+    } catch (e) {
+      this.setDb({ syncing: false });
+      throw e;
+    } finally {
+      this.writesInFlight -= 1;
+    }
+  };
+
+  /** Key in an approved budget change (the ERP's budget screen). Logged by the database trigger. Needs the database. */
+  addBudgetChange = async (change: Omit<HBudgetChange, "id" | "createdAt">): Promise<HBudgetChange> => {
+    if (this.ui.db.status !== "online") throw new Error("רישום שינוי תקציב דורש חיבור למסד הנתונים (כבה ״עבודה מקומית״).");
+    this.writesInFlight += 1;
+    this.setDb({ syncing: true });
+    try {
+      const created = await addBudgetChange(this.projectId, change);
+      this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
+      await this.loadFromDb();
+      return created;
     } catch (e) {
       this.setDb({ syncing: false });
       throw e;

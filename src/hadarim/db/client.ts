@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY, type BuildingTag, type ForecastBasis, type HBoqLine, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HRiskPolicy, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
+import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY, type BuildingTag, type ForecastBasis, type HBoqLine, type HBudgetChange, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HRiskPolicy, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
 import type { ErpState } from "../engine/model";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import type { Database, Json, Tables, TablesInsert } from "./types";
@@ -125,6 +125,10 @@ export function rowToDocument(d: Row<"documents">): HDocument {
   };
 }
 
+export function rowToBudgetChange(r: Row<"budget_changes">): HBudgetChange {
+  return { id: r.id, date: r.date, kind: r.kind as HBudgetChange["kind"], fromSectionId: (r.from_section_id as SectionId | null) ?? null, toSectionId: (r.to_section_id as SectionId | null) ?? null, amount: Number(r.amount), reasonHe: r.reason_he, ...(r.reference_he ? { referenceHe: r.reference_he } : {}), approvedById: r.approved_by as PersonId, createdById: r.created_by as PersonId, createdAt: r.created_at };
+}
+
 export function rowToChangeLog(r: Row<"change_log">): HChangeLogEntry {
   return { id: String(r.id), recordType: r.record_type as HChangeLogEntry["recordType"], recordId: r.record_id, field: r.field, before: r.before, after: r.after, at: toStamp(r.at), byId: r.by_id as PersonId, noteHe: r.note_he ?? "" };
 }
@@ -148,7 +152,7 @@ export async function loadErp(projectId = DEFAULT_PROJECT_ID, supabase: Db = db(
 
 /** The whole project as the engine's package: reference data, ERP records, forecasts, issues, documents. */
 export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HadarimPackage> {
-  const [projects, people, suppliers, sections, documents, contracts, boq, versions, fSections, fLines, issues, erp] = await Promise.all([
+  const [projects, people, suppliers, sections, documents, contracts, boq, versions, fSections, fLines, issues, erp, budgetChanges] = await Promise.all([
     all(supabase.from("projects").select("*").eq("id", projectId), "projects"),
     all(supabase.from("people").select("*").eq("project_id", projectId), "people"),
     all(supabase.from("suppliers").select("*").eq("project_id", projectId).order("id"), "suppliers"),
@@ -161,6 +165,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     all(supabase.from("forecast_lines").select("*").eq("project_id", projectId).order("position"), "forecast_lines"),
     all(supabase.from("open_issues").select("*").eq("project_id", projectId).order("opened_in_control"), "open_issues"),
     loadErp(projectId, supabase),
+    all(supabase.from("budget_changes").select("*").eq("project_id", projectId).order("date").order("id"), "budget_changes"),
   ]);
   const p = projects[0];
   if (!p) throw new Error(`project ${projectId} not found`);
@@ -221,7 +226,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     ...(c.note_he ? { noteHe: c.note_he } : {}),
     ...(c.boq_match_verified ? { boqMatchVerified: true } : {}),
   }));
-  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id) }));
+  const sectionsOut: HSection[] = sections.map((s) => ({ id: s.id as SectionId, nameHe: s.name_he, shortHe: s.short_name_he, budget: Number(s.budget), kind: (s.kind ?? "works") as HSection["kind"], split: s.split as HSection["split"], contractIds: contractsOut.filter((c) => c.sectionId === s.id).map((c) => c.id), chapters: s.chapters ?? [] }));
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation, ...(x.channel ? { channel: x.channel as HPerson["channel"] } : {}) }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
   const documentsOut: HDocument[] = documents.map(rowToDocument);
@@ -252,7 +257,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     openIssues: v.has_sections ? issuesOut.filter((i) => i.openedInControl <= v.control_date) : [],
     qualificationsHe: v.qualifications_he,
   }));
-  return { project, people: peopleOut, suppliers: suppliersOut, sections: sectionsOut, contracts: contractsOut, invoices: erp.invoices, purchaseOrders: erp.purchaseOrders, boq: boqOut, forecasts, changeLog: erp.changeLog, documents: documentsOut };
+  return { project, people: peopleOut, suppliers: suppliersOut, sections: sectionsOut, contracts: contractsOut, invoices: erp.invoices, purchaseOrders: erp.purchaseOrders, boq: boqOut, forecasts, changeLog: erp.changeLog, documents: documentsOut, budgetChanges: budgetChanges.map(rowToBudgetChange) };
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +454,29 @@ export async function updateDocument(projectId: string, documentId: string, patc
   return rowToDocument(data);
 }
 
+// ---------------------------------------------------------------------------
+// Budget changes (the ERP keys them; the agent records them on instruction; the trigger logs them)
+// ---------------------------------------------------------------------------
+
+export async function nextBudgetChangeId(projectId: string, supabase: Db = db()): Promise<string> {
+  const rows = await all(supabase.from("budget_changes").select("id").eq("project_id", projectId), "budget_changes");
+  const max = rows.reduce((m, r) => Math.max(m, Number(r.id.replace(/^BC-/, "")) || 0), 0);
+  return `BC-${max + 1}`;
+}
+
+export async function addBudgetChange(projectId: string, change: Omit<HBudgetChange, "id" | "createdAt"> & { id?: string }, supabase: Db = db()): Promise<HBudgetChange> {
+  const id = change.id ?? (await nextBudgetChangeId(projectId, supabase));
+  const row: TablesInsert<"budget_changes"> = { project_id: projectId, id, date: change.date, kind: change.kind, from_section_id: change.fromSectionId, to_section_id: change.toSectionId, amount: change.amount, reason_he: change.reasonHe, reference_he: change.referenceHe ?? null, approved_by: change.approvedById, created_by: change.createdById };
+  const { data, error } = await supabase.from("budget_changes").insert(row).select("*").single();
+  if (error) throw new Error(`budget_changes ${id}: ${error.message}`);
+  return rowToBudgetChange(data);
+}
+
+export async function listBudgetChanges(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HBudgetChange[]> {
+  const rows = await all(supabase.from("budget_changes").select("*").eq("project_id", projectId).order("date").order("id"), "budget_changes");
+  return rows.map(rowToBudgetChange);
+}
+
 export async function nextDocumentId(projectId: string, supabase: Db = db()): Promise<string> {
   const rows = await all(supabase.from("documents").select("id").eq("project_id", projectId).like("id", "doc_%"), "documents");
   const max = rows.reduce((m, r) => Math.max(m, Number(r.id.replace(/^doc_/, "")) || 0), 0);
@@ -558,7 +586,7 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
 }
 
 /** Tables whose changes the web app follows: the ERP, the control session the agent writes, saved reports, the project row. */
-const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions", "questions", "documents", "heartbeats"] as const;
+const LIVE_TABLES = ["invoices", "purchase_orders", "change_log", "controls", "decisions", "forecast_adjustments", "data_corrections", "open_issues", "audit", "report_versions", "questions", "documents", "heartbeats", "budget_changes"] as const;
 
 /** Calls `onChange` (debounced) whenever the project's ERP data, control session or saved reports change. Returns an unsubscribe. */
 export function subscribeProject(projectId: string, onChange: () => void, supabase: Db = db()): () => void {

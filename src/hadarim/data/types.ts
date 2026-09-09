@@ -105,7 +105,30 @@ export interface HSection {
   /** How the section is split per building in the optional secondary view. */
   split: "by_floors" | "by_units" | "shared" | "parking" | "per_building";
   contractIds: string[];
+  /** Chapters of the Interministerial Specification (the Blue Book) the section covers; the first is the primary. */
+  chapters?: string[];
 }
+
+/**
+ * An approved change to the budget: a transfer between sections, an addition (owner-approved increase, or from
+ * outside the project) or a reduction. The sections' `budget` is the original; the updated budget is original plus
+ * the changes dated up to the control date. Keyed in the ERP or recorded by the agent on instruction; logged.
+ */
+export interface HBudgetChange {
+  id: string;
+  date: string;
+  kind: "transfer" | "addition" | "reduction";
+  fromSectionId: SectionId | null;
+  toSectionId: SectionId | null;
+  amount: number;
+  reasonHe: string;
+  referenceHe?: string;
+  approvedById: PersonId;
+  createdById: PersonId;
+  createdAt?: string;
+}
+
+export const BUDGET_CHANGE_KIND_HE: Record<HBudgetChange["kind"], string> = { transfer: "העברה בין סעיפים", addition: "תוספת תקציב", reduction: "הפחתת תקציב" };
 
 export interface HPriceAppendix {
   id: string;
@@ -260,7 +283,7 @@ export interface HForecastVersion {
 
 export interface HChangeLogEntry {
   id: string;
-  recordType: "invoice" | "po" | "contract";
+  recordType: "invoice" | "po" | "contract" | "budget";
   recordId: string;
   field: string;
   before: string;
@@ -336,4 +359,6 @@ export interface HadarimPackage {
   forecasts: HForecastVersion[];
   changeLog: HChangeLogEntry[];
   documents: HDocument[];
+  /** Approved budget changes (empty in the seed; the ERP and the agent add them). */
+  budgetChanges: HBudgetChange[];
 }

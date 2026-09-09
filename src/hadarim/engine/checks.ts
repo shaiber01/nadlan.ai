@@ -27,8 +27,8 @@ export interface HDecisionOption {
 }
 
 /** Control findings (decided card by card) and data-quality findings (the record itself is inconsistent). */
-export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "review";
-export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging"];
+export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "document" | "review";
+export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"];
 
 /** A person connected to the record a finding is about — who to ask when the operator does not know. */
 export interface InvolvedPerson {
@@ -39,7 +39,7 @@ export interface InvolvedPerson {
 }
 
 /** Invoice fields a data-quality card may correct on approval. */
-export type InvoiceFixPatch = Partial<Pick<HInvoice, "retentionPct" | "retentionAmt" | "netPayable" | "cumulativePrev" | "cumulativeNow" | "date" | "dateReceived" | "status" | "approvedBy">>;
+export type InvoiceFixPatch = Partial<Pick<HInvoice, "amount" | "supplierDocNo" | "retentionPct" | "retentionAmt" | "netPayable" | "cumulativePrev" | "cumulativeNow" | "date" | "dateReceived" | "status" | "approvedBy">>;
 
 export interface HFinding {
   id: string;
@@ -626,11 +626,175 @@ export function checkReviewAging(pkg: HadarimPackage, erp: ErpState, controlDate
   return out;
 }
 
-export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, controlDate: string, today: string): HFinding[] {
-  return [...checkDuplicates(pkg, erp), ...checkContractOverrun(pkg, erp), ...checkCumulative(pkg, erp), ...checkRetention(pkg, erp), ...checkDates(pkg, erp, today), ...checkReviewAging(pkg, erp, controlDate)];
+/**
+ * A record against its source document: every field the document's facts state (what the agent or the seed read
+ * in it) must match the record — invoice amount, supplier document number, date, retention rate, cumulative
+ * amounts, supplier, quantities; an order's amount and supplier. Documents are linked by the record's attachment
+ * or by the document's own record reference. The document is the source: for an invoice the fix is the document's
+ * values (with the dependent retention, net payable and cumulative recomputed); an order is corrected on
+ * instruction. Quantities and units of orders against quotes are the unit check's domain and are not repeated.
+ */
+export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invoiceId?: number; poId?: number }): HFinding[] {
+  const out: HFinding[] = [];
+  const withFacts = (d: HDocument) => !!d.facts && Object.keys(d.facts).length > 0;
+  const docsOf = (type: "invoice" | "po", id: string, attachmentId: string | null) => pkg.documents.filter((d) => withFacts(d) && (d.id === attachmentId || (d.recordRef?.type === type && d.recordRef.id === id)));
+  const numFact = (f: Record<string, unknown>, ...keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = f[k];
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.replace(/,/g, ""))) return Number(v.replace(/,/g, ""));
+    }
+    return null;
+  };
+  const strFact = (f: Record<string, unknown>, ...keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = f[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return null;
+  };
+  const docSource = (d: HDocument, anchor?: string): HSource => ({ kind: "document", refId: d.id, labelHe: `${d.titleHe} · ${d.fileName}${d.factsSource ? ` · עובדות: ${d.factsSource.method === "seed" ? "נתוני הבסיס" : d.factsSource.method === "agent" ? "קריאת הסוכן" : "חילוץ"}` : ""}`, documentId: d.id, ...(anchor && d.anchors[anchor] != null ? { anchor } : {}) });
+
+  if (only?.poId == null) {
+    for (const inv of erp.invoices) {
+      if (only?.invoiceId != null && inv.id !== only.invoiceId) continue;
+      const docs = docsOf("invoice", String(inv.id), inv.attachmentId);
+      if (!docs.length) continue;
+      const rows: string[][] = [];
+      const sources: HSource[] = [invoiceSource(pkg, inv)];
+      const patch: InvoiceFixPatch = {};
+      let fixable = true;
+      let amountDelta = 0;
+      for (const d of docs) {
+        const f = d.facts!;
+        const push = (fieldHe: string, recordHe: string, docHe: string, anchor?: string) => {
+          rows.push([fieldHe, recordHe, docHe, d.titleHe]);
+          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, anchor));
+        };
+        const amount = numFact(f, "amountThis", "amount");
+        if (amount != null && amount !== inv.amount) {
+          push("סכום", nis(inv.amount), nis(amount), "cumulative");
+          patch.amount = amount;
+          amountDelta = amount - inv.amount;
+        }
+        const docNo = strFact(f, "supplierDocNo", "docNo", "invoiceNo");
+        if (docNo && docNo !== inv.supplierDocNo) {
+          push("מס׳ מסמך ספק", inv.supplierDocNo, docNo, "header");
+          patch.supplierDocNo = docNo;
+        }
+        const date = strFact(f, "date", "invoiceDate");
+        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date !== inv.date) {
+          push("תאריך", dateHe(inv.date), dateHe(date), "header");
+          patch.date = date;
+        }
+        const retentionPct = numFact(f, "retentionPct");
+        if (retentionPct != null && retentionPct !== inv.retentionPct) {
+          push("שיעור עכבון", `${inv.retentionPct}%`, `${retentionPct}%`, "retention");
+          patch.retentionPct = retentionPct;
+        }
+        const cumPrev = numFact(f, "cumulativePrev");
+        const cumNow = numFact(f, "cumulativeNow");
+        if (cumPrev != null && inv.cumulativePrev != null && cumPrev !== inv.cumulativePrev) {
+          push("מצטבר קודם", nis(inv.cumulativePrev), nis(cumPrev), "cumulative");
+          patch.cumulativePrev = cumPrev;
+        }
+        if (cumNow != null && inv.cumulativeNow != null && cumNow !== inv.cumulativeNow) {
+          push("מצטבר נוכחי", nis(inv.cumulativeNow), nis(cumNow), "cumulative");
+          patch.cumulativeNow = cumNow;
+        }
+        const supplier = strFact(f, "supplierId");
+        if (supplier && supplier !== inv.supplierId) {
+          push("ספק", supplierNameOf(pkg, inv.supplierId), supplierNameOf(pkg, supplier), "header");
+          fixable = false;
+        }
+        const qty = numFact(f, "qty");
+        const unit = strFact(f, "unit");
+        const unitPrice = numFact(f, "unitPrice");
+        if (qty != null && inv.quantity != null && qty !== inv.quantity) {
+          push("כמות", num(inv.quantity), num(qty));
+          fixable = false;
+        }
+        if (unit && inv.unit && unit !== inv.unit) {
+          push("יחידה", inv.unit, unit);
+          fixable = false;
+        }
+        if (unitPrice != null && inv.unitPrice != null && unitPrice !== inv.unitPrice) {
+          push("מחיר יחידה", nis(inv.unitPrice), nis(unitPrice));
+          fixable = false;
+        }
+      }
+      if (!rows.length) continue;
+      // the dependent fields follow the document's values, so the fix keeps the invoice's arithmetic
+      const next = { ...inv, ...patch };
+      const retentionAmt = Math.round((next.amount * next.retentionPct) / 100);
+      const full: InvoiceFixPatch = { ...patch, ...(patch.amount !== undefined || patch.retentionPct !== undefined ? { retentionAmt, netPayable: next.amount - retentionAmt } : {}) };
+      if (next.cumulativeNow != null && patch.cumulativeNow === undefined && (patch.amount !== undefined || patch.cumulativePrev !== undefined)) full.cumulativeNow = (next.cumulativePrev ?? 0) + next.amount;
+      const consistent = next.cumulativeNow == null || full.cumulativeNow === undefined || (next.cumulativePrev ?? 0) + next.amount === full.cumulativeNow;
+      const proposed = fixable && consistent && Object.keys(patch).length ? { labelHe: `לתקן לפי המסמך — ${rows.map((r) => `${r[0]} ${r[2]}`).join(" · ")}`, patch: full } : undefined;
+      out.push({
+        id: `F-DOC-${inv.id}`,
+        kind: "document",
+        titleHe: `חשבון ${inv.id} — הרשומה אינה תואמת למסמך המקור`,
+        problemHe: `בחשבון ${inv.id}: ${rows.map((r) => `${r[0]} — נרשם ${r[1]}, במסמך ${r[2]}`).join("; ")}.`,
+        sources,
+        checkHe: `הושוו ${num(rows.length)} שדות מול ${docs.length === 1 ? `המסמך ״${docs[0].titleHe}״` : `${num(docs.length)} מסמכים`} — העובדות שנרשמו מהמסמך מול הרשומה.`,
+        meaningHe: amountDelta ? `המסמך הוא המקור: הסכום שנרשם לסעיף ${sectionLabel(inv.sectionId, pkg)} ${amountDelta > 0 ? "נמוך" : "גבוה"} ב-${nis(Math.abs(amountDelta))} מהחשבון שהספק הגיש.` : "המסמך הוא המקור: פרטי הרשומה במערכת המידע שגויים, או שהעובדות שנקראו מהמסמך שגויות — יש לפתוח את המסמך.",
+        impact: amountDelta ? { kind: "amount", amount: amountDelta, labelHe: `${amountDelta > 0 ? "+" : "−"}${nis(Math.abs(amountDelta))} על הסעיף` } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+        decision: fixDecision("לתקן את הרשומה לפי המסמך?", "לתקן בהנהלת חשבונות (או לתקן את עובדות המסמך אם הקריאה שגויה)", proposed?.labelHe),
+        ...(proposed ? { proposedFix: proposed } : {}),
+        sectionId: inv.sectionId,
+        record: { type: "invoice", id: String(inv.id) },
+        detailsTable: [["שדה", "נרשם", "במסמך", "מסמך"], ...rows],
+      });
+    }
+  }
+  if (only?.invoiceId == null) {
+    for (const po of erp.purchaseOrders) {
+      if (only?.poId != null && po.id !== only.poId) continue;
+      const docs = docsOf("po", String(po.id), po.attachmentId);
+      if (!docs.length) continue;
+      const rows: string[][] = [];
+      const sources: HSource[] = [{ kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplierNameOf(pkg, po.supplierId)} · ${nis(po.amount)}`, documentId: po.attachmentId ?? undefined }];
+      let amountDelta = 0;
+      for (const d of docs) {
+        const f = d.facts!;
+        const amount = numFact(f, "amount");
+        if (amount != null && amount !== po.amount) {
+          rows.push(["סכום", nis(po.amount), nis(amount), d.titleHe]);
+          amountDelta = amount - po.amount;
+          sources.push(docSource(d, "line"));
+        }
+        const supplier = strFact(f, "supplierId");
+        if (supplier && supplier !== po.supplierId) {
+          rows.push(["ספק", supplierNameOf(pkg, po.supplierId), supplierNameOf(pkg, supplier), d.titleHe]);
+          if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, "header"));
+        }
+      }
+      if (!rows.length) continue;
+      out.push({
+        id: `F-DOC-PO-${po.id}`,
+        kind: "document",
+        titleHe: `הזמנה ${po.id} — ההזמנה אינה תואמת למסמך המקור`,
+        problemHe: `בהזמנה ${po.id}: ${rows.map((r) => `${r[0]} — נרשם ${r[1]}, במסמך ${r[2]}`).join("; ")}.`,
+        sources,
+        checkHe: `הושוו סכום וספק מול ${docs.length === 1 ? `המסמך ״${docs[0].titleHe}״` : `${num(docs.length)} מסמכים`}; כמויות ויחידות נבדקות בבדיקת היחידות.`,
+        meaningHe: amountDelta ? `ההתחייבות שנרשמה לסעיף ${sectionLabel(po.sectionId, pkg)} ${amountDelta > 0 ? "נמוכה" : "גבוהה"} ב-${nis(Math.abs(amountDelta))} מהמסמך.` : "המסמך הוא המקור; פרטי ההזמנה במערכת המידע שגויים או שהעובדות שנקראו מהמסמך שגויות.",
+        impact: amountDelta ? { kind: "amount", amount: amountDelta, labelHe: `${amountDelta > 0 ? "+" : "−"}${nis(Math.abs(amountDelta))} התחייבות` } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+        decision: fixDecision("לתקן את ההזמנה לפי המסמך?", "לתקן ברכש / הנהלת חשבונות (correct_purchase_order)"),
+        sectionId: po.sectionId,
+        record: { type: "po", id: String(po.id) },
+        detailsTable: [["שדה", "נרשם", "במסמך", "מסמך"], ...rows],
+      });
+    }
+  }
+  return out;
 }
 
-export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה"];
+export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, controlDate: string, today: string): HFinding[] {
+  return [...checkDuplicates(pkg, erp), ...checkContractOverrun(pkg, erp), ...checkCumulative(pkg, erp), ...checkRetention(pkg, erp), ...checkDates(pkg, erp, today), ...checkReviewAging(pkg, erp, controlDate), ...checkDocuments(pkg, erp)];
+}
+
+export const CHECK_STEPS_HE = ["שיוך חשבונות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
 
 /** All checks. `today` bounds the date check (the control date when the run is not "live"). */
 export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {

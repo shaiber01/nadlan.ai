@@ -1,4 +1,4 @@
-import type { HForecastLine, HForecastVersion, HInvoice, HSection, HSectionForecast, HadarimPackage, SectionId } from "../data/types";
+import type { HBudgetChange, HForecastLine, HForecastVersion, HInvoice, HSection, HSectionForecast, HadarimPackage, SectionId } from "../data/types";
 import { isContingency } from "./checks";
 import type { ErpState, ForecastAdjustment } from "./model";
 
@@ -18,6 +18,9 @@ export function recordedBySection(sections: HSection[], invoices: HInvoice[], th
  * live ERP (so a corrected allocation moves between sections) and the reviewed adjustments applied.
  */
 export interface WorkingSection extends HSectionForecast {
+  /** The sections' original (approved-version) budget; `budget` is the updated one: original + approved changes to the control date. */
+  originalBudget: number;
+  budgetChanges: number;
   previousEac: number;
   change: number;
   variance: number;
@@ -29,6 +32,9 @@ export interface WorkingForecast {
   controlDate: string;
   previousControlDate: string;
   sections: WorkingSection[];
+  totalOriginalBudget: number;
+  totalBudgetChanges: number;
+  /** Updated budget (original + approved changes). */
   totalBudget: number;
   totalRecorded: number;
   totalCommitted: number;
@@ -41,8 +47,20 @@ export interface WorkingForecast {
 
 const num = (v: number) => v.toLocaleString("he-IL");
 
+/** Net approved budget change per section up to a date (transfers out are negative on the source, positive on the target). */
+export function budgetChangesBySection(changes: HBudgetChange[] | undefined, upTo?: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of changes ?? []) {
+    if (upTo && c.date > upTo) continue;
+    if (c.fromSectionId) out[c.fromSectionId] = (out[c.fromSectionId] ?? 0) - c.amount;
+    if (c.toSectionId) out[c.toSectionId] = (out[c.toSectionId] ?? 0) + c.amount;
+  }
+  return out;
+}
+
 export function workingForecast(pkg: HadarimPackage, erp: ErpState, adjustments: ForecastAdjustment[], controlDate: string): WorkingForecast {
   const draft = pkg.forecasts.find((f) => f.controlDate === controlDate && f.sections)!;
+  const budgetDeltas = budgetChangesBySection(pkg.budgetChanges, controlDate);
   const previous = pkg.forecasts.filter((f) => f.status === "final" && f.sections && f.controlDate < controlDate).sort((a, b) => (a.controlDate < b.controlDate ? 1 : -1))[0] as HForecastVersion;
   const recorded = recordedBySection(pkg.sections, erp.invoices, controlDate);
   const sections: WorkingSection[] = draft.sections!.map((s) => {
@@ -85,7 +103,10 @@ export function workingForecast(pkg: HadarimPackage, erp: ErpState, adjustments:
     const eac = rec + remainingCommitment + uncovered;
     const prev = previous.sections!.find((p) => p.sectionId === s.sectionId)!;
     const basisPct = eac > 0 ? Math.round(((rec + remainingCommitment) / eac) * 100) : 100;
-    return { ...s, recorded: rec, committed, remainingCommitment, uncovered, eac, lines, previousEac: prev.eac, change: eac - prev.eac, variance: eac - s.budget, basisPct };
+    const originalBudget = s.budget;
+    const budgetChanges = budgetDeltas[s.sectionId] ?? 0;
+    const budget = originalBudget + budgetChanges;
+    return { ...s, budget, originalBudget, budgetChanges, recorded: rec, committed, remainingCommitment, uncovered, eac, lines, previousEac: prev.eac, change: eac - prev.eac, variance: eac - budget, basisPct };
   });
   const sum = (f: (s: WorkingSection) => number) => sections.reduce((a, s) => a + f(s), 0);
   const inReview = erp.invoices.filter((i) => i.status === "בבדיקה");
@@ -93,6 +114,8 @@ export function workingForecast(pkg: HadarimPackage, erp: ErpState, adjustments:
     controlDate,
     previousControlDate: previous.controlDate,
     sections,
+    totalOriginalBudget: sum((s) => s.originalBudget),
+    totalBudgetChanges: sum((s) => s.budgetChanges),
     totalBudget: sum((s) => s.budget),
     totalRecorded: sum((s) => s.recorded),
     totalCommitted: sum((s) => s.committed),

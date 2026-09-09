@@ -22,7 +22,7 @@ function fail(step: string, error: unknown): never {
 
 async function deleteProject() {
   // reverse dependency order; child tables of controls/forecasts cascade
-  for (const table of ["report_versions", "audit", "controls", "change_log", "open_issues", "forecast_versions", "invoices", "purchase_orders", "boq_lines", "contracts", "documents", "sections", "suppliers", "people"]) {
+  for (const table of ["report_versions", "audit", "controls", "change_log", "open_issues", "forecast_versions", "invoices", "purchase_orders", "boq_lines", "budget_changes", "contracts", "documents", "sections", "suppliers", "people"]) {
     const { error } = await supabase.from(table).delete().eq("project_id", P);
     if (error) fail(`delete ${table}`, error);
   }
@@ -80,7 +80,7 @@ async function main() {
   ]);
   await insert("people", pkg.people.map((p) => ({ project_id: P, id: p.id, name_he: p.nameHe, role_he: p.roleHe, can_write_allocation: p.canWriteAllocation, channel: p.channel ?? null })));
   await insert("suppliers", pkg.suppliers.map((s) => ({ project_id: P, id: s.id, name_he: s.nameHe, kind: s.kind })));
-  await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: s.shortHe, kind: s.kind, budget: s.budget, split: s.split, position: i + 1 })));
+  await insert("sections", pkg.sections.map((s, i) => ({ project_id: P, id: s.id, name_he: s.nameHe, short_name_he: s.shortHe, kind: s.kind, budget: s.budget, split: s.split, position: i + 1, chapters: s.chapters ?? [] })));
   // documentFacts is keyed by document id
   const factsFor = (documentId: string): Record<string, unknown> => ((documentFacts as Record<string, Record<string, unknown> | undefined>)[documentId] ?? {});
   await insert("documents", pkg.documents.map((d) => ({ project_id: P, id: d.id, kind: d.kind, title_he: d.titleHe, date: d.date, supplier_id: d.supplierId, file_name: d.fileName, blocks: d.blocks, footer_he: d.footerHe, anchors: d.anchors, facts: factsFor(d.id), facts_source: { method: "seed" } })));

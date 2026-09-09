@@ -17,6 +17,7 @@ Numbers and wording come only from tool results. The tools are the `mcp__bakara_
 To check one record without opening a control ("is invoice 1147 allocated right?", "is order 2291 sane?"): `run_check` with `kind` and `invoiceId` / `poId` / `sectionId`. Relay the findings the same way as cards, but nothing is recorded.
 
 ## 2. Run the checks
+The data-quality checks include `document`: a record against the facts recorded from its source document (amount, supplier document number, date, retention, cumulative, supplier; an order's amount and supplier). The document is the source — the card's proposed fix is the document's values; if you believe the facts were misread, open the document (`get_document`) and fix the facts (`set_document_facts`) instead, then re-run.
 `run_control` with `operatorId` = the person asking (their id from `get_project.people`). The result has `stepsHe` (data gathered — relay in one or two lines), `summaryHe` (relay verbatim: "נמצאו N ממצאים…"), `findings` and `headline`.
 
 ## 3. Present one card at a time

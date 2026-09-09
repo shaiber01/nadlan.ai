@@ -1,4 +1,5 @@
 import { priceAppendixAt } from "../data/generate";
+import { chapterLabelHe } from "../data/bluebook";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
 import { boqPageFor, documentById, isContingency, quoteFacts, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
@@ -55,9 +56,31 @@ export interface KeyRow {
   pctHe: string;
 }
 
+/** Secondary view: the sections grouped by their primary chapter of the Interministerial Specification. */
+export interface ChapterRow {
+  chapter: string;
+  labelHe: string;
+  sectionsHe: string;
+  budget: number;
+  changes: number;
+  updatedBudget: number;
+  recorded: number;
+  committed: number;
+  remainingCommitment: number;
+  uncovered: number;
+  eac: number;
+  variance: number;
+  variancePct: number;
+  basisPct: number;
+  boqLines: number;
+  boqUncoveredLines: number;
+}
+
 export interface SectionRow {
   sectionId: SectionId;
   nameHe: string;
+  /** Blue Book chapter codes the section covers (primary first), for display. */
+  chaptersHe?: string;
   budget: number;
   changes: number;
   updatedBudget: number;
@@ -154,7 +177,7 @@ export interface ReportModel {
   header: ReportHeader;
   executive: { paragraphHe: string; keyTable: KeyRow[]; bulletsHe: string[]; decisionsHe: string[] };
   status: { stageHe: string; physicalPct: number | null; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
-  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
+  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byChapter: ChapterRow[] | null; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
   changes: { forecast: ChangeRow[]; forecastTotal: number; corrections: CorrectionRow[] };
   material: MaterialSection[];
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
@@ -218,6 +241,51 @@ function buildingShares(pkg: HadarimPackage, split: "by_floors" | "by_units" | "
   const weights = split === "by_floors" ? b.map((x) => x.floorsCast) : split === "by_units" ? b.map((x) => x.floors * x.unitsPerFloor) : b.map(() => 1);
   const total = weights.reduce((a, w) => a + w, 0);
   return total > 0 ? weights.map((w) => w / total) : b.map(() => 1 / b.length);
+}
+
+/**
+ * The sections by Blue Book chapter. Money is counted once, under each section's primary chapter; a chapter a
+ * section covers as secondary, or that only BOQ lines carry, still gets a row (no budget, its BOQ lines) so the
+ * bill of quantities can be read by chapter. Sections with no chapter (reserve, overhead) close the table.
+ */
+function chapterSplit(pkg: HadarimPackage, wf: WorkingForecast): ChapterRow[] {
+  const groups = new Map<string, WorkingSection[]>();
+  const secondary = new Map<string, string[]>();
+  for (const s of wf.sections) {
+    const chapters = pkg.sections.find((x) => x.id === s.sectionId)?.chapters ?? [];
+    const primary = chapters[0] ?? "";
+    groups.set(primary, [...(groups.get(primary) ?? []), s]);
+    for (const c of chapters.slice(1)) secondary.set(c, [...(secondary.get(c) ?? []), s.sectionId]);
+  }
+  const codes = [...new Set([...groups.keys(), ...secondary.keys(), ...pkg.boq.map((l) => l.chapter)])].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
+  return codes.map((code) => {
+    const secs = groups.get(code) ?? [];
+    const alsoHe = (secondary.get(code) ?? []).map((id) => `${sectionShort(id as SectionId, pkg)} (משני)`);
+    const sum = (f: (s: WorkingSection) => number) => secs.reduce((a, s) => a + f(s), 0);
+    const updatedBudget = sum((s) => s.budget);
+    const eac = sum((s) => s.eac);
+    const recorded = sum((s) => s.recorded);
+    const remainingCommitment = sum((s) => s.remainingCommitment);
+    const boq = code ? pkg.boq.filter((l) => l.chapter === code) : [];
+    return {
+      chapter: code || "—",
+      labelHe: code ? chapterLabelHe(code) : "ללא פרק (רזרבה, הנהלה)",
+      sectionsHe: [...secs.map((s) => sectionShort(s.sectionId, pkg)), ...alsoHe].join(", ") || "—",
+      budget: sum((s) => s.originalBudget),
+      changes: sum((s) => s.budgetChanges),
+      updatedBudget,
+      recorded,
+      committed: sum((s) => s.committed),
+      remainingCommitment,
+      uncovered: sum((s) => s.uncovered),
+      eac,
+      variance: eac - updatedBudget,
+      variancePct: updatedBudget ? ((eac - updatedBudget) / updatedBudget) * 100 : 0,
+      basisPct: eac > 0 ? Math.round(((recorded + remainingCommitment) / eac) * 100) : 100,
+      boqLines: boq.length,
+      boqUncoveredLines: boq.filter((l) => l.coverage !== "covered").length,
+    };
+  });
 }
 
 function buildingSplit(pkg: HadarimPackage, wf: WorkingForecast, state: V2State): { rows: BuildingRow[]; noteHe: string; changeable: ReportModel["sections"]["byBuildingChangeable"] } {
@@ -576,8 +644,9 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const rows: SectionRow[] = wf.sections.map((s) => ({
     sectionId: s.sectionId,
     nameHe: pkg.sections.find((x) => x.id === s.sectionId)!.nameHe,
-    budget: s.budget,
-    changes: 0,
+    chaptersHe: (pkg.sections.find((x) => x.id === s.sectionId)?.chapters ?? []).join(", "),
+    budget: s.originalBudget,
+    changes: s.budgetChanges,
     updatedBudget: s.budget,
     recorded: s.recorded,
     committed: s.committed,
@@ -592,9 +661,10 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     highlighted: !isContingency(s.sectionId) && (isMaterial(pkg, s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
     isContingency: isContingency(s.sectionId),
   }));
-  const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalBudget, changes: 0, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
+  const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalOriginalBudget, changes: wf.totalBudgetChanges, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
 
   const split = config.splitByBuilding ? buildingSplit(pkg, wf, state) : null;
+  const byChapter = config.byChapter ? chapterSplit(pkg, wf) : null;
 
   const issues = allIssues(state);
   const controlsSince = (opened: string) => [...new Set([...pkg.project.controlDates, controlDate])].filter((d) => d >= opened).length;
@@ -655,7 +725,9 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     ...uncovered.lines.filter((l) => l.basis === "estimate" && !uncontracted.includes(l)).map((l) => l.descriptionHe.split(" — ")[0]),
   ].filter(Boolean);
   const paragraphHe = `תחזית ההשלמה ${change === 0 ? "נותרה" : "עודכנה"} מ-${mil(wf.previousTotalEac)} ל-${mil(wf.totalEac)} ₪ — ${variance > 0 ? `חריגה צפויה של ${nis(variance)} (${pct((variance / wf.totalBudget) * 100, 2)})` : variance < 0 ? `תחזית נמוכה מהתקציב ב-${nis(-variance)}` : "בתוך התקציב"}.${forecastChanges.length ? ` מקור השינוי: ${forecastChanges.map((c) => `${c.typeHe.replace("שינוי ", "עדכון ")} (${(c.amount / 1000).toFixed(0)} א׳)`).join(" ו")}.` : ""}${corrections.length ? ` ${num(corrections.length)} תיקוני נתונים ללא השפעה על הסה״כ.` : ""} ${openIssues.length} נושאים פתוחים לטיפול.`;
+  const approvedChanges = (pkg.budgetChanges ?? []).filter((c) => c.date <= controlDate);
   const keyTable: KeyRow[] = [
+    ...(wf.totalBudgetChanges !== 0 ? [{ labelHe: "תקציב מקורי", valueHe: nis(wf.totalOriginalBudget), pctHe: `גרסה ${pkg.project.budgetVersion.number}` }, { labelHe: "שינויי תקציב מאושרים", valueHe: signed(wf.totalBudgetChanges), pctHe: `${num(approvedChanges.length)} שינויים` }] : []),
     { labelHe: "תקציב מעודכן", valueHe: nis(wf.totalBudget), pctHe: "" },
     { labelHe: "תחזית לגמר", valueHe: nis(wf.totalEac), pctHe: "" },
     { labelHe: "סטייה מתקציב", valueHe: signed(variance), pctHe: pct((variance / wf.totalBudget) * 100, 2) },
@@ -702,7 +774,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
       cutoffHe: `נתונים עד ${dateHe(controlDate)} (חשבונות שהתקבלו לפני מועד החתך)`,
       controlLabelHe: `בקרה ${monthHe(controlDate)}, ${state.control.finalized ? "גרסה סופית" : "טיוטה"}`,
       previousControlHe: `בקרה קודמת: ${dateHe(previous.controlDate)} (${previous.status === "final" ? "סופית" : "טיוטה"})`,
-      budgetVersionHe: `תקציב: גרסה ${pkg.project.budgetVersion.number}, אושר ${dateHe(pkg.project.budgetVersion.approvedAt)}`,
+      budgetVersionHe: `תקציב: גרסה ${pkg.project.budgetVersion.number}, אושר ${dateHe(pkg.project.budgetVersion.approvedAt)}${approvedChanges.length ? ` · ${num(approvedChanges.length)} שינויי תקציב מאושרים (${signed(wf.totalBudgetChanges)}) — תקציב מעודכן ${nis(wf.totalBudget)}` : ""}`,
       boqVersionHe: `כתב כמויות: גרסה ${pkg.project.boqVersion.number} (${dateHe(pkg.project.boqVersion.date)})`,
       preparedByHe: "מכין: מערכת הבקרה",
       approvedByHe: `מאשר: ${approver}${approverRole ? `, ${approverRole}` : ""}`,
@@ -711,7 +783,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
     status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },
-    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
+    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byChapter, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
     contingency: {

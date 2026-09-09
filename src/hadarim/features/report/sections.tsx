@@ -346,6 +346,19 @@ export function SectionsTableSection({ report }: { report: ReportModel }) {
       <p className="muted small">
         {sec.materialityHe}. שורות מודגשות: שינוי מבקרה קודמת או סטייה מעל הסף — ההסבר בסעיף 4. בסיס = אחוז מהתחזית שמכוסה בהתחייבות; מתחת ל-70% מסומן כתחזית רכה.
       </p>
+      {sec.byChapter ? (
+        <div className="h2-report-subsection" data-testid="report-by-chapter">
+          <h3 className="h2-report-h3">פילוח משני — לפי פרקי המפרט הבינמשרדי (הספר הכחול)</h3>
+          <DataTable
+            head={["פרק", "סעיפים", "תקציב מקורי", "שינויים", "תקציב מעודכן", "נרשם", "התחייבויות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "בסיס", "שורות כתב כמויות (לא מכוסות)"]}
+            numeric={[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+            rows={sec.byChapter.map((c) => [c.labelHe, c.sectionsHe, nis(c.budget), c.changes ? signedNis(c.changes) : "—", nis(c.updatedBudget), nis(c.recorded), nis(c.committed), nis(c.uncovered), nis(c.eac), signedNis(c.variance), signedPct(c.variancePct), `${num(c.basisPct)}%`, c.boqLines ? `${num(c.boqLines)} (${num(c.boqUncoveredLines)})` : "—"])}
+            foot={["סה״כ", "", nis(sec.totals.budget), sec.totals.changes ? signedNis(sec.totals.changes) : "—", nis(sec.totals.updatedBudget), nis(sec.totals.recorded), nis(sec.totals.committed), nis(sec.totals.uncovered), nis(sec.totals.eac), signedNis(sec.totals.variance), signedPct(sec.totals.variancePct), `${num(sec.totals.basisPct)}%`, ""]}
+            rowTestId={(i) => `report-chapter-${sec.byChapter![i].chapter}`}
+          />
+          <p className="muted small">כל סעיף נספר בפרק הראשי שלו; סעיף שמכסה כמה פרקים מופיע פעם אחת. שורות כתב הכמויות נספרות לפי הפרק של כל שורה.</p>
+        </div>
+      ) : null}
       {sec.byBuilding ? (
         <div className="h2-report-subsection" data-testid="report-by-building">
           <h3 className="h2-report-h3">פילוח משני — לפי בניין (אותן עמודות)</h3>
