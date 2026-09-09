@@ -4,6 +4,7 @@ import { store, useReportVersions, useUi, useV2State } from "../../app/store";
 import { pkg } from "../../engine/commands";
 import { buildReport, type ReportModel } from "../../engine/report";
 import { exportReportDocx } from "../../export/docx";
+import { reportToXlsxBlob } from "../../export/xlsx";
 import { dateHe, timeHe } from "./fmt";
 import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, OpenFindingsSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
 import "./report.css";
@@ -20,7 +21,7 @@ export function ReportView() {
   const ui = useUi();
   const versions = useReportVersions();
   const [saved, setSaved] = useState<{ id: number; model: ReportModel; label: string | null } | null>(null);
-  const [busy, setBusy] = useState<"docx" | null>(null);
+  const [busy, setBusy] = useState<"docx" | "xlsx" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const live = useMemo(() => buildReport(pkg, state), [state]);
@@ -74,21 +75,36 @@ export function ReportView() {
     }
   };
 
+  const download = (blob: Blob, name: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
   const exportDocx = async () => {
     setError(null);
     setBusy("docx");
     try {
-      const blob = await exportReportDocx(report, tab);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = docxFile;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+      download(await exportReportDocx(report, tab), docxFile);
     } catch (e) {
       setError(e instanceof Error ? e.message : "יצירת קובץ Word נכשלה");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const exportXlsx = () => {
+    setError(null);
+    setBusy("xlsx");
+    try {
+      download(reportToXlsxBlob(report, tab), docxFile.replace(/\.docx$/, ".xlsx"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "יצירת קובץ Excel נכשלה");
     } finally {
       setBusy(null);
     }
@@ -130,6 +146,9 @@ export function ReportView() {
             </Button>
             <Button size="sm" onClick={exportDocx} busy={busy === "docx"} data-testid="report-export-docx">
               ייצוא Word
+            </Button>
+            <Button size="sm" onClick={exportXlsx} busy={busy === "xlsx"} data-testid="report-export-xlsx">
+              ייצוא Excel
             </Button>
           </div>
         </div>

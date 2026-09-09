@@ -5,20 +5,17 @@ import { store, useUi, useV2State } from "./app/store";
 import { DocumentView } from "./components/DocumentView";
 import { SCRIPT_INVOICE_ID, pkg } from "./engine/commands";
 import { ErpApp } from "./features/erp/ErpApp";
-import { RecordModal } from "./features/report/RecordModal";
-import { ReportView } from "./features/report/ReportView";
 
 /**
- * Hadarim shell: a presenter strip on top, then either the simulated ERP ("זיו — סביבת הדגמה") or the
- * control report — a live, read-only view of the session the Claude agent ("בקרה") writes to the
- * database. Documents and ERP records open in modals hosted here so both screens share them.
+ * The simulated ERP's page (`hadarim.html`): a presenter strip on top, then "זיו — סביבת הדגמה". Its
+ * edits are written to the shared database. The control report lives on its own page (`report.html`)
+ * and the ERP never links to it.
  */
 export function HadarimApp() {
   const ui = useUi();
   const state = useV2State();
   const [confirmReset, setConfirmReset] = useState(false);
   const [pendingVariant, setPendingVariant] = useState<"A" | "B" | null>(null);
-  const operator = pkg.people.find((p) => p.id === state.operatorId);
   const doc = ui.viewer.documentId ? pkg.documents.find((d) => d.id === ui.viewer.documentId) : null;
   const untouched = state.control.status === "idle" && state.audit.length === 0 && state.erp.changeLog.length === pkg.changeLog.length - (state.variant === "B" ? 1 : 0);
   // switching the scene-1 variant re-seeds the data (variant B has no invoice 1147 until it is keyed in)
@@ -29,12 +26,12 @@ export function HadarimApp() {
   };
 
   return (
-    <div className="h2-shell" dir="rtl" data-app={ui.app}>
+    <div className="h2-shell" dir="rtl">
       {ui.presenter.showPresenterBar && (
         <div className="h2-presenter no-print" data-testid="presenter-bar">
           <div className="h2-presenter-group">
             <span className="h2-presenter-brand">אב-טיפוס · {pkg.project.nameHe}</span>
-            <span className="h2-presenter-screen" data-testid="current-app">{ui.app === "erp" ? "מערכת המידע (זיו)" : "דוח הבקרה"}</span>
+            <span className="h2-presenter-screen">מערכת המידע (זיו)</span>
           </div>
           <div className="h2-presenter-group">
             <span className={`h2-presenter-db is-${ui.db.status}`} data-testid="db-status" title={ui.db.error ?? (ui.db.lastSync ? `סנכרון אחרון ${new Date(ui.db.lastSync).toLocaleTimeString("he-IL")}` : "")}>
@@ -44,11 +41,6 @@ export function HadarimApp() {
               <input type="checkbox" checked={ui.db.status === "offline"} onChange={(e) => store.setOffline(e.target.checked)} data-testid="db-offline" />
               עבודה מקומית
             </label>
-            {operator ? (
-              <span className="h2-presenter-meta">
-                מבקר: {operator.nameHe}, {operator.roleHe}
-              </span>
-            ) : null}
             <label className="h2-presenter-toggle">
               סצנה 1:
               <select value={state.variant} onChange={(e) => chooseVariant(e.target.value as "A" | "B")} data-testid="scene1-variant">
@@ -85,8 +77,9 @@ export function HadarimApp() {
           </div>
         </div>
       )}
-      <div className="h2-body">{ui.app === "erp" ? <ErpApp /> : <ReportView />}</div>
-      {ui.viewer.recordRef ? <RecordModal recordRef={ui.viewer.recordRef} /> : null}
+      <div className="h2-body">
+        <ErpApp />
+      </div>
       {doc && (
         <Surface kind="modal" title={doc.titleHe} subtitle={`${doc.fileName} · ${doc.date.split("-").reverse().map((p, i) => (i < 2 ? String(Number(p)) : p)).join(".")}`} onClose={store.closeDocument} wide>
           <DocumentView documentId={doc.id} anchor={ui.viewer.documentAnchor ?? undefined} />

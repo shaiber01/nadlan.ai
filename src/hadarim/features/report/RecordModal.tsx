@@ -1,6 +1,6 @@
 import { Surface } from "../../../components/Drawer";
 import { Button, KeyValue } from "../../../components/primitives";
-import { store, useV2State, type UiState } from "../../app/store";
+import { erpRecordUrl, store, useV2State, type UiState } from "../../app/store";
 import { sectionLabel } from "../../engine/checks";
 import { pkg } from "../../engine/commands";
 import { pricePerUnitHe } from "../../engine/units";
@@ -85,7 +85,7 @@ export function RecordModal({ recordRef }: { recordRef: RecordRef }) {
     ];
   }
 
-  const openInErp = () => store.setUi((u) => ({ ...u, app: "erp", erp: { ...u.erp, screen, ...erpPatch }, viewer: { ...u.viewer, recordRef: null } }));
+  const openInErp = () => window.open(erpRecordUrl({ screen, ...erpPatch }), "_blank", "noopener");
 
   return (
     <Surface

@@ -14,6 +14,7 @@ import { lineValue } from "../engine/units";
 import { buildReport } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
 import { reportToMarkdown } from "../export/markdown";
+import { reportToWorkbook } from "../export/xlsx";
 
 /**
  * The budget-control tools: general-purpose operations over any project in the database, exposed to the
@@ -905,9 +906,9 @@ define({
 define({
   name: "build_report",
   title: "Build the report",
-  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path). saveVersion=true (or a label) stores the version in the database.",
+  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path), 'xlsx' (Excel workbook, one sheet per table, written to path). saveVersion=true (or a label) stores the version in the database.",
   kind: "write",
-  input: { projectId, controlDate, tab: z.enum(["full", "ceo"]).default("full"), format: z.enum(["summary", "markdown", "json", "docx"]).default("summary"), path: z.string().optional().describe("output file path for docx/markdown (default out/…)"), label: z.string().optional(), saveVersion: z.boolean().default(false) },
+  input: { projectId, controlDate, tab: z.enum(["full", "ceo"]).default("full"), format: z.enum(["summary", "markdown", "json", "docx", "xlsx"]).default("summary"), path: z.string().optional().describe("output file path for docx/xlsx/markdown (default out/…)"), label: z.string().optional(), saveVersion: z.boolean().default(false) },
   run: async (a) => {
     const state = await loadState(a.projectId, a.controlDate);
     const report = buildReport(pkg, state);
@@ -918,6 +919,9 @@ define({
       path = outPath(a.projectId, date, a.tab, "docx", a.path);
       const blob = await exportReportDocx(report, a.tab);
       writeFileSync(path, Buffer.from(await blob.arrayBuffer()));
+    } else if (a.format === "xlsx") {
+      path = outPath(a.projectId, date, a.tab, "xlsx", a.path);
+      writeFileSync(path, Buffer.from(reportToWorkbook(report, a.tab)));
     } else if (a.format === "markdown") {
       text = reportToMarkdown(report, a.tab);
       if (a.path) {

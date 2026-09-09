@@ -51,3 +51,21 @@ describe("Hadarim v2 — Word export", () => {
     expect(blob.size).toBeGreaterThan(5 * 1024);
   });
 });
+
+describe("Hadarim v2 — Excel export", () => {
+  it("produces a real .xlsx with one sheet per table of the standard", async () => {
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const { reportToWorkbook } = await import("../src/hadarim/export/xlsx");
+    const s = setReportConfig(runScript(), { includeTrends: true, splitByBuilding: true });
+    const bytes = reportToWorkbook(buildReport(pkg, s), "full");
+    expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]);
+    const files = unzipSync(bytes);
+    const workbook = strFromU8(files["xl/workbook.xml"]);
+    for (const name of ["סיכום", "סעיפים", "לפי בניין", "שינויי תחזית 4א", "תיקוני נתונים 4ב", "סיכונים", "נושאים לטיפול", "יתרה לא מכוסה"]) expect(workbook).toContain(`name="${name}"`);
+    const sections = strFromU8(files["xl/worksheets/sheet2.xml"]);
+    expect(sections).toContain("<v>48000000</v>"); // the totals row carries the budget as a number
+    expect(sections).toContain("<v>48360000</v>"); // and the working EAC
+    const ceo = reportToWorkbook(buildReport(pkg, setReportConfig(s, { ceoVersion: true })), "ceo");
+    expect(strFromU8(unzipSync(ceo)["xl/workbook.xml"])).toContain('name="שינויים"');
+  });
+});

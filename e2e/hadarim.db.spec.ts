@@ -35,6 +35,10 @@ async function online(page: Page) {
 }
 
 async function resetFromUi(page: Page) {
+  // the reset lives on the ERP page
+  await page.goto("/hadarim.html");
+  await page.getByTestId("presenter-bar").waitFor();
+  await expect(page.getByTestId("db-status")).toContainText("מחובר", { timeout: 20_000 });
   await page.getByTestId("reset-demo").click();
   await page.getByTestId("reset-confirm").click();
   await expect(page.getByTestId("db-status")).toContainText("מחובר", { timeout: 20_000 });
@@ -67,7 +71,7 @@ test.describe("Hadarim online mode (shared database)", () => {
     await expect(page.getByTestId("erp-changelog-row").first()).toContainText("02-שלד");
 
     // the report tab before the control: draft, live data
-    await page.goto("/hadarim.html?app=report");
+    await page.goto("/report.html");
     await expect(page.getByTestId("report-idle-notice")).toBeVisible();
     await expect(page.getByTestId("report-headline-eac")).toContainText("48,000,000 ₪");
 
@@ -132,7 +136,7 @@ test.describe("Hadarim online mode (shared database)", () => {
     await resetFromUi(page);
     await expect.poll(() => invoiceSection(1147), { timeout: 15_000 }).toBe("07");
     expect((await changeLogFor(1147)).length).toBe(1);
-    await page.goto("/hadarim.html?app=report");
+    await page.goto("/report.html");
     await expect(page.getByTestId("report-idle-notice")).toBeVisible({ timeout: 20_000 });
   });
 });

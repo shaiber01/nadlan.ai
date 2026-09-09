@@ -18,7 +18,7 @@ The report is produced by `build_report` from the current state per `budgetcontr
    - `executive.decisionsHe` — the decision management must take;
    - `materialSections` (why each is analysed: threshold, share of budget, weak basis) and `risks`, `openIssues` on request.
 2. The full text: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
-3. To hand over: `build_report` with `format: "docx"`, a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` — the Word file path is in `path`, the stored version id in `versionId`. `list_report_versions` lists what was saved.
+3. To hand over: `build_report` with `format: "docx"` (Word) or `format: "xlsx"` (Excel, one sheet per table), a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` — the file path is in `path`, the stored version id in `versionId`. `list_report_versions` lists what was saved.
 
 If the user disputes a figure, point to the report section and its source and pull the underlying data with `get_forecast` / `get_section` (which recalculate from the database); do not work the number out by hand.
 

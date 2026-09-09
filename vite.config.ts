@@ -10,8 +10,8 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     rollupOptions: {
-      // Two demo surfaces in one static build: the sixteen-scenario demo (index.html) and the Hadarim v2 demo (hadarim.html).
-      input: { main: "index.html", hadarim: "hadarim.html" },
+      // Three pages in one static build: the sixteen-scenario demo (index.html), the Hadarim ERP (hadarim.html) and the control report (report.html).
+      input: { main: "index.html", hadarim: "hadarim.html", report: "report.html" },
     },
   },
   test: {

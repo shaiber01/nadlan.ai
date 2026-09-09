@@ -20,7 +20,6 @@ export type ErpScreen = "invoices" | "purchase_orders" | "contracts" | "budget" 
 export type DbStatus = "offline" | "loading" | "online" | "error";
 
 export interface UiState {
-  app: "erp" | "report";
   erp: { screen: ErpScreen; invoiceId: number | null; editing: boolean; creating: boolean; poId: number | null; contractId: string | null; sectionId: string | null };
   /** Document and record viewers, shared by the ERP and the report. */
   viewer: { documentId: string | null; documentAnchor: string | null; recordRef: { type: "invoice" | "po" | "contract"; id: string } | null };
@@ -34,7 +33,6 @@ const UI_KEY = "hadarim-v2-ui";
 const OFFLINE_KEY = "hadarim-offline";
 
 export const defaultUi: UiState = {
-  app: "erp",
   erp: { screen: "invoices", invoiceId: null, editing: false, creating: false, poId: null, contractId: null, sectionId: null },
   viewer: { documentId: null, documentAnchor: null, recordRef: null },
   report: { tab: "full", versionId: null },
@@ -75,14 +73,34 @@ export function isOfflineRequested(): boolean {
 }
 
 /**
- * Which of the two screens to open: `?app=report` for the read-only report viewer, `?app=erp` for the
- * ERP. The ERP has no link to the report — the two are separate seats — so the URL is how a presenter
- * puts the report on the second screen; without the parameter the last screen used is restored.
+ * The ERP is opened by its own page (`hadarim.html`); a record can be addressed by URL — `?screen=invoices&invoice=1147`,
+ * `?screen=purchase_orders&po=2291`, `?screen=contracts&contract=03-F`, `?screen=budget` — which is how the report's
+ * source links open an ERP record in a new tab. The report has its own page (`report.html`).
  */
-export function requestedApp(): UiState["app"] | null {
+export function erpRecordUrl(patch: Partial<UiState["erp"]>): string {
+  const params = new URLSearchParams();
+  if (patch.screen) params.set("screen", patch.screen);
+  if (patch.invoiceId != null) params.set("invoice", String(patch.invoiceId));
+  if (patch.poId != null) params.set("po", String(patch.poId));
+  if (patch.contractId) params.set("contract", patch.contractId);
+  if (patch.sectionId) params.set("section", patch.sectionId);
+  const q = params.toString();
+  return `hadarim.html${q ? `?${q}` : ""}`;
+}
+
+/** The ERP screen and record requested in the page's URL, if any. */
+function requestedErp(): Partial<UiState["erp"]> | null {
   try {
-    const v = typeof location !== "undefined" ? new URLSearchParams(location.search).get("app") : null;
-    return v === "report" || v === "erp" ? v : null;
+    if (typeof location === "undefined") return null;
+    const q = new URLSearchParams(location.search);
+    const screen = q.get("screen") as ErpScreen | null;
+    const out: Partial<UiState["erp"]> = {};
+    if (screen && ["invoices", "purchase_orders", "contracts", "budget", "change_log"].includes(screen)) out.screen = screen;
+    if (q.get("invoice")) out.invoiceId = Number(q.get("invoice"));
+    if (q.get("po")) out.poId = Number(q.get("po"));
+    if (q.get("contract")) out.contractId = q.get("contract");
+    if (q.get("section")) out.sectionId = q.get("section");
+    return Object.keys(out).length ? { ...out, editing: false, creating: false } : null;
   } catch {
     return null;
   }
@@ -102,7 +120,7 @@ class HadarimStore {
   constructor() {
     this.state = load(STATE_KEY, initialState, isState);
     const ui = load(UI_KEY, () => defaultUi, (v) => !!v && typeof v === "object" && "app" in (v as object)) as Partial<UiState>;
-    this.ui = { ...defaultUi, ...ui, app: requestedApp() ?? (ui.app === "report" ? "report" : "erp"), erp: { ...defaultUi.erp, ...(ui.erp ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
+    this.ui = { ...defaultUi, ...ui, erp: { ...defaultUi.erp, ...(ui.erp ?? {}), ...(requestedErp() ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
   }
 
   getState = (): V2State => this.state;

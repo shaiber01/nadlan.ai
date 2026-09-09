@@ -17,10 +17,10 @@ async function fresh(page: Page) {
   await page.getByTestId("presenter-bar").waitFor();
 }
 
-/** The ERP has no link to the report; `?app=` is how each screen is opened. */
+/** The ERP and the report are separate pages; neither links to the other. */
 async function goTo(page: Page, app: "erp" | "report") {
-  await page.goto(`/hadarim.html?app=${app}`);
-  await page.getByTestId("presenter-bar").waitFor();
+  await page.goto(app === "report" ? "/report.html" : "/hadarim.html");
+  await page.getByTestId(app === "report" ? "report-header" : "presenter-bar").waitFor();
 }
 
 async function shot(page: Page, name: string) {
@@ -85,6 +85,9 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     const download = page.waitForEvent("download");
     await page.getByTestId("report-export-docx").click();
     expect((await download).suggestedFilename()).toMatch(/\.docx$/);
+    const workbook = page.waitForEvent("download");
+    await page.getByTestId("report-export-xlsx").click();
+    expect((await workbook).suggestedFilename()).toMatch(/\.xlsx$/);
     await page.evaluate(() => {
       (window as unknown as { __printed: boolean }).__printed = false;
       window.print = () => {
@@ -108,6 +111,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await page.reload();
     await expect(page.getByTestId("report-view")).toBeVisible();
     await expect(page.getByTestId("report-row-07")).toContainText("2,100,000");
+    await goTo(page, "erp"); // the reset lives on the ERP page
     await page.getByTestId("reset-demo").click();
     await page.getByTestId("reset-confirm").click();
     await expect(page.getByTestId("erp-app")).toBeVisible();
