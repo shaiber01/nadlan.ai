@@ -81,18 +81,20 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("erp-boq-version")).toContainText("גרסה 4");
     const rows = page.locator("[data-testid^='erp-boq-row-']");
     expect(await rows.count()).toBeGreaterThan(50);
-    // the chapters of the seed are grouped; the excluded drainage line is flagged with its exclusion clause
-    await expect(page.getByTestId("erp-boq-chapter-57")).toContainText("מוחרג 1");
-    const excluded = page.getByTestId("erp-boq-row-57.03.040");
-    await expect(excluded).toHaveAttribute("data-coverage", "excluded");
-    await expect(excluded).toContainText("3.4");
-    await expect(excluded).toContainText("07 — פיתוח");
+    // the chapters of the seed are grouped, each with how many of its lines a contract covers
+    await expect(page.getByTestId("erp-boq-chapter-57")).toContainText("פרק 57 — קווי מים, ביוב וניקוז · 6 שורות · מכוסה 6");
+    // the drainage line is covered by the development contract and says so
+    const drainage = page.getByTestId("erp-boq-row-57.03.040");
+    await expect(drainage).toHaveAttribute("data-coverage", "covered");
+    await expect(drainage).toContainText("צינור ניקוז PVC קשיח SN8 קוטר 400 מ״מ");
+    await expect(drainage).toContainText("פיתוח");
+    await expect(page.getByTestId("erp-boq-contract-57.03.040")).toContainText("07-01");
     // filters narrow the list; the count follows
-    await page.getByTestId("erp-boq-coverage").selectOption("excluded");
-    await expect(page.getByTestId("erp-boq-count")).toHaveText("1 שורות");
-    await page.getByTestId("erp-boq-coverage").selectOption("");
+    await page.getByTestId("erp-boq-chapter").selectOption("57");
+    await expect(page.getByTestId("erp-boq-count")).toHaveText("6 שורות");
+    await page.getByTestId("erp-boq-chapter").selectOption("");
     await page.getByTestId("erp-boq-section").selectOption("03");
-    await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("03 — ברזל");
+    await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("ברזל");
     await shot(page, "08-boq");
     // a covered line links to its contract
     await page.getByTestId("erp-boq-section").selectOption("05");
@@ -117,7 +119,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("report-idle-notice")).toContainText("טרם הופעלה");
     await expect(page.getByTestId("report-status")).toContainText("לא הופעלה בקרה");
     await expect(page.getByTestId("report-agent-hint")).toContainText("claude --agent bakara");
-    await expect(page.getByTestId("report-headline-eac")).toContainText("48,000,000 ₪");
+    await expect(page.getByTestId("report-headline-eac")).toContainText("48,240,000 ₪");
     await expect(page.getByTestId("report-version")).toContainText("טיוטה");
     await expect(page.getByTestId("report-row-07")).toContainText("2,280,000");
     await expect(page.getByTestId("report-comparison")).toHaveCount(0);

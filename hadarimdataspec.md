@@ -29,7 +29,7 @@ Budget control in contractor firms runs on work packages; the BOQ runs on blue-b
 | :---- | :---- | ----: | ----: | ----: | ----: | ----: |
 | 01 | ארגון אתר, מנוף, שמירה ושירותי אתר | 1,900,000 | 1,250,000 | — (standing POs) | 1,950,000 | 1,950,000 |
 | 02 | שלד — עבודה ובטון (קבלן משנה) | 12,600,000 | 8,400,000 | 12,600,000 | 12,600,000 | 12,600,000 |
-| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,000,000 | **3,240,000** |
+| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,240,000 | **3,240,000** |
 | 04 | עבודות עפר, דיפון וכלונסאות | 2,900,000 | 2,850,000 | 2,850,000 (closed) | 2,850,000 | 2,850,000 |
 | 05 | איטום | 900,000 | 320,000 | 900,000 | 900,000 | 900,000 |
 | 06 | בנייה (בלוקים) וטיח | 2,400,000 | 180,000 | 2,400,000 | 2,400,000 | 2,400,000 |
@@ -100,9 +100,9 @@ Generation rules, so the totals in §2 reconcile exactly:
 
 `po_id, date, supplier, section, contract_id, description, qty, unit, price_unit, unit_price, amount, delivered_qty, invoiced_amount, status, attachment`
 
-`unit` is the unit the quantity is measured in; `price_unit` is the unit the price is quoted in. The order is worth the quantity converted into `price_unit`, times `unit_price` — so a supplier who quotes 4,800 ₪ לטון and delivers 12,000 ק״ג is recorded as keyed, and the order is still 57,600 ₪. Seeded orders all have `price_unit` \= `unit`; the correction of PO 2291 may use either form.
+`unit` is the unit the quantity is measured in; `price_unit` is the unit the price is quoted in. The order is worth the quantity converted into `price_unit`, times `unit_price` — so a supplier who quotes 4,800 ₪ לטון and delivers 12,000 ק״ג is recorded as keyed, and the order is still 57,600 ₪. Seeded orders all have `price_unit` \= `unit`; a correction of PO 2291 may use either form.
 
-- **PO 2291** — 22.8.2026, פלדות הצפון, ״ברזל זיון מצולע, קטרים 8–16 מ״מ״, qty **12,000**, unit **טון**, unit price **4.80**, amount 57,600. Attachment: supplier quote (12,000 kg \= 12 t × 4,800). This is the unit-error finding; the amount is right, the qty/unit/price fields are in kg against a ton unit.  
+- **PO 2291** — 22.8.2026, פלדות הצפון, ״ברזל זיון מצולע, קטרים 8–16 מ״מ״, qty **12**, unit **טון**, unit price **4,800**, amount 57,600 — as its attached quote states it (12,000 kg \= 12 t × 4,800). The demo scenario keys it in kilograms against a ton unit instead (qty 12,000, price 4.80, same amount); that is the unit-error finding, and it lives in `tests/fixtures/scenario.ts`, not in the seed.  
 - PO 2240 — closed, 60 t at 4,000, delivered in full (trap: old price, legitimate).  
 - \~36 others: standing/blanket orders for site services, formwork rental, concrete pumps, lab tests, block deliveries, waterproofing materials, safety consultant, etc. Quantities and units consistent.
 
@@ -112,11 +112,11 @@ Generation rules, so the totals in §2 reconcile exactly:
 
 Blue-book chapters, contractor's design quantity list (not a tender BOQ). \~120 lines. Chapters: 01 עבודות עפר · 02 בטון יצוק באתר · 04 בנייה · 05 איטום · 06 נגרות ומסגרות · 07 תברואה · 08 חשמל · 09 טיח · 10 ריצוף וחיפוי · 11 צבע · 12 אלומיניום · 15 מיזוג · 17 מעליות · 22 גבס · 23 כלונסאות · 40 פיתוח האתר · 51 סלילה · **57 קווי מים, ביוב וניקוז**.
 
-Key line: `57.03.040 — צינור ניקוז PVC קשיח SN8 קוטר 400 מ״מ, כולל חפירה, מצע ומילוי, עומק עד 2.5 מ׳ — 80 מ׳ — הערה: קו ראשי עד נקודת החיבור העירונית`. At seed it is `coverage: covered`, `coveredByContractId: 07-01` — same as its chapter-57 siblings; the gap only surfaces once `boq_v5_ch57.pdf` (see §8) is processed.
+Key line: `57.03.040 — צינור ניקוז PVC קשיח SN8 קוטר 400 מ״מ, כולל חפירה, מצע ומילוי, עומק עד 2.5 מ׳ — 80 מ׳ — הערה: קו ראשי עד נקודת החיבור העירונית`. In the seed it is `coverage: covered`, `coveredByContractId: 07-01` — same as its chapter-57 siblings, and it stays that way: the gap surfaces only once `boq_v5_ch57.pdf` (see §8), which the demo scenario adds, is processed.
 
 Steel appears in chapter 02 as ״מוטות פלדה מצולעים לזיון — 750 טון״ (quantities total → ties to the 3.0M budget at 4,000).
 
-Each BOQ chapter maps to a section and to a contract coverage flag: covered / excluded (§ref) / not yet contracted. Chapter 05 fully covered → positive finding. Chapter 17 excluded from shell but covered by 14-01 → trap, not a gap. Line 57.03.040 stays `covered` in the record even after the gap is found — the check reads it from `boq_v5_ch57.pdf`'s recorded facts (`removedLineIds`), not from the line's own `coverage` field.
+Each BOQ chapter maps to a section and to a contract coverage flag: covered / excluded (§ref) / not yet contracted. Chapter 05 fully covered → positive finding. Chapter 17 excluded from shell but covered by 14-01 → trap, not a gap. Line 57.03.040 stays `covered` in the record even after the gap is found — the check reads it from `boq_v5_ch57.pdf`'s recorded facts (`removedLineIds`), not from the line's own `coverage` field. No seeded BOQ line is `excluded`.
 
 ---
 
@@ -140,7 +140,7 @@ Open issues carried from 1.8 (3): שינוי מס׳ 2 בחוזה השלד — cl
 | `contract_07-01_excerpt.pdf` | חוזה קבלנות משנה 07-01 — עמ׳ 3–4, סעיף 3 היקף העבודות | §3.3 included works, now including the outdoor drainage line; **§3.4 exclusions** are water-connection fees and public-road paving only. |
 | `quote_ycohen_drainage.pdf` | הצעת מחיר, י. כהן תשתיות, 20.8.2026 | Ø400 SN8, 80 m, 1,500 ₪/m incl. excavation/bedding/backfill up to 2.5 m; excludes municipal connection fee; valid 30 days. |
 | `boq_v4_ch57.pdf` | כתב כמויות גרסה 4 — פרק 57 | One page, the drainage line present and highlighted. |
-| `boq_v5_ch57.pdf` | כתב כמויות גרסה 5 (2.9.2026) — פרק 57, עדכון | Same chapter, drainage line (57.03.040) dropped from the table, with a note that it moved to a later phase. Seeded **unprocessed** (no `facts`/`factsSource`) — the agent must read it before the coverage finding can fire. |
+| `boq_v5_ch57.pdf` | כתב כמויות גרסה 5 (2.9.2026) — פרק 57, עדכון | Same chapter, drainage line (57.03.040) dropped from the table, with a note that it moved to a later phase. **Not in the seed** — the demo scenario adds it (`tests/fixtures/scenario.ts`), unprocessed (no `facts`/`factsSource`), so the agent must read it before the coverage finding can fire. |
 | `appendix_A_steel_price_2025-11.pdf` | Original appendix (4,000) | So the "old price" has a source too. |
 
 Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01 header, change log.
@@ -149,7 +149,9 @@ Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01
 
 ## 9\. Realism traps the engine is tested against — `SPEC.md §Tests`
 
-Must fire (4): invoice 1147 on 02 · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 still recorded as covered by 07-01 once `boq_v5_ch57.pdf` is processed and shows the line removed, with no estimate. (Before that document is processed, only 3 of the 4 fire — the coverage gap is document-driven, not pre-seeded.)
+The seed is clean: a first control on it raises **no** findings and leaves no document unread. The errors below are the demo scenario, injected on top of the seed by `tests/fixtures/scenario.ts`.
+
+Must fire (4), with the scenario injected: invoice 1147 on 02 (a live ERP edit, not injected) · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 still recorded as covered by 07-01 once `boq_v5_ch57.pdf` is processed and shows the line removed, with no estimate. (Before that document is processed, only 3 of the 4 fire — the coverage gap is document-driven, not pre-seeded.)
 
 Must NOT fire (5): PO 2240 old price (pre-dates appendix) · crane invoice "שלד" text in 01 · elevators excluded from shell but covered by 14-01 · steel invoice in kg/kg · earth/piling closed under budget (variance, not an error).
 

@@ -3,6 +3,7 @@ import { generateHadarimPackage, recordedBySection, CURRENT_CONTROL } from "../s
 import { runChecks } from "../src/hadarim/engine/checks";
 import { lineAmount } from "../src/hadarim/engine/units";
 import type { SectionId } from "../src/hadarim/data/types";
+import { scenarioPackage } from "./fixtures/scenario";
 
 const pkg = generateHadarimPackage();
 
@@ -48,26 +49,23 @@ describe("Hadarim v2 data package", () => {
     expect(last.poId).toBe(2240);
   });
 
-  it("purchase orders: 38 open plus the closed PO 2240; PO 2291 carries the unit error", () => {
+  it("purchase orders: 38 open plus the closed PO 2240; PO 2291 states its quote", () => {
     expect(pkg.purchaseOrders.filter((p) => p.status === "פתוחה")).toHaveLength(38);
     const closed = pkg.purchaseOrders.find((p) => p.id === 2240)!;
     expect(closed).toMatchObject({ status: "סגורה", qty: 60, unit: "טון", priceUnit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, date: "2026-07-01" });
     const po = pkg.purchaseOrders.find((p) => p.id === 2291)!;
-    expect(po).toMatchObject({ qty: 12000, unit: "טון", priceUnit: "טון", unitPrice: 4.8, amount: 57_600, attachmentId: "quote_pladot_12t", status: "פתוחה", date: "2026-08-22" });
+    expect(po).toMatchObject({ qty: 12, unit: "טון", priceUnit: "טון", unitPrice: 4800, amount: 57_600, attachmentId: "quote_pladot_12t", status: "פתוחה", date: "2026-08-22" });
   });
 
   it("every seeded order adds up once its units are converted", () => {
     for (const p of pkg.purchaseOrders) expect({ id: p.id, amount: lineAmount(p) }).toEqual({ id: p.id, amount: p.amount });
   });
 
-  it("BOQ v4 has ~120 lines, the drainage line covered by 07-01 at first, and elevators covered by 14-01", () => {
+  it("BOQ v4 has ~120 lines, the drainage line covered by 07-01, and elevators covered by 14-01", () => {
     expect(pkg.boq.length).toBeGreaterThanOrEqual(110);
     expect(pkg.boq.length).toBeLessThanOrEqual(125);
     const drainage = pkg.boq.find((l) => l.id === "57.03.040")!;
     expect(drainage).toMatchObject({ coverage: "covered", coveredByContractId: "07-01", qty: 80, unit: "מ׳", sectionId: "07" });
-    const revisionDoc = pkg.documents.find((d) => d.id === "boq_v5_ch57")!;
-    expect(revisionDoc.factsSource).toBeUndefined();
-    expect(revisionDoc.facts).toBeUndefined();
     const steel = pkg.boq.find((l) => l.descriptionHe.includes("מוטות פלדה"))!;
     expect(steel).toMatchObject({ qty: 750, unit: "טון", sectionId: "03", coverage: "covered" });
     expect(pkg.boq.filter((l) => l.chapter === "17").every((l) => l.coverage === "covered" && l.coveredByContractId === "14-01")).toBe(true);
@@ -75,16 +73,16 @@ describe("Hadarim v2 data package", () => {
     expect(pkg.boq.filter((l) => l.sectionId === "12" || l.sectionId === "13" || l.sectionId === "15" || l.sectionId === "16").every((l) => l.coverage === "not_contracted")).toBe(true);
   });
 
-  it("forecast 1.8 nets to 48,000,000 with the stale steel price and the development coverage note", () => {
+  it("forecast 1.8 prices the steel remainder by the appendix in force and carries the development coverage note", () => {
     const f = pkg.forecasts.find((x) => x.controlDate === "2026-08-01")!;
     expect(f.status).toBe("final");
-    expect(f.totalEac).toBe(48_000_000);
-    const expectedEac: Partial<Record<SectionId, number>> = { "01": 1_950_000, "03": 3_000_000, "04": 2_850_000, "07": 3_200_000, "11": 2_000_000, "17": 1_500_000 };
+    expect(f.totalEac).toBe(48_240_000);
+    const expectedEac: Partial<Record<SectionId, number>> = { "01": 1_950_000, "03": 3_240_000, "04": 2_850_000, "07": 3_200_000, "11": 2_000_000, "17": 1_500_000 };
     for (const [id, value] of Object.entries(expectedEac)) expect(f.sections!.find((s) => s.sectionId === id)!.eac, id).toBe(value);
     const steel = f.sections!.find((s) => s.sectionId === "03")!;
     expect(steel.recorded).toBe(1_560_000);
     const remaining = steel.lines.find((l) => l.basis === "appendix")!;
-    expect(remaining).toMatchObject({ qty: 300, unitPrice: 4000, amount: 1_200_000 });
+    expect(remaining).toMatchObject({ qty: 300, unitPrice: 4800, amount: 1_440_000 });
     expect(steel.lines.find((l) => l.basis === "po")?.amount).toBe(240_000);
     const dev = f.sections!.find((s) => s.sectionId === "07")!;
     expect(dev.recorded).toBe(2_100_000);
@@ -96,13 +94,13 @@ describe("Hadarim v2 data package", () => {
     expect(pkg.forecasts.filter((x) => x.sections === null).map((x) => x.totalEac)).toEqual([47_900_000, 47_950_000, 48_000_000]);
   });
 
-  it("the 1.9 draft rolls the previous assumptions forward and still nets to 48,000,000", () => {
+  it("the 1.9 draft rolls the previous assumptions forward and nets to 48,240,000", () => {
     const d = pkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
     expect(d.status).toBe("draft");
-    expect(d.totalEac).toBe(48_000_000);
+    expect(d.totalEac).toBe(48_240_000);
     const steel = d.sections!.find((s) => s.sectionId === "03")!;
     expect(steel.recorded).toBe(1_800_000);
-    expect(steel.lines.find((l) => l.basis === "appendix")).toMatchObject({ qty: 300, unitPrice: 4000, amount: 1_200_000 });
+    expect(steel.lines.find((l) => l.basis === "appendix")).toMatchObject({ qty: 300, unitPrice: 4800, amount: 1_440_000 });
     expect(d.sections!.find((s) => s.sectionId === "11")!.lines[0].basis).toBe("contract");
     expect(d.sections!.find((s) => s.sectionId === "07")!.recorded).toBe(2_280_000);
     const site = d.sections!.find((s) => s.sectionId === "01")!;
@@ -110,8 +108,9 @@ describe("Hadarim v2 data package", () => {
     expect(site.lines.find((l) => l.basis === "estimate")!.amount).toBeGreaterThan(0);
   });
 
-  it("documents: seven PDF-like pages with anchors and the demo footer", () => {
-    expect(pkg.documents).toHaveLength(8);
+  it("documents: seven PDF-like pages with anchors and the demo footer, all read", () => {
+    expect(pkg.documents).toHaveLength(7);
+    expect(pkg.documents.filter((d) => !d.factsSource)).toEqual([]);
     for (const d of pkg.documents) expect(d.footerHe).toBe("מסמך הדגמה — נתונים בדויים");
     expect(pkg.documents.find((d) => d.id === "contract_07_01_excerpt")!.anchors.exclusion).toBeGreaterThan(0);
     expect(pkg.documents.find((d) => d.id === "quote_pladot_12t")!.blocks.some((b) => b.text?.includes("12,000 ק״ג (12 טון) × 4,800"))).toBe(true);
@@ -119,13 +118,21 @@ describe("Hadarim v2 data package", () => {
 });
 
 describe("Hadarim v2 checks", () => {
-  const draft = pkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
-  const erp = { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog };
-  // the revised BOQ page (boq_v5_ch57) processed, the way the agent would after reading it
-  const processedPkg = { ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) };
+  // the seed is clean; the scripted errors are a test fixture, put back here so the checks stay under test
+  const brokenPkg = scenarioPackage();
+  const processedPkg = scenarioPackage({ processedBoqRevision: true });
+  const draft = brokenPkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
+  const erp = { invoices: brokenPkg.invoices, purchaseOrders: brokenPkg.purchaseOrders, changeLog: brokenPkg.changeLog };
 
-  it("on the seed only the price and unit findings fire — the revised BOQ page is still unprocessed", () => {
-    const result = runChecks(pkg, erp, draft, CURRENT_CONTROL);
+  it("a first control on the seed raises nothing and leaves nothing unread", () => {
+    const cleanDraft = pkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
+    const cleanErp = { invoices: pkg.invoices, purchaseOrders: pkg.purchaseOrders, changeLog: pkg.changeLog };
+    expect(runChecks(pkg, cleanErp, cleanDraft, CURRENT_CONTROL).findings).toEqual([]);
+    expect(pkg.documents.filter((d) => !d.factsSource)).toEqual([]);
+  });
+
+  it("with the scenario injected, only the price and unit findings fire — the revised BOQ page is still unprocessed", () => {
+    const result = runChecks(brokenPkg, erp, draft, CURRENT_CONTROL);
     expect(result.findings.map((f) => f.kind).sort()).toEqual(["price", "unit"]);
   });
 
@@ -172,7 +179,7 @@ describe("Hadarim v2 checks", () => {
   });
 
   it("the five traps do not fire", () => {
-    const { findings } = runChecks(pkg, erp, draft, CURRENT_CONTROL);
+    const { findings } = runChecks(brokenPkg, erp, draft, CURRENT_CONTROL);
     const crane = pkg.invoices.find((i) => i.descriptionHe === "מנוף צריח — שלד בניין A")!;
     expect(crane.sectionId).toBe("01");
     expect(findings.some((f) => f.record.id === String(crane.id))).toBe(false);

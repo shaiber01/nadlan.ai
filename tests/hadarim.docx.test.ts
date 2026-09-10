@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, setPackage, startControl, updateInvoiceSection, setReportConfig } from "../src/hadarim/engine/commands";
+import { confirmQuote, decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection, setReportConfig } from "../src/hadarim/engine/commands";
 import type { V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
 import { exportReportDocx } from "../src/hadarim/export/docx";
+import { installScenario } from "./fixtures/scenario";
 
-// the revised BOQ page (boq_v5_ch57) processed, as the agent would before this control runs
-setPackage({ ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) });
+// the seed is clean: the scripted walkthrough below needs its three errors, and the revised BOQ page
+// already read, the way the agent would before this control runs
+installScenario({ processedBoqRevision: true });
 
 const findingByKind = (s: V2State, kind: string) => s.control.findings.find((f) => f.kind === kind)!;
 

@@ -133,10 +133,10 @@ describe("free-standing operations", () => {
     expect(c2!.afterHe).toBe("12 טון × 4,800 ₪ לטון");
     // the amount is derived, not its own field: correcting only the quantity recomputes it too, even against the original order
     const [s2b, c2b] = correctPurchaseOrder(seed, 2291, { qty: 10 }, "EYAL");
-    expect(s2b.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 10, unit: "טון", unitPrice: 4.8, amount: 48 });
-    expect(c2b!.afterHe).toBe("10 טון × 4.8 ₪ לטון");
+    expect(s2b.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 10, unit: "טון", unitPrice: 4800, amount: 48_000 });
+    expect(c2b!.afterHe).toBe("10 טון × 4,800 ₪ לטון");
     // the same order stated the way the quote states it: the quantity in ק״ג, the price per טון
-    const [s3, c3] = correctPurchaseOrder(seed, 2291, { unit: "ק״ג", priceUnit: "טון", unitPrice: 4800 }, "EYAL");
+    const [s3, c3] = correctPurchaseOrder(seed, 2291, { qty: 12_000, unit: "ק״ג", priceUnit: "טון", unitPrice: 4800 }, "EYAL");
     expect(s3.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 12_000, unit: "ק״ג", priceUnit: "טון", unitPrice: 4800, amount: 57_600 });
     expect(c3!.afterHe).toBe("12,000 ק״ג × 4,800 ₪ לטון");
     expect(() => correctPurchaseOrder(seed, 2291, { unit: "ק״ג", priceUnit: "מ״ר" }, "EYAL")).toThrow(/אינן ניתנות להמרה/);
