@@ -10,7 +10,7 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     rollupOptions: {
-      // Three pages in one static build: the sixteen-scenario demo (index.html), the Hadarim ERP (hadarim.html) and the control report (report.html).
+      // Three pages in one static build: the Hadarim ERP (hadarim.html), the control report (report.html) and the root (index.html), which redirects to the ERP.
       input: { main: "index.html", hadarim: "hadarim.html", report: "report.html" },
     },
   },

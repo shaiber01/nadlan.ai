@@ -2,10 +2,9 @@
 
 This is the one document to read first. It describes the Hadarim budget-control prototype as it is built today: the simulated ERP, the shared database, the documents, the budget, the Claude agent that acts as the budget controller, its tools and skills, the heartbeat, and the report. Status history and decisions are in `hadarim-v2-plan.md`; day-to-day developer conventions are in `CLAUDE.md`; the product specs are `hadarimdataspec.md` (data), `hadarimdemoscript.md` (demo flow), `budgetcontrolreportstandard.md` (report standard).
 
-## 1. Two things live in this repository
+## 1. What is in this repository
 
-1. **The v1 demo** (`index.html`, `src/` outside `src/hadarim/`): a browser-only, deterministic sixteen-scenario demo of the service idea. No database, no agent. Left as is; the README's first half describes it.
-2. **The Hadarim prototype** (`src/hadarim/`, `supabase/`, `mcp/`, `.claude/`, `scripts/`): one real construction project (הדרים, 48.0M ₪ budget, 18 sections) in a shared database, a simulated contractor ERP people use in the browser, and a Claude Code agent ("בקרה") that is the budget controller. This document is about the prototype.
+**The Hadarim prototype** (`src/hadarim/`, `supabase/`, `mcp/`, `.claude/`, `scripts/`): one real construction project (הדרים, 48.0M ₪ budget, 18 sections) in a shared database, a simulated contractor ERP people use in the browser, and a Claude Code agent ("בקרה") that is the budget controller. It is the whole repository: the earlier browser-only sixteen-scenario demo ("v1") was removed on 2026-09-10, and the site root (`index.html`) now redirects to the ERP page.
 
 ## 2. The prototype in one picture
 
@@ -176,10 +175,10 @@ Everything in the engine is tested offline on the generator package (`tests/hada
 ## 12. Development
 
 ```bash
-npm run dev                 # v1 at /, the ERP at /hadarim.html, the report at /report.html
+npm run dev                 # the ERP at /hadarim.html (/ redirects there), the report at /report.html
 npm test                    # vitest (offline); RUN_DB_TESTS=1 adds the live tests
 npm run test:e2e            # Playwright against the production build (run npm run build first)
-npm run build               # both entries into dist/
+npm run build               # the pages into dist/
 npm run bakara -- tools     # the tool registry; tool <name> '{...}' calls one; heartbeat prints the work list
 npm run hadarim:seed        # load the generator package into Supabase and snapshot it as the seed
 npm run hadarim:reset       # restore the seed

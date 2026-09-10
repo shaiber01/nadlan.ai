@@ -1,4 +1,4 @@
-import { Surface } from "../components/Drawer";
+import { Surface } from "./components/Drawer";
 import { store, useUi, useV2State } from "./app/store";
 import { DocumentView } from "./components/DocumentView";
 import { pkg } from "./engine/commands";

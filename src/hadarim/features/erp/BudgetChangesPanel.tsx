@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { store, useUi } from "../../app/store";
 import { BUDGET_CHANGE_KIND_HE, type HBudgetChange, type PersonId, type SectionId } from "../../data/types";
 import { pkg } from "../../engine/commands";

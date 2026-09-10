@@ -1,9 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { HadarimApp } from "./App";
-import "../styles/tokens.css";
-import "../styles/base.css";
-import "../styles/components.css";
+import "./styles/tokens.css";
+import "./styles/base.css";
+import "./styles/components.css";
 import "./styles/hadarim.css";
 
 // the report has its own page; the old `?app=report` address still works

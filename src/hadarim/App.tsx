@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Surface } from "../components/Drawer";
-import { Button } from "../components/primitives";
+import { Surface } from "./components/Drawer";
+import { Button } from "./components/primitives";
 import { store, useUi, useV2State } from "./app/store";
 import { DocumentView } from "./components/DocumentView";
 import { SCRIPT_INVOICE_ID, pkg } from "./engine/commands";

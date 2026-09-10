@@ -1,15 +1,12 @@
 import { zipSync, strToU8 } from "fflate";
-import { toIls } from "../domain/money";
-import type { ReportSnapshot } from "../domain/types";
-import { formatDate } from "../domain/dates";
 
 /**
- * Minimal but valid Office Open XML workbook writer (no external spreadsheet library).
- * Produces a real .xlsx (zip of SpreadsheetML parts) populated from the frozen report snapshot.
- * RTL sheet view, inline strings, numeric cells with a thousands-separator number format.
+ * Minimal but valid Office Open XML workbook writer (no external spreadsheet library): a real .xlsx (zip of
+ * SpreadsheetML parts) from sheets of rows. RTL sheet view, inline strings, numeric cells with a
+ * thousands-separator number format. export/xlsx.ts builds the control report's sheets on top of it.
  */
 
-type Cell = string | number | null;
+export type Cell = string | number | null;
 
 function esc(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -72,57 +69,4 @@ export function buildWorkbook(sheets: WorkbookSheet[], meta: { title: string; cr
   files["docProps/app.xml"] = strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Bakara Demo</Application></Properties>`);
   return zipSync(files, { level: 6 });
-}
-
-/** Build the weekly report workbook from a frozen snapshot only (never from mutable current state). */
-export function buildReportWorkbook(report: ReportSnapshot): Uint8Array {
-  const f = report.frozen;
-  const money = (v: number) => toIls(v);
-  const summary: Cell[][] = [
-    [`דוח בקרה שבועי — ${f.projectNameHe}`, null, null],
-    [`תאריך דוח: ${formatDate(report.reportDate)} · גרסה ${report.version} · נתונים עד ${formatDate(report.dataThrough)}`, null, null],
-    ["כל הסכומים בש״ח לפני מע״מ. נתוני הדגמה סינתטיים.", null, null],
-    [],
-    ["מדד", "סכום (₪)", null],
-    ["תקציב מאושר", money(f.totals.budget), null],
-    ["עלות שנצברה", money(f.totals.incurred), null],
-    ["מתוכה: חשבוניות שנקלטו", money(f.totals.incurredInvoiced), null],
-    ["מתוכה: עבודה שבוצעה וטרם חויבה", money(f.totals.incurredAccrued), null],
-    ["התחייבויות שנותרו", money(f.totals.commitments), null],
-    ["יתרת עבודה ללא התחייבות", money(f.totals.uncommitted), null],
-    ["תחזית עלות לסיום", money(f.totals.eac), null],
-    ["חריגה צפויה מהתקציב", money(f.totals.variance), null],
-    ...(report.showPaid ? [["שולם בפועל (מוצג בנפרד)", money(f.totals.paid), null] as Cell[]] : []),
-    [],
-    ["נושאים פתוחים והנחות", "סכום (₪)", "פירוט"],
-    ...f.notes.filter((n) => n.kind !== "assumption").map((n) => [n.titleHe, n.amount != null ? money(n.amount) : null, n.textHe] as Cell[]),
-    ...f.qualificationsHe.map((q) => ["הסתייגות", null, q] as Cell[]),
-  ];
-  const header: Cell[] = ["סעיף", "תקציב מאושר", "עלות שנצברה", "התחייבויות שנותרו", "יתרת עבודה ללא התחייבות", "תחזית עלות לסיום", "חריגה צפויה", ...(report.showPaid ? ["שולם בפועל"] : []), ...(report.showQuantities ? ["כמות מתוכננת", "כמות שנרכשה", "יחידה"] : [])];
-  const detail: Cell[][] = [
-    [`פירוט לפי סעיפי תקציב — ${f.projectNameHe} — ${formatDate(report.reportDate)}`],
-    header,
-    ...f.lines.map((l) => [
-      `${l.nameHe} (${l.costCodeId})`,
-      money(l.budget),
-      money(l.incurred),
-      money(l.commitments),
-      money(l.uncommitted),
-      money(l.eac),
-      money(l.variance),
-      ...(report.showPaid ? [money(l.paid)] : []),
-      ...(report.showQuantities ? [l.quantities?.planned ?? null, l.quantities?.purchasedVerified ?? null, l.quantities?.unit ?? null] : []),
-    ] as Cell[]),
-    ["סה״כ", money(f.totals.budget), money(f.totals.incurred), money(f.totals.commitments), money(f.totals.uncommitted), money(f.totals.eac), money(f.totals.variance), ...(report.showPaid ? [money(f.totals.paid)] : []), ...(report.showQuantities ? [null, null, null] : [])],
-  ];
-  const sheets: WorkbookSheet[] = report.layout === "management_summary"
-    ? [
-        { name: "סיכום להנהלה", rows: summary, headerRows: 1, widths: [44, 18, 70] },
-        { name: "פירוט סעיפים", rows: detail, headerRows: 2, widths: [30, 16, 16, 18, 22, 18, 16, 14, 14, 14, 10] },
-      ]
-    : [
-        { name: "פירוט סעיפים", rows: detail, headerRows: 2, widths: [30, 16, 16, 18, 22, 18, 16, 14, 14, 14, 10] },
-        { name: "סיכום להנהלה", rows: summary, headerRows: 1, widths: [44, 18, 70] },
-      ];
-  return buildWorkbook(sheets, { title: `דוח בקרה ${f.projectNameHe} ${report.reportDate}`, creator: "בקרה — סביבת הדגמה", created: report.generatedAt.replace(/\+.*$/, "Z") });
 }

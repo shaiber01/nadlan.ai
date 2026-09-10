@@ -1,44 +1,25 @@
-# בקרה — Construction Budget Control AI Service
+# בקרה — budget control for construction projects
 
-Two things live in this repository:
+A budget-control prototype for construction projects (Hebrew, RTL): a shared Supabase database, a simulated contractor ERP in the browser, a Claude Code agent ("בקרה") that is the budget controller through a general-purpose tool server, real documents the agent reads, a heartbeat over everything new, and the control report on its own page. **How it all works: [`docs/system-overview.md`](docs/system-overview.md).** Developer conventions are in `CLAUDE.md`; this file is the short version.
 
-1. **The Hadarim prototype** — a shared Supabase database, a simulated contractor ERP in the browser, a Claude Code agent ("בקרה") that is the budget controller through a general-purpose tool server, real documents the agent reads, a heartbeat over everything new, and the control report on its own page. **How it all works: [`docs/system-overview.md`](docs/system-overview.md).** The section "Hadarim — the control prototype" below is the short version.
-2. **The v1 demo** — the earlier, browser-only interactive demo described next (sixteen replayable scenarios, no database, no agent).
-
-## v1 — the interactive demo
-
-A standalone, Hebrew (RTL) interactive demo of an AI-enabled budget-control service for Israeli construction companies. It simulates a control layer around the customer's existing ERP ("זיו — סביבת הדגמה"), with deterministic rules, sixteen replayable scenarios, free exploration, simulated WhatsApp/email delivery, a frozen report archive with real `.xlsx` attachments, and a deterministic Hebrew Q&A assistant.
-
-Everything is synthetic. There is no backend, no live AI, no API key, no real ERP, and no real message delivery. The persistent badge **סביבת הדגמה · נתונים סינתטיים** says so inside the app.
+Everything is synthetic. There is no real ERP, no customer data and no real message delivery; the badge **סביבת הדגמה · נתונים סינתטיים** says so inside the app.
 
 ## Run locally
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm test           # vitest: financial fixtures and scenario transitions
+npm run dev        # http://localhost:5173/hadarim.html (the root redirects there); the report at /report.html
+npm test           # vitest: data, engine, tools, report, documents, heartbeat, budget
 npm run build      # type-check + production build into dist/
 npm run preview    # serve the production build
+npm run test:e2e   # Playwright against the production build (run npm run build first)
 ```
 
-Node 22 and npm are the only requirements. The build uses a relative base path, so `dist/` runs from GitHub Pages, any sub-folder, or a plain file server. `.github/workflows/deploy.yml` publishes `main` to GitHub Pages.
+Node 22 and npm are the only requirements. The build uses a relative base path, so `dist/` runs from GitHub Pages, any sub-folder, or a plain file server. `.github/workflows/deploy.yml` publishes `main` to GitHub Pages: the ERP at `https://shaiber01.github.io/nadlan.ai/hadarim.html`, the report at `https://shaiber01.github.io/nadlan.ai/report.html`.
 
-## Primary walkthrough (8–10 minutes)
+## The prototype
 
-1. Open **תמונת מצב**. The company has four active projects and one draft budget; **מגורי הדרים** is selected. Two findings are already under provider review: the conditional future steel-price risk and the missing equipment allocation.
-2. Click **נסה הדגמה מודרכת** (overview, or **בקרת הצגה** in the header). The tour runs S04 → S06 → S07 → S01 on one carried-forward state, then loads S05 → S15, then S02. A dismissible Hebrew guide panel names each step and highlights the relevant control. The tour never clicks approvals for you.
-3. Use the **role switch** (מנהל החברה / צוות הבקרה) to see both sides. Provider actions (releasing alerts and questions, approving corrections and forecasts, approving reports) live in the reviewer view; the manager answers the WhatsApp questions and receives reports.
-4. Open **תרחישי הדגמה** to start, replay, or step through any of the sixteen scenarios independently. Each scenario loads its own named starting state; your free-exploration workspace is saved and restored with **חזרה למרחב החופשי**.
-
-### Reset
-
-**בקרת הצגה → אפס את נתוני ההדגמה** restores the canonical baseline and clears local storage. State is persisted in `localStorage` under `bakara-demo-v1` and keyed by the seed version; incompatible stored data is never rendered, the app offers **טעינת נתוני ההדגמה החדשים** instead.
-
-**התקדם שבוע** advances the simulated clock (starting 07/09/2026 09:00, Asia/Jerusalem) and creates the due weekly report draft for provider review, once per project and period.
-
-## Hadarim — the control prototype
-
-The full description is `docs/system-overview.md`; this is the short version. An independent surface: one project (הדרים, 48.0M budget, 18 sections) in a shared database, and two pages — the simulated contractor ERP ("זיו — סביבת הדגמה", `hadarim.html`, hosted at `https://shaiber01.github.io/nadlan.ai/hadarim.html`) whose edits are written to the database, and **the control report** (`report.html`, hosted at `https://shaiber01.github.io/nadlan.ai/report.html`) — a live, read-only view of the control the Claude agent ("בקרה") runs and of the report it produces per `budgetcontrolreportstandard.md`, with the saved versions and PDF / Word / Excel exports. The ERP never links to the report; the report's source links open ERP records in a new tab. The v1 demo stays at `https://shaiber01.github.io/nadlan.ai/`. There is one budget controller, the agent; the web app does not run controls or take decisions. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
+One project (הדרים, 48.0M budget, 18 sections) in a shared database, and two pages — the simulated contractor ERP ("זיו — סביבת הדגמה", `hadarim.html`) whose edits are written to the database, and **the control report** (`report.html`) — a live, read-only view of the control the Claude agent ("בקרה") runs and of the report it produces per `budgetcontrolreportstandard.md`, with the saved versions and PDF / Word / Excel exports. The ERP never links to the report; the report's source links open ERP records in a new tab. There is one budget controller, the agent; the web app does not run controls or take decisions. Specs: `hadarimdemoscript.md`, `hadarimdataspec.md`; reconciliation and status: `docs/hadarim-v2-plan.md`.
 
 The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab following live):
 
@@ -52,11 +33,11 @@ The script (scene 1 in the browser, scenes 2–9 with the agent, the report tab 
 8. "שמרי את התצורה": what is kept (structure) and never kept (data); "סגרי כגרסה סופית" when the control is closed. Saved report versions are listed in the browser next to the live one.
 9. Questions — what changed, whether the steel overrun is quantity or price, which issues closed, what is still an estimate, why development rose — answered from the tools with sources.
 
-The presenter strip switches screens, picks the scene-1 variant, toggles offline work and resets to the seed (two-step; online it restores the database snapshot). Offline (`?offline=1`) the browser uses the generator data only. Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, quality, review, generic, units, heartbeat, budget, documents, docx), `e2e/hadarim*.spec.ts` (ERP and the viewer offline) and `e2e/hadarim.db.spec.ts` (`RUN_DB_E2E=1`: the whole loop on the live database — browser edit, control through the tools, viewer, saved version, reset — with element screenshots in `e2e/screenshots/hadarim-v-*.png`).
+The presenter strip switches screens, picks the scene-1 variant, toggles offline work and resets to the seed (two-step; online it restores the database snapshot). Offline (`?offline=1`) the browser uses the generator data only. Everything is derived from `src/hadarim/data/generate.ts` (deterministic; `npm run hadarim:dump` writes CSV/JSON to `data/hadarim/`); checks in `src/hadarim/engine/checks.ts`; commands, operations, working forecast and report model in `src/hadarim/engine/`; screens in `src/hadarim/features/`. Tests: `tests/hadarim.*.test.ts` (data, engine, tools, quality, review, generic, units, heartbeat, budget, documents, docx, cards), `e2e/hadarim*.spec.ts` (ERP and the viewer offline) and `e2e/hadarim.db.spec.ts` (`RUN_DB_E2E=1`: the whole loop on the live database — browser edit, control through the tools, viewer, saved version, reset — with element screenshots in `e2e/screenshots/hadarim-v-*.png`).
 
 ### Database (prototype)
 
-The Hadarim data also lives in a Supabase Postgres project shared by local and hosted runs (`src/hadarim/db/config.ts` holds the URL and the publishable key; the secret key is never committed). Schema and triggers are in `supabase/migrations/`; the change log is written by database triggers whenever an invoice, a purchase order or a budget change is written with an actor; uploaded documents live in the Storage bucket `documents`.
+The data lives in a Supabase Postgres project shared by local and hosted runs (`src/hadarim/db/config.ts` holds the URL and the publishable key; the secret key is never committed). Schema and triggers are in `supabase/migrations/`; the change log is written by database triggers whenever an invoice, a purchase order or a budget change is written with an actor; uploaded documents live in the Storage bucket `documents`.
 
 ```bash
 npm run hadarim:seed    # load the deterministic data package and snapshot it as the seed
@@ -79,48 +60,30 @@ claude --agent bakara        # a whole session as the controller (approve the .m
 # or, in a normal session: "use the bakara agent to run the control for הדרים"
 ```
 
-The tools (`src/hadarim/tools/index.ts`, served by `mcp/bakara-server.ts`; 53 of them, listed by group in the overview) are general-purpose over any project in the database — reads (`get_project`, `get_forecast`, `get_section`, `query_invoices`, `query_change_log`, `search_documents`, …), checks (`run_check`, `get_heartbeat_work`), the control and its decisions (`run_control`, `decide_finding`, `route_finding`, `confirm_quote`, `raise_finding`, `record_review_pass`), attributed writes (`reallocate_invoice`, `correct_purchase_order`, `create_invoice`, `add_budget_change`, `add_forecast_adjustment`, `open_task`, `add_control_note`, `set_project_status`), documents (`add_document`, `classify_document`, `set_document_facts`), the heartbeat (`record_heartbeat`) and the report (`set_report_config`, `build_report`, `finalize_control`). The agent never computes numbers itself; every figure it quotes comes from a tool result, every write is attributed to the person who decided, logged by the database triggers and re-read as verification. The same registry is available from a shell:
+The tools (`src/hadarim/tools/index.ts`, served by `mcp/bakara-server.ts`; listed by group in the overview) are general-purpose over any project in the database — reads (`get_project`, `get_forecast`, `get_section`, `query_invoices`, `query_change_log`, `search_documents`, …), checks (`run_check`, `get_heartbeat_work`, `report_readiness`), the control and its decisions (`run_control`, `decide_finding`, `route_finding`, `confirm_quote`, `raise_finding`, `record_review_pass`), attributed writes (`reallocate_invoice`, `correct_purchase_order`, `create_invoice`, `add_budget_change`, `add_forecast_adjustment`, `open_task`, `add_control_note`, `set_project_status`), documents (`add_document`, `classify_document`, `set_document_facts`), the heartbeat (`record_heartbeat`) and the report (`set_report_config`, `build_report`, `finalize_control`). The agent never computes numbers itself; every figure it quotes comes from a tool result, every write is attributed to the person who decided, logged by the database triggers and re-read as verification. The same registry is available from a shell:
 
 ```bash
 npm run bakara -- tools                                     # list the tools
 npm run bakara -- tool get_forecast '{"sectionId":"03"}'    # call one
-npm run bakara -- control run                               # the demo-script commands still work
+npm run bakara -- heartbeat                                 # the deterministic heartbeat work list
 ```
 
 ## Where to change things
 
 | What | Where |
 | --- | --- |
-| Product name, source-system label, badges, simulated senders | `src/config/branding.ts` |
-| Shared Hebrew UI copy | `src/locales/he.ts` |
-| Canonical seed: projects, cost codes, ledger records, commitments, forecast work items, generated documents | `src/data/seed.ts` |
-| Literal source documents (invoices, contracts, quotes...) and scenario-only documents | `src/data/documents.ts` |
-| Scenario fixtures, triggers, branches, guidance steps, completion predicates | `src/data/scenarios/definitions.ts`; tour order in `src/data/scenarios/tour.ts` |
-| Financial semantics (A/C/R/EAC, payments, coverage) | `src/domain/selectors/financial.ts` |
-| Report snapshots, prior-world reconstruction, deltas | `src/domain/selectors/snapshot.ts` |
-| Domain commands (receive, analyze, review/apply, messages, reports, rules, experiment) | `src/domain/commands/*.ts` |
-| Deterministic intelligence adapter: rule registry, clarification parsing, chat intents | `src/intelligence/deterministic/*.ts`; boundary in `src/intelligence/types.ts` |
-| Excel workbook writer | `src/export/xlsx.ts` |
-| Store, persistence, analysis scheduler, scenario sessions | `src/app/store.ts` |
-| Screens | `src/features/*`; shared evidence/proposal/document components in `src/components/*` |
-
-### Replacing the intelligence adapter
-
-`src/intelligence/types.ts` defines `IntelligenceAdapter` (`analyzeRecord`, `analyzeDocument`, `answerQuestion`, `interpretClarification`). The deterministic implementation returns structured drafts (findings, proposals, questions, alerts) and Hebrew text; domain commands validate and apply them. A future AI provider can propose analyses or interpret text behind the same interface, but ledger math and write authorization stay in `src/domain`.
-
-## Financial model (summary)
-
-Per cost code: **EAC = A + C + R**, where A is recognized incurred cost (posted invoices, opening balances, certificates, approved unbilled accruals, credits), C is Σ max(0, commitment value − recognized against it), and R is the accepted forecast of uncommitted work items. Payments are tracked per record and shown separately. Every posted cost identifies the work item it fulfills, so an invoice consumes exactly the forecast it replaces. Conditional risks and opportunities are shown outside accepted EAC until a reviewed decision. Reports freeze lines, totals, notes, record ids and the document set available at their cutoff; "last report" resolves dynamically.
-
-## Verification performed
-
-- `npm test`: 48 assertions covering the Section 5.1 baseline checksum, the prior report reconstruction (H10 = 0 / 0 / 1,500,000), every scenario's expected numbers from Section 14.1 (S02 draft 5,090,000; S03 reclassification; S04 200 → 20; S05 6,086,000 / 4,018,000 and the 13,333.33 / 6,666.67 payment split; S06 6,250,000, 6,178,000 and the locked-order 6,190,000; S07 answer texts including the company-wide steel coverage sentence; S08 6,206,000; S09 80,000 / 300,000 / 700,000; S10 180,000 / 170,000 and 270,000 vs 320,000; S11 6,114,000; S12 6,108,000 → 6,106,000; S13 480,000 / 6,186,000; S14 700,000 / 6,206,000 and 30/04/2027; S15 260,000 / 140,000 and the 30,000/30,000 custom split; S16 192,000 and 6,154,000), failed-write/retry idempotency, duplicate-delivery and duplicate-schedule guards, stale-session analysis discard, fixture isolation, and a valid RTL workbook zip.
-- `npm run test:e2e` (Playwright, Chromium, against the production build; 18 tests): every destination renders without runtime errors; the guided path S04 → S06 → S07 → S01 through the real UI (record save, review approval, alert release before any report, WhatsApp reply, forecast approval to 6,250,000, chat delta of +150,000 versus 31/08, report generation, approval, WhatsApp delivery, `.xlsx` download, weekly schedule); S05 invalid and valid replies; S03 failed write and retry followed by S09 on its own fixture; S11's single immutable invoice versus the corrected ERP entry; S02, S08, S09, S10, S12, S13, S14, S15 and S16 each started from the gallery and completed through their triggers, client replies and reviewer approvals; the S06 locked-order branch and scenario restart; restoration of the free-exploration workspace after a scenario; a 390 px mobile message center. Screenshots are written to `e2e/screenshots/`. The Pages workflow runs the unit tests and the build only (no browser download in CI).
-- The store is exposed as `window.__bakaraStore` for read-only inspection in the browser console.
+| The seed: project, sections, people, contracts, orders, invoices, forecast versions, document pages | `src/hadarim/data/generate.ts`, `documents.ts`, `bluebook.ts`, `types.ts` (policy defaults) |
+| Checks and finding cards | `src/hadarim/engine/checks.ts` |
+| Working forecast (recorded, committed, remaining, uncovered, EAC, budget changes) | `src/hadarim/engine/forecast.ts` |
+| State commands, free-standing operations, the heartbeat | `src/hadarim/engine/commands.ts`, `operations.ts`, `heartbeat.ts` |
+| The report model (per `budgetcontrolreportstandard.md`) and its exports | `src/hadarim/engine/report.ts`; `src/hadarim/export/docx.ts`, `markdown.ts`, `xlsx.ts` |
+| The tools the agent and the CLI call | `src/hadarim/tools/index.ts`; served by `mcp/bakara-server.ts` |
+| The agent, its rules and skills | `.claude/agents/bakara.md`, `.claude/skills/bakara-*/SKILL.md` |
+| Database access, attributed writes, documents, realtime | `src/hadarim/db/client.ts`, `session.ts`; schema in `supabase/migrations/` |
+| Screens | `src/hadarim/features/erp/` (the ERP), `features/report/` (the report page); shared primitives in `src/hadarim/components/`, styles in `src/hadarim/styles/` |
 
 ## Limitations
 
-- Intelligence is rule-based and deterministic; supported questions and reply phrasings are listed in the app (fallback text explains the boundaries). There is no OCR, no arbitrary spreadsheet ingestion, no live ERP, no real WhatsApp or email.
-- The Excel attachment is populated from the frozen snapshot with plain formatting (two sheets, RTL view, number format). It is a valid Office Open XML workbook, not a richly styled template.
-- The financial model omits VAT, retention, financing, foreign currency, and a time-phased earned-value model, as the brief specifies.
-- Opening balances are inspectable synthetic summaries; their historical detail is intentionally not simulated.
+- A prototype: access to the database is open through the publishable key, Storage is public-read, and there is one seeded project.
+- The agent reads documents itself; there is no OCR service. Questions to people (`ask_person`) are recorded, not sent — a real channel belongs to the operational system.
+- Amounts are whole shekels before VAT; retention, financing, foreign currency and a time-phased earned-value model are out of scope.

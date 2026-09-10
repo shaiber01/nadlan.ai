@@ -11,7 +11,7 @@ Written 2026-09-08 after reading the three new specs. Purpose: let a fresh sessi
 | `hadarimdataspec.md` | Entities, numbers, generation rules, traps, package layout | 1 (numbers win) |
 | `hadarimdemoscript.md` | 9 scenes, UI shape, Hebrew copy, presenter flow | 2 (flow and copy win) |
 | `budgetcontrolreportstandard.md` | Report structure (sections 0–11), definitions, disqualifier checklist, CEO one-pager | 3 (report engine spec) |
-| `Construction_AI_Demo_Build_Brief.md` | The v1 brief. Keep only its engineering conventions (integer agorot, immutable sources, review before write, frozen reports, deterministic adapter boundary) | 4 |
+| `Construction_AI_Demo_Build_Brief.md` | The v1 brief; removed from the repository with v1 on 2026-09-10. Its engineering conventions that still apply (immutable sources, review before write, frozen report versions) live on in the prototype | 4 |
 
 v2 is a different product surface from v1, not an increment: one project ("הדרים", 48.0M budget, 18 budget sections), a simulated ERP the presenter edits live, and a conversation-centric control system whose report is a living document. WhatsApp clarifications, alerts by role and recurring tasks are explicitly "next phase" in the script's closing line and are out of scope for v2.
 
@@ -52,11 +52,11 @@ Q&A intents (scene 9 plus reserve): what changed versus the previous control (wi
 
 ## 4. Reuse map from the v1 code
 
-Reuse as-is or lightly adapted: `src/domain/money.ts`, `src/domain/dates.ts`, `src/export/xlsx.ts`, the store/persistence/session pattern in `src/app/store.ts`, `src/components/primitives.tsx`, `Drawer.tsx`, the CSS system in `src/styles/`, the DocumentViewer idea (documents as immutable HTML pages with anchors and a "scanned" look), the audit/history list, `IntelligenceAdapter` boundary, Playwright and vitest setup, the Pages workflow.
+Reuse as-is or lightly adapted: `src/domain/money.ts`, `src/domain/dates.ts`, `src/export/xlsx.ts`, the store/persistence/session pattern in `src/app/store.ts`, `src/components/primitives.tsx`, `Drawer.tsx`, the CSS system in `src/styles/`, the DocumentViewer idea (documents as immutable HTML pages with anchors and a "scanned" look), the audit/history list, `IntelligenceAdapter` boundary, Playwright and vitest setup, the Pages workflow. (Historical: since 2026-09-10 the v1 tree is gone and what v2 kept lives in `src/hadarim/` — `components/`, `styles/`, `assets/fonts/`, `export/workbook.ts`.)
 
 New for v2: the data model (sections, contracts with inclusions/exclusions, BOQ lines with coverage flags, cumulative partial accounts with retention, POs, forecast versions with per-line basis, change log, open issues, buildings), a deterministic generator for ~215 invoices / 38 POs / ~120 BOQ lines committed as JSON next to the generator, the four checks and five traps, the chat-driven control flow, the findings board, the report engine with restructuring and the CEO version, exports, configuration save, and the ERP screens with a real change log.
 
-Decision recorded as default: v2 lives beside v1 in the same repo (own entry route, shared utilities), so the sixteen-scenario demo keeps working until the user decides to retire it.
+Decision recorded as default: v2 lives beside v1 in the same repo (own entry route, shared utilities), so the sixteen-scenario demo keeps working until the user decides to retire it. Retired 2026-09-10 (see the status entry "v1 removed").
 
 ## 4b. Phase 1 status (done 2026-09-08)
 
@@ -149,6 +149,8 @@ Report readiness (2026-09-10, on the controller's own patch after a run that bui
 
 Shorter cards without losing data (2026-09-10, after a run that showed two cards for one order, repeated its history on both and restated the card in the option descriptions): (1) the agent quotes the card's four blocks, references sources already shown, keeps the people line, repeats the headline only when it changed; (2) every decision option carries `consequenceHe` from the engine (what the write, the task or the closed finding is, with names from the project's people), and that line is the option's description; (3) the findings of one invoice or order fold into one `record` card (`groupByRecord` in `checks.ts`, a post-pass of `runChecks`) when every one carries a data-determined fix and the fixes agree — allocation, unit and order-document findings now carry `proposedFix` so they can fold — with one union fix and one question; `decideComposite` writes every field, one §4b row per field attributed to its member, and records the decision for the card and each member; the heartbeat and the report count a card through its members. Judgment cards and conflicting fixes stay their own cards; `run_check` with one kind gives the individual finding. Tests in `tests/hadarim.cards.test.ts`.
 
+v1 removed (2026-09-10, user: "simplify the project and remove v1 completely so we only have v2"): `src/` outside `src/hadarim/`, the v1 unit tests (`baseline`, `scenarios`, `store`) and e2e suites (`flows`, `scenarios`, `screens`) and `Construction_AI_Demo_Build_Brief.md` are deleted; `index.html` is a redirect to `hadarim.html`, so the site root opens the ERP and every existing URL keeps working. What v2 used from the v1 tree moved into `src/hadarim/`: the Heebo fonts (`assets/fonts/`); `styles/tokens.css`, `base.css` and `components.css`, pruned to the rules the two pages use (the WhatsApp, guide-panel, scenario, timeline, evidence, toast and document-page blocks and the unused tokens are gone); `components/primitives.tsx` reduced to `Button`, `Badge`, `Notice` and `KeyValue`, and `components/Drawer.tsx`; the SpreadsheetML writer as `export/workbook.ts` (v1's report builder dropped). Not done, deliberately: renaming `hadarim.html` to `index.html` — the report's source links, the e2e suites, the skills and the docs address the ERP page by that name, so that is a separate decision.
+
 Next: (8) package `.claude/` + `mcp/` as a Claude Code plugin; later: Supabase Auth and real RLS, more projects; a real messaging channel behind `ask_person`.
 
 ## 5. Build phases for the next session
@@ -162,7 +164,7 @@ Next: (8) package `.claude/` + `mcp/` as a Claude Code plugin; later: Supabase A
 
 ## 6. Decisions — all defaults approved by the user on 2026-09-08
 
-1. Coexist with v1 or replace it. Default: coexist.
+1. Coexist with v1 or replace it. Default: coexist. Superseded 2026-09-10: the user asked to remove v1 completely; done (status entry "v1 removed").
 2. Who generates the data package. Default: generate it here in TypeScript, deterministic, committed with the generator; no external zip needed.
 3. The 20,070,000 versus 20,120,000 recorded total. Default: 20,070,000.
 4. Company names and the "מסמך הדגמה — נתונים בדויים" footer on documents. Default: keep the names from the spec, footer on.

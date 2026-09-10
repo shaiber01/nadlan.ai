@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HPurchaseOrder, PersonId, SectionId } from "../../data/types";
 import { orderLineHe, pkg, updatePurchaseOrder, updatePurchaseOrderSection } from "../../engine/commands";
