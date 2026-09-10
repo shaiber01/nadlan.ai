@@ -6,6 +6,7 @@ import { pkg } from "../../engine/commands";
 import { isUnprocessed } from "../../engine/heartbeat";
 import { documentStatusHe } from "../../components/DocumentFacts";
 import { UploadDocumentForm } from "./UploadDocumentForm";
+import { downloadDocument } from "../../documents/download";
 import { dateHe, dateTimeHe, num, personName, supplierName } from "./format";
 
 const RECORD_HE = { invoice: "חשבון", po: "הזמנה", contract: "חוזה" } as const;
@@ -89,7 +90,10 @@ export function DocumentsScreen() {
                   <td className="mono">{d.recordRef ? `${RECORD_HE[d.recordRef.type]} ${d.recordRef.id}` : "—"}</td>
                   <td className="mono">
                     {d.filePath ? "📎 " : ""}
-                    {d.fileName}
+                    {d.fileName}{" "}
+                    <button type="button" className="erp-link" title="הורדה" onClick={(e) => { e.stopPropagation(); void downloadDocument(d); }} data-testid={`erp-doc-download-${d.id}`}>
+                      ⤓
+                    </button>
                   </td>
                   <td className="erp-muted">{d.uploadedById ? `${personName(d.uploadedById as PersonId)} · ${dateTimeHe(d.uploadedAt ? d.uploadedAt.slice(0, 16) : d.date)}` : "—"}</td>
                   <td>

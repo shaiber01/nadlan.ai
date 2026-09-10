@@ -540,3 +540,6 @@ table.erp-table tr.erp-row-target td {
 .erp-doc-item { display: grid; gap: 4px; }
 .erp-doc-replace { justify-self: start; font-size: 12px; }
 .erp-doc-actions { display: flex; gap: 8px; }
+.erp-doc-item-actions { display: flex; gap: 14px; font-size: 12px; }
+.erp-link-danger { color: #a11c1c; }
+.erp-doc-confirm p { margin: 0 0 8px; }

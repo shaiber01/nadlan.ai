@@ -3,6 +3,7 @@ import { store, useV2State } from "../app/store";
 import { DOCUMENT_KIND_HE, type HDocument } from "../data/types";
 import { documentFileUrl } from "../db/client";
 import { isImage, isPdf, mimeTypeFor } from "../documents/mime";
+import { downloadDocument } from "../documents/download";
 import { FACT_LABEL_HE, documentRecord, factValueHe } from "../engine/checks";
 import { pkg } from "../engine/commands";
 import { isUnprocessed } from "../engine/heartbeat";
@@ -93,6 +94,9 @@ export function DocumentView({ documentId, anchor }: { documentId: string; ancho
           <a className="h2-doc-open" href={url} target="_blank" rel="noreferrer">
             פתח בחלון חדש ↗
           </a>
+          <button type="button" className="h2-doc-open h2-docfacts-link" onClick={() => void downloadDocument(doc)} data-testid="document-download">
+            הורדה ↓
+          </button>
         </div>
         <div className="h2-doc-frame">
           {isPdf(mime) ? <iframe src={url} title={doc.titleHe} /> : isImage(mime) ? <img src={url} alt={doc.titleHe} /> : <a href={url} target="_blank" rel="noreferrer">{doc.fileName}</a>}
@@ -108,6 +112,9 @@ export function DocumentView({ documentId, anchor }: { documentId: string; ancho
         <span className="h2-doc-file">{doc.fileName}</span>
         <span className="h2-doc-kind">{kindHe(doc.kind)}</span>
         {supplier && <span className="h2-doc-supplier">{supplier.nameHe}</span>}
+        <button type="button" className="h2-doc-open h2-docfacts-link" onClick={() => void downloadDocument(doc)} data-testid="document-download">
+          הורדה כטקסט ↓
+        </button>
       </div>
       <div className="h2-doc-paper">
         {doc.blocks.map((block, i) => {

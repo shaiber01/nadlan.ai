@@ -87,6 +87,13 @@ test.describe("Hadarim — ERP variants and screens", () => {
     await expect(page.getByTestId("erp-doc-record")).toHaveValue("הזמנה 2291");
     await page.getByTestId("erp-doc-cancel").click();
     await expect(page.getByTestId("erp-doc-upload-open")).toBeVisible();
+    // download and delete controls per document; deleting asks first (and needs the database, so offline it stays disabled)
+    await expect(page.getByTestId("erp-doc-download-quote_pladot_12t")).toContainText("הורדה");
+    await page.getByTestId("erp-doc-delete-quote_pladot_12t").click();
+    await expect(page.getByTestId("erp-doc-confirm-delete")).toContainText("quote_pladot_12t.pdf");
+    await expect(page.getByTestId("erp-doc-delete-confirm")).toBeDisabled();
+    await page.getByTestId("erp-doc-delete-cancel").click();
+    await expect(page.getByTestId("erp-doc-upload-open")).toBeVisible();
     await page.getByTestId("erp-po-attachment").click();
     await expect(page.getByTestId("document-meta")).toContainText("עיבוד");
     await expect(page.getByTestId("document-meta").getByTestId("document-facts")).toContainText("12 טון");

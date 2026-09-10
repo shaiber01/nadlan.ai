@@ -4,6 +4,7 @@ import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
 import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, documentRecord, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
 import { isUnprocessed } from "../src/hadarim/engine/heartbeat";
+import { documentAsText, documentDownload } from "../src/hadarim/documents/download";
 import { tools } from "../src/hadarim/tools";
 
 /**
@@ -106,6 +107,23 @@ describe("compareDocument — the record against its document, the way the cards
     const rows = compareDocument(pkg, state.erp, { type: "contract", id: withExcerpt.id }, pkg.documents.find((d) => d.id === withExcerpt.documentId)!);
     expect(rows.find((r) => r.key === "exclusionClause")).toMatchObject({ match: true });
     expect(rows.find((r) => r.key === "contractId")).toMatchObject({ match: true, recordHe: withExcerpt.id });
+  });
+});
+
+describe("downloading a document", () => {
+  it("a stored file downloads by its public URL under its own name; a seed page downloads as text with its blocks and tables", () => {
+    const seed = pkg.documents.find((d) => d.blocks.some((b) => b.kind === "table"))!;
+    const d = documentDownload(seed);
+    expect(d.url).toBeUndefined();
+    expect(d.fileName).toMatch(/\.txt$/);
+    const text = documentAsText(seed);
+    expect(text.startsWith(seed.titleHe)).toBe(true);
+    const table = seed.blocks.find((b) => b.kind === "table")!;
+    expect(text).toContain(table.rows![0].join("\t"));
+    const stored: HDocument = { ...seed, id: "upload_1", fileName: "scan.pdf", filePath: "HADARIM/upload_1/scan.pdf" };
+    const s = documentDownload(stored);
+    expect(s.fileName).toBe("scan.pdf");
+    expect(s.url).toContain("HADARIM/upload_1/scan.pdf");
   });
 });
 

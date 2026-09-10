@@ -283,7 +283,8 @@ export interface HForecastVersion {
 
 export interface HChangeLogEntry {
   id: string;
-  recordType: "invoice" | "po" | "contract" | "budget";
+  /** "document": a deletion in the project folder (the row is gone; the entry says who removed which file). */
+  recordType: "invoice" | "po" | "contract" | "budget" | "document";
   recordId: string;
   field: string;
   before: string;

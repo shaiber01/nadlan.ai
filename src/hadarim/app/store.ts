@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { HInvoice, HPurchaseOrder } from "../data/types";
-import { addBudgetChange, addDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
+import { addBudgetChange, addDocument, deleteDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
 import { mimeTypeFor } from "../documents/mime";
 import type { HBudgetChange, HDocument } from "../data/types";
 import { DEFAULT_PROJECT_ID } from "../db/config";
@@ -198,6 +198,23 @@ class HadarimStore {
       this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
       await this.loadFromDb();
       return doc;
+    } catch (e) {
+      this.setDb({ syncing: false });
+      throw e;
+    } finally {
+      this.writesInFlight -= 1;
+    }
+  };
+
+  /** Delete a document from the folder (file and row), with a change-log entry saying who did it. Needs the database. */
+  deleteDocument = async (doc: HDocument, byId: string): Promise<void> => {
+    if (this.ui.db.status !== "online") throw new Error("מחיקת מסמך דורשת חיבור למסד הנתונים (כבה ״עבודה מקומית״).");
+    this.writesInFlight += 1;
+    this.setDb({ syncing: true });
+    try {
+      await deleteDocument(this.projectId, doc, byId);
+      this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
+      await this.loadFromDb();
     } catch (e) {
       this.setDb({ syncing: false });
       throw e;

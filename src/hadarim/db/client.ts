@@ -452,6 +452,28 @@ export async function supersedeDocument(projectId: string, oldId: string, newId:
   if (error) throw new Error(`documents ${oldId}: ${error.message}`);
 }
 
+/**
+ * Delete a document from the folder: its files in Storage and its row, after a change-log entry (record type
+ * `document`) saying who removed which file and where it belonged. A document that had replaced another gives
+ * that one its place back.
+ */
+export async function deleteDocument(projectId: string, doc: HDocument, byId: string, noteHe = "מחיקה במערכת המידע", supabase: Db = db()): Promise<void> {
+  const bucket = supabase.storage.from(DOCUMENTS_BUCKET);
+  const { data: files, error: listError } = await bucket.list(`${projectId}/${doc.id}`);
+  if (listError) throw new Error(`storage ${doc.id}: ${listError.message}`);
+  if (files?.length) {
+    const { error } = await bucket.remove(files.map((f) => `${projectId}/${doc.id}/${f.name}`));
+    if (error) throw new Error(`storage ${doc.id}: ${error.message}`);
+  }
+  const where = doc.recordRef ? ` · ${{ invoice: "חשבון", po: "הזמנה", contract: "חוזה" }[doc.recordRef.type]} ${doc.recordRef.id}` : "";
+  const { error: logError } = await supabase.from("change_log").insert({ project_id: projectId, record_type: "document", record_id: doc.id, field: "מחיקה", before: `${doc.titleHe} · ${doc.fileName}${where}`, after: "—", by_id: byId, note_he: noteHe });
+  if (logError) throw new Error(`change_log: ${logError.message}`);
+  const { error: unsupersede } = await supabase.from("documents").update({ superseded_by: null }).eq("project_id", projectId).eq("superseded_by", doc.id);
+  if (unsupersede) throw new Error(`documents: ${unsupersede.message}`);
+  const { error } = await supabase.from("documents").delete().eq("project_id", projectId).eq("id", doc.id);
+  if (error) throw new Error(`documents ${doc.id}: ${error.message}`);
+}
+
 /** Change a document's description (kind, title, date, supplier, linked record, summary) or store its extracted text. */
 export async function updateDocument(projectId: string, documentId: string, patch: DocumentPatch, supabase: Db = db()): Promise<HDocument> {
   const row: Partial<TablesInsert<"documents">> = {};

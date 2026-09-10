@@ -3,7 +3,7 @@ import { store, useV2State } from "../../app/store";
 import type { HChangeLogEntry } from "../../data/types";
 import { dateTimeHe, num, personName } from "./format";
 
-const RECORD_HE: Record<HChangeLogEntry["recordType"], string> = { invoice: "חשבון", po: "הזמנה", contract: "חוזה", budget: "תקציב" };
+const RECORD_HE: Record<HChangeLogEntry["recordType"], string> = { invoice: "חשבון", po: "הזמנה", contract: "חוזה", budget: "תקציב", document: "מסמך" };
 
 export function ChangeLogScreen() {
   const state = useV2State();
@@ -19,6 +19,7 @@ export function ChangeLogScreen() {
     if (c.recordType === "invoice") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "invoices", invoiceId: Number(c.recordId), editing: false, creating: false } }));
     else if (c.recordType === "po") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "purchase_orders", poId: Number(c.recordId), editing: false } }));
     else if (c.recordType === "budget") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "budget" } }));
+    else if (c.recordType === "document") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "documents" } }));
     else store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "contracts", contractId: c.recordId } }));
   };
   return (
