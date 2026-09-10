@@ -7,22 +7,21 @@ description: Build, enrich, adapt and deliver the budget-control report per the 
 
 The report is produced by `build_report` from the current state per `budgetcontrolreportstandard.md`; every call rebuilds it from the live database, so call it again whenever something changed. You deliver it, explain it and shape it; you never restate a number that is not in it, and you do not redo its arithmetic by hand.
 
-## Before delivering: the heartbeat, then the checks
-First `/bakara-heartbeat`: it processes the documents nobody read yet and walks the ERP records inserted or changed since the last pass, so the report starts from data that was read. `build_report.attentionHe` says when documents are still pending or changes happened after the last heartbeat. Saving a version (`saveVersion` / `label`) and `finalize_control` are refused, with the reason, while a document is pending, no heartbeat was ever recorded, or the checks raise findings on records changed since the last heartbeat that nobody presented — run the heartbeat, present its findings, then save. Building without saving always works.
+## Before delivering: heartbeat → readiness → one build
+1. `/bakara-heartbeat` first: it processes the documents nobody read yet and walks the ERP records inserted or changed since the last pass, and its findings are decided there.
+2. `report_readiness` — one small call, no rendering. `ready` says whether the report can go out; `attentionHe` names what stands in the way: pending documents, changes since the last heartbeat, findings nobody decided on (the session's open ones, what the checks raise beyond it — "הבקרה טרם רצה" / "חדש מאז הרצת הבקרה" — and findings an earlier heartbeat presented that nobody decided), the review pass not done (`/bakara-control` step 5; the report's sources line states whether it was done). `openFindings` carries each finding's recommended fix (`fixHe`) and the people involved (`peopleHe`): walk them through `/bakara-control` (`run_control` first if the control has not run, so decisions can be recorded). Do not build the report to learn any of this.
+3. Build once, when `ready` is true (or the user chooses to deliver with open findings): `build_report` in the format the user needs. A docx or xlsx build returns the same `summary` as a summary build — never pair the two. If the final build still carries `attentionHe`, it is binding: walk what it lists and build again. A report delivered with open findings is delivered as not final, and you say so.
 
-`build_report` runs all the checks on the current data by itself. Its result carries `attentionHe` and `summary.openFindings` when something needs a decision: findings of the session nobody decided on, and findings the checks raise beyond the session ("הבקרה טרם רצה" / "חדש מאז הרצת הבקרה"). Walk them before delivering: for each, the recommended fix (`fixHe`) and the people involved (`peopleHe`); get the decision through `/bakara-control` (`run_control` first if the control has not run, so decisions can be recorded), then build again. A report delivered with open findings is delivered as not final, and you say so.
-
-`attentionHe` also says when the review pass was not done for this control (`/bakara-control` step 5): do it before delivering — the report's sources line states whether the agent's review was done.
+Saving a version (`saveVersion` / `label`) and `finalize_control` are refused, with the reason, while a document is pending, no heartbeat was ever recorded, or the checks raise findings on records changed since the last heartbeat that nobody presented (`report_readiness.canSaveVersion` and `blockersHe` say so in advance). Building without saving always works.
 
 ## Build and deliver
-1. `build_report` (default `format: "summary"`). Give the user:
+1. `build_report` — the format the user needs: `summary` (default) to talk it through; `docx` (Word) or `xlsx` (Excel, one sheet per table) with a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` when handing over — the file path is in `path`, the stored version id in `versionId` (`list_report_versions` lists what was saved), and the result's `summary` is what you deliver from. Give the user:
    - the header line (`summary.header.controlLabelHe`, cutoff, previous control);
    - `summary.executive.paragraphHe` verbatim and the key table (`keyTable`: תקציב, תחזית לגמר, סטייה, שינוי מבקרה קודמת, נרשם, ביצוע פיזי, בלתי צפוי, יתרה לא מכוסה);
    - 4א and 4ב in two sentences — `forecastChanges` (typed changes with basis, total `forecastChangesTotal`) and `corrections` (data fixes with no effect on the total). Keep them apart;
    - `executive.decisionsHe` — the decision management must take;
    - `materialSections` (why each is analysed: threshold, share of budget, weak basis) and `risks`, `openIssues` on request.
-2. The full text: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
-3. To hand over: `build_report` with `format: "docx"` (Word) or `format: "xlsx"` (Excel, one sheet per table), a `label` (e.g. "בקרה 09/2026") and `saveVersion: true` — the file path is in `path`, the stored version id in `versionId`. `list_report_versions` lists what was saved.
+2. The full text, only if the user wants it: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
 
 If the user disputes a figure, point to the report section and its source and pull the underlying data with `get_forecast` / `get_section` (which recalculate from the database); do not work the number out by hand.
 

@@ -19,6 +19,6 @@ Everything new since the last heartbeat, handled in one pass so the report is sh
 5. `record_heartbeat`: `untilChangeLogId` from step 1 (so what happened during the pass is covered next time), `documentsProcessed`, `documentIds`, `recordsChanged`, `findingIds` of everything you presented (the next heartbeat repeats a finding only if its record changes again), and a `summaryHe` in three parts: what was processed, what was found, what awaits the user.
 
 ## Where it is used
-- `/bakara-report` runs this pass before building the report; `build_report.attentionHe` says when documents are pending or changes happened after the last heartbeat.
+- `/bakara-report` runs this pass before building the report; `report_readiness` (and `build_report.attentionHe`) says when documents are pending or changes happened after the last heartbeat.
 - `list_heartbeats` shows the history and how many changes happened since the last one.
 - Scheduled: `scripts/heartbeat.sh` runs this skill headless (`claude -p`), for cron or launchd. Nothing is decided in a scheduled run — the summary is what the user reads next.

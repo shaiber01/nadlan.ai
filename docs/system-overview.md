@@ -16,7 +16,7 @@ This is the one document to read first. It describes the Hadarim budget-control 
    invoices, orders, contracts, budget,           rules + skills (.claude/)
    change log, documents folder (upload)          │ MCP (stdio)
         │ writes (attributed) / reads              ▼
-        ▼                                       mcp/bakara-server.ts → src/hadarim/tools/index.ts (52 tools)
+        ▼                                       mcp/bakara-server.ts → src/hadarim/tools/index.ts (53 tools)
  ┌────────────────────────────────────┐             │ loads the project, runs the pure engine, writes back
  │  Supabase project aevdlzncwkdosbzkgpgy │◄───────────┘
  │  Postgres tables (project_id keyed)  │
@@ -118,7 +118,7 @@ Rules it keeps (the agent file has the exact wording): Hebrew only in what the u
 | Group | Tools |
 | --- | --- |
 | Read | `list_projects`, `get_project`, `list_people`, `get_control`, `get_forecast`, `get_section`, `query_invoices`, `query_purchase_orders`, `list_contracts`, `get_contract`, `query_boq`, `list_suppliers`, `get_supplier`, `query_change_log`, `list_issues`, `search_documents`, `get_document`, `get_audit`, `list_report_versions`, `get_review_material`, `list_budget_changes`, `list_heartbeats` |
-| Check (no writes) | `run_check` (a kind or all, for one record or a section), `get_heartbeat_work` |
+| Check (no writes) | `run_check` (a kind or all, for one record or a section), `get_heartbeat_work`, `report_readiness` (can the report go out: pending documents, changes since the last heartbeat, findings nobody decided on, the review pass — the same `attentionHe` as `build_report`, without rendering) |
 | Control and decisions | `run_control`, `decide_finding`, `route_finding`, `confirm_quote`, `raise_finding`, `record_review_pass`, `finalize_control` |
 | Attributed ERP writes | `reallocate_invoice`, `correct_purchase_order`, `set_invoice_building`, `create_invoice`, `add_budget_change` |
 | Shaping the control and report | `add_forecast_adjustment`, `remove_forecast_adjustment`, `open_task`, `set_task_status`, `add_control_note`, `remove_control_note`, `set_project_status`, `set_report_config`, `build_report` |
@@ -157,7 +157,7 @@ The heartbeat is one pass over everything new since the previous one, so the rep
 - The agent processes each pending document (read, classify, facts, re-check the linked record), reads each changed record against its contract, presents the findings with their recommended fix and the people involved, and with a user present gets the decisions through the control; with nobody present it presents them in the summary and leaves them open.
 - `record_heartbeat` closes the pass with the watermark, the counts, the finding ids presented (repeated next time only if their record changes again) and a Hebrew summary: what was processed, what was found, what awaits the user.
 
-Where it runs: `/bakara-report` runs it before building; `build_report` says in `attentionHe` when documents are pending or changes happened after the last heartbeat; `npm run bakara -- heartbeat` prints the deterministic work list; `scripts/heartbeat.sh` runs the agent headless for a cron or launchd job (not scheduled yet; it needs `claude` logged in or an API key on the machine — GitHub Actions `schedule` with a key is the hosted option). `list_heartbeats` shows the history and how many changes happened since the last one.
+Where it runs: `/bakara-report` runs it before building, then `report_readiness` says whether the report can go out (`build_report` returns the same `attentionHe` on the build itself); `npm run bakara -- heartbeat` prints the deterministic work list; `scripts/heartbeat.sh` runs the agent headless for a cron or launchd job (not scheduled yet; it needs `claude` logged in or an API key on the machine — GitHub Actions `schedule` with a key is the hosted option). `list_heartbeats` shows the history and how many changes happened since the last one.
 
 ## 10. The report (`report.html`)
 

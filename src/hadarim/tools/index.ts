@@ -16,7 +16,7 @@ import { budgetChangesBySection, uncoveredByBasis, workingForecast } from "../en
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
 import { CHANNEL_HE, addAdjustment, addNote, addTask, answerQuestion, askPerson, correctPurchaseOrder, raiseFinding, reallocateInvoice, recordReviewPass, removeAdjustment, removeNote, setTaskStatus } from "../engine/operations";
 import { lineValue } from "../engine/units";
-import { buildReport } from "../engine/report";
+import { buildReport, reportReadiness, type ReadinessContext } from "../engine/report";
 import { exportReportDocx } from "../export/docx";
 import { reportToMarkdown } from "../export/markdown";
 import { reportToWorkbook } from "../export/xlsx";
@@ -1272,14 +1272,31 @@ define({
   },
 });
 
-/** A saved version or a final control must rest on data that was read: refuse while documents are pending or a heartbeat is due with findings. */
-async function refuseUnlessRead(projectId: string, state: V2State, prefixHe: string): Promise<void> {
-  const history = await listHeartbeats(projectId, 200);
+/** The last heartbeat, the change log's top id and the findings earlier heartbeats presented — what readiness and the blockers are measured against. */
+async function heartbeatContext(projectId: string): Promise<ReadinessContext> {
+  const [history, latest] = await Promise.all([listHeartbeats(projectId, 200), latestChangeLogId(projectId)]);
   const reported = new Set<string>();
   for (const h of history) for (const id of ((h.details.findingIds as string[] | undefined) ?? [])) reported.add(id);
-  const blockers = reportBlockers(pkg, state, history[0] ?? null, await latestChangeLogId(projectId), reported, nowStamp().slice(0, 10));
+  return { lastHeartbeat: history[0] ?? null, latestChangeLogId: latest, previouslyReported: reported, today: nowStamp().slice(0, 10) };
+}
+
+/** A saved version or a final control must rest on data that was read: refuse while documents are pending or a heartbeat is due with findings. */
+function refuseUnlessRead(ctx: ReadinessContext, state: V2State, prefixHe: string): void {
+  const blockers = reportBlockers(pkg, state, ctx.lastHeartbeat, ctx.latestChangeLogId, ctx.previouslyReported ?? [], ctx.today);
   if (blockers.length) throw new Error(`${prefixHe}: ${blockers.map((b) => b.textHe).join(" ")}`);
 }
+
+define({
+  name: "report_readiness",
+  title: "Can the report go out?",
+  description: "What stands between the current data and a deliverable report, without rendering it: pending documents, changes since the last heartbeat, findings nobody decided on (the session's open ones, what the checks raise beyond the session, and findings an earlier heartbeat presented that nobody decided), and whether the review pass was done — the same attentionHe build_report returns, at a fraction of the size, with each open finding's recommended fix and people. Call it after the heartbeat and before build_report; build the report once, when ready is true.",
+  kind: "check",
+  input: { projectId, controlDate },
+  run: async (a) => {
+    const state = await loadState(a.projectId, a.controlDate);
+    return { ok: true, ...reportReadiness(pkg, state, await heartbeatContext(a.projectId)), headline: headline(state) };
+  },
+});
 
 define({
   name: "build_report",
@@ -1289,7 +1306,8 @@ define({
   input: { projectId, controlDate, tab: z.enum(["full", "ceo"]).default("full"), format: z.enum(["summary", "markdown", "json", "docx", "xlsx"]).default("summary"), path: z.string().optional().describe("output file path for docx/xlsx/markdown (default out/…)"), label: z.string().optional(), saveVersion: z.boolean().default(false) },
   run: async (a) => {
     const state = await loadState(a.projectId, a.controlDate);
-    if (a.saveVersion || a.label) await refuseUnlessRead(a.projectId, state, "הדוח לא נשמר כגרסה");
+    const ctx = await heartbeatContext(a.projectId);
+    if (a.saveVersion || a.label) refuseUnlessRead(ctx, state, "הדוח לא נשמר כגרסה");
     const report = buildReport(pkg, state);
     const date = state.control.controlDate;
     let path: string | null = null;
@@ -1328,19 +1346,8 @@ define({
       uncoveredTotal: report.appendices.uncoveredTotal,
       finalized: report.finalized,
     };
-    const unreviewed = report.openFindings.filter((f) => f.statusHe !== "טרם הוכרע" && f.statusHe !== "בהחלטה").length;
-    const reviewMissing = !report.header.reviewPassHe;
-    const [lastHeartbeat] = await listHeartbeats(a.projectId, 1);
-    const latestLog = await latestChangeLogId(a.projectId);
-    const pendingDocs = pkg.documents.filter(isUnprocessed).length;
-    const sinceHeartbeat = lastHeartbeat ? latestLog - lastHeartbeat.untilChangeLogId : null;
-    const parts = [
-      pendingDocs ? `${pendingDocs} מסמכים בתיקייה טרם עובדו — עבד אותם לפני הדוח (/bakara-heartbeat).` : "",
-      sinceHeartbeat === null ? (latestLog ? "לא נרשמה פעימת לב לפרויקט: הרץ /bakara-heartbeat לפני הדוח." : "") : sinceHeartbeat > 0 ? `${sinceHeartbeat} שינויים במערכת המידע מאז פעימת הלב האחרונה — הרץ /bakara-heartbeat לפני הדוח.` : "",
-      report.openFindings.length ? `${report.openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : "",
-      reviewMissing ? "סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass." : "",
-    ].filter(Boolean);
-    const attentionHe = parts.length ? parts.join(" ") : null;
+    // the same readiness report_readiness gives, on the findings this build already computed (the checks run once)
+    const { attentionHe } = reportReadiness(pkg, state, ctx, report.openFindings);
     return { ok: true, tab: a.tab, format: a.format, path, versionId, ...(attentionHe ? { attentionHe } : {}), ...(a.format === "json" ? { report } : a.format === "markdown" ? { markdown: text } : {}), summary };
   },
 });
@@ -1352,7 +1359,7 @@ define({
   kind: "write",
   input: { projectId, controlDate },
   run: async (a) => {
-    await refuseUnlessRead(a.projectId, await loadState(a.projectId, a.controlDate), "הבקרה לא נסגרה");
+    refuseUnlessRead(await heartbeatContext(a.projectId), await loadState(a.projectId, a.controlDate), "הבקרה לא נסגרה");
     return outcome(await write(a.projectId, a.controlDate, finalizeControl), { finalized: true });
   },
 });
