@@ -51,16 +51,19 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     expect(errors).toEqual([]);
   });
 
-  test("the documents folder lists the seed's pages as processed, opens them, and uploads only with the database", async ({ page }) => {
+  test("the documents folder lists the seed's pages, one of them pending, opens them, and uploads only with the database", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await fresh(page);
     await page.getByTestId("erp-nav-documents").click();
     await expect(page.getByTestId("erp-documents")).toBeVisible();
-    await expect(page.getByTestId("erp-doc-pending")).toHaveText("כל המסמכים עובדו");
+    // the seed leaves one page unread — the revised chapter-57 BOQ — exactly like a live upload; it sorts first, the rest are processed
+    await expect(page.getByTestId("erp-doc-pending")).toHaveText("1 ממתינים לעיבוד");
     const rows = page.locator("[data-testid^='erp-doc-row-']");
     expect(await rows.count()).toBeGreaterThan(3);
-    await expect(rows.first()).toHaveAttribute("data-status", "done");
+    await expect(rows.first()).toHaveAttribute("data-status", "pending");
+    await expect(rows.nth(1)).toHaveAttribute("data-status", "done");
+    expect(await rows.filter({ has: page.locator(":scope[data-status='pending']") }).count()).toBe(1);
     await shot(page, "07-documents-folder");
     await rows.first().click();
     await expect(page.getByTestId("document-view")).toBeVisible();
@@ -81,23 +84,24 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("erp-boq-version")).toContainText("גרסה 4");
     const rows = page.locator("[data-testid^='erp-boq-row-']");
     expect(await rows.count()).toBeGreaterThan(50);
-    // the chapters of the seed are grouped; the excluded drainage line is flagged with its exclusion clause
-    await expect(page.getByTestId("erp-boq-chapter-57")).toContainText("מוחרג 1");
-    const excluded = page.getByTestId("erp-boq-row-57.03.040");
-    await expect(excluded).toHaveAttribute("data-coverage", "excluded");
-    await expect(excluded).toContainText("3.4");
-    await expect(excluded).toContainText("07 — פיתוח");
+    // the chapters of the seed are grouped; contract 07-01 covers every chapter-57 line, the outdoor drainage line
+    // included, until the agent reads the revised BOQ page that drops it — nothing is excluded up front
+    await expect(page.getByTestId("erp-boq-chapter-57")).toContainText("מכוסה 6");
+    await expect(page.getByTestId("erp-boq-chapter-57")).not.toContainText("מוחרג");
+    const drainage = page.getByTestId("erp-boq-row-57.03.040");
+    await expect(drainage).toHaveAttribute("data-coverage", "covered");
+    await expect(drainage).toContainText("07 — פיתוח");
     // filters narrow the list; the count follows
-    await page.getByTestId("erp-boq-coverage").selectOption("excluded");
-    await expect(page.getByTestId("erp-boq-count")).toHaveText("1 שורות");
-    await page.getByTestId("erp-boq-coverage").selectOption("");
+    await page.getByTestId("erp-boq-chapter").selectOption("57");
+    await expect(page.getByTestId("erp-boq-count")).toHaveText("6 שורות");
+    await page.getByTestId("erp-boq-chapter").selectOption("");
     await page.getByTestId("erp-boq-section").selectOption("03");
     await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("03 — ברזל");
     await shot(page, "08-boq");
-    // a covered line links to its contract
-    await page.getByTestId("erp-boq-section").selectOption("05");
-    await page.locator("[data-testid^='erp-boq-contract-']").first().click();
-    await expect(page.getByTestId("erp-contract-view")).toHaveAttribute("data-contract-id", "05-01");
+    // a covered line links to its contract: the drainage line opens 07-01
+    await page.getByTestId("erp-boq-section").selectOption("07");
+    await page.getByTestId("erp-boq-contract-57.03.040").click();
+    await expect(page.getByTestId("erp-contract-view")).toHaveAttribute("data-contract-id", "07-01");
     // the report's source link addresses a line by URL: the screen opens on it, highlighted, and its document page is one click away
     await page.goto("/hadarim.html?screen=boq&line=57.03.040");
     await expect(page.getByTestId("erp-boq")).toBeVisible();
