@@ -1,5 +1,5 @@
 import type { BuildingTag, ContactChannel, PersonId, SectionId } from "../data/types";
-import { INVOICE_FIX_KEYS, ORDER_FIX_KEYS, peopleInvolved, sectionLabel, type HFinding, type HSource, type InvoiceFix, type OrderFixPatch } from "./checks";
+import { INVOICE_FIX_KEYS, ORDER_FIX_KEYS, accountantPerson, consequence, peopleInvolved, sectionLabel, type HDecisionOption, type HFinding, type HSource, type InvoiceFix, type OrderFixPatch } from "./checks";
 import { orderLineHe, pkg, updateInvoiceFields, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "./commands";
 import { lineValue } from "./units";
 import type { ChangeType, ControlNote, ControlQuestion, ControlTask, DataCorrection, ForecastAdjustment, V2State } from "./model";
@@ -220,7 +220,8 @@ export interface RaisedFindingInput {
   /** The agent's reasoning: what it read, what does not fit. Shown on the card as notes. */
   reasoningHe?: string;
   questionHe?: string;
-  options?: { id: "apply" | "refer" | "accept"; labelHe: string }[];
+  /** The agent's own labels; the consequence of each is filled in by id when it is not given. */
+  options?: { id: "apply" | "refer" | "accept"; labelHe: string; consequenceHe?: string }[];
   impact?: { kind: "none" | "amount" | "unknown"; amount?: number; labelHe?: string };
   /** A fix that names stored data — a section, the document's values, the quote's line — applied only on approval. */
   proposedFix?: { labelHe: string; patch: InvoiceFix | OrderFixPatch };
@@ -269,7 +270,11 @@ export function raiseFinding(state: V2State, input: RaisedFindingInput): [V2Stat
   if (input.proposedFix) validateProposedFix(state, r, input.proposedFix);
   const referToId = input.referToId ? requirePerson(input.referToId) : undefined;
   if (!input.titleHe.trim() || !input.problemHe.trim()) throw new Error("נדרשים כותרת ותיאור הבעיה");
-  const options = input.options?.length ? input.options : [...(input.proposedFix ? [{ id: "apply" as const, labelHe: `לתקן — ${input.proposedFix.labelHe}` }] : []), { id: "refer" as const, labelHe: referToId ? `להעביר ל${person(referToId)}` : "להעביר לתיקון" }, { id: "accept" as const, labelHe: "תקין — לא נדרש תיקון" }];
+  const referName = referToId ? person(referToId) : accountantPerson().nameHe;
+  const consequenceOf: Record<"apply" | "refer" | "accept", string> = { apply: consequence.update(`את הרשומה לפי התיקון המוצע${input.proposedFix ? ` — ${input.proposedFix.labelHe}` : ""}`), refer: consequence.refer(referName), accept: consequence.close("שהרשומה תקינה") };
+  const options: HDecisionOption[] = input.options?.length
+    ? input.options.map((o) => ({ id: o.id, labelHe: o.labelHe, consequenceHe: o.consequenceHe?.trim() || consequenceOf[o.id] }))
+    : [...(input.proposedFix ? [{ id: "apply" as const, labelHe: `לתקן — ${input.proposedFix.labelHe}`, consequenceHe: consequenceOf.apply }] : []), { id: "refer" as const, labelHe: referToId ? `להעביר ל${person(referToId)}` : "להעביר לתיקון", consequenceHe: consequenceOf.refer }, { id: "accept" as const, labelHe: "תקין — לא נדרש תיקון", consequenceHe: consequenceOf.accept }];
   const [s1, n] = nextId(state, "REV");
   const finding: HFinding = {
     id: `F-${n}`,

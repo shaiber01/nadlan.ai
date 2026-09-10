@@ -24,11 +24,15 @@ export interface HSource {
 export interface HDecisionOption {
   id: string;
   labelHe: string;
+  /** What choosing it does — one line under the option, never the card's text again: the write, the task, the closed finding, the open one. */
+  consequenceHe: string;
 }
 
 /** Control findings (decided card by card) and data-quality findings (the record itself is inconsistent). */
 export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "document" | "review";
 export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"];
+/** The kinds the deterministic checks raise (a `review` finding is the agent's own). */
+export const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"] as const;
 
 /** A person connected to the record a finding is about — who to ask when the operator does not know. */
 export interface InvolvedPerson {
@@ -106,12 +110,27 @@ export function executionPerson(p: HadarimPackage = pkg) {
 }
 
 /**
+ * The consequence of an option, in the words the agent puts under it. Names come from the project's people
+ * by role; the texts say what the engine does the moment the option is chosen.
+ */
+export const consequence = {
+  /** an ERP write, here and now */
+  update: (whatHe: string) => `מעדכן ${whatHe} במערכת המידע מיד, על שם המחליט, ונרשם ביומן השינויים ובדוח כתיקון נתונים`,
+  /** a pending task for the person who keys the ERP */
+  refer: (nameHe: string | undefined) => `פותח משימה${nameHe ? ` ל${nameHe}` : ""}; הרשומה נשארת כפי שהיא עד הביצוע`,
+  /** the decision is recorded, the finding closed, the record untouched */
+  close: (whatHe = "את ההחלטה") => `רושם ${whatHe} וסוגר את הממצא; הרשומה לא משתנה`,
+  /** nothing is decided */
+  open: (whyHe?: string) => `הממצא נשאר פתוח${whyHe ? ` — ${whyHe}` : ""}; הרשומה לא משתנה`,
+};
+
+/**
  * "Yes, but someone else keys it" — the alternative to applying the fix here and now. Only when the
  * project has an execution role to hand it to; otherwise the card offers approval or nothing.
  */
 function referOption(): HDecisionOption[] {
   const person = executionPerson();
-  return person ? [{ id: "yes_refer", labelHe: `כן — להעביר ל${person.nameHe} לתיקון` }] : [];
+  return person ? [{ id: "yes_refer", labelHe: `כן — להעביר ל${person.nameHe} לתיקון`, consequenceHe: consequence.refer(person.nameHe) }] : [];
 }
 
 /** The reserve section (kind = contingency): reported on its own, never counted as an estimate. */
@@ -234,7 +253,7 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       sources,
       meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, { id: "yes_refer", labelHe: `כן — להעביר ל${accountantPerson().nameHe} לתיקון` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע`, consequenceHe: consequence.update(`את סעיף חשבון ${inv.id} ל${sectionLabel(right)}`) }, { id: "yes_refer", labelHe: `כן — להעביר ל${accountantPerson().nameHe} לתיקון`, consequenceHe: consequence.refer(accountantPerson().nameHe) }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}`, consequenceHe: consequence.close(`שהחשבון נשאר ב${sectionLabel(wrong)} (בדוח כהערה, כי זה סותר את החוזה)`) }, { id: "unsure", labelHe: "לא בטוח", consequenceHe: consequence.open(`מועבר לבירור ל${accountantPerson().nameHe}`) }], freeText: true },
       sectionId: wrong,
       record: { type: "invoice", id: String(inv.id) },
     });
@@ -297,7 +316,7 @@ export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoI
       checkHe: target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו." : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה." : "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק.",
       meaningHe: `התחייבות של ${nis(po.amount)} תוצג ב${sectionShort(wrong)} במקום ב${sectionShort(right)}${against.length ? `; החשבונות כנגד ההזמנה נשארים בסעיפם` : ""}. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, ...referOption(), { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
+      decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע`, consequenceHe: consequence.update(`את סעיף הזמנה ${po.id} ל${sectionLabel(right)}`) }, ...referOption(), { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}`, consequenceHe: consequence.close(`שההזמנה נשארת ב${sectionLabel(wrong)} (בדוח כהערה)`) }, { id: "unsure", labelHe: "לא בטוח", consequenceHe: consequence.open(`מועבר לבירור${executionPerson() ? ` ל${executionPerson()!.nameHe}` : ""}`) }], freeText: true },
       sectionId: wrong,
       record: { type: "po", id: String(po.id) },
     });
@@ -351,7 +370,7 @@ export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number
       checkHe: `הסכום ${nis(po.amount)} ${facts?.amount != null ? "נכון" : "מתקבל גם כך"}. הכמות והמחיר הוזנו ב${po.unit === "טון" ? "ק״ג" : "יחידה אחרת"} (${num(po.qty)} × ${po.unitPrice}), אך שדה היחידה אומר ${po.unit}.`,
       meaningHe: `הסכום הכספי תקין — לכן אף אחד לא שם לב. אבל כל חישוב שמסתמך על שדה הכמות — יתרה להזמנה, קצב צריכה, השוואה לכתב כמויות — רואה ${num(po.qty)} ${po.unit} במקום ${num(rightQty)}.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-      decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן — לתקן ל-${num(rightQty)} ${rightUnit} במערכת המידע` }, ...referOption(), { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק" }], freeText: false },
+      decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן — לתקן ל-${num(rightQty)} ${rightUnit} במערכת המידע`, consequenceHe: consequence.update(`את שורת הזמנה ${po.id} ל-${num(rightQty)} ${rightUnit} × ${num(rightPrice)} ₪ (הסכום ${nis(po.amount)} נשאר)`) }, ...referOption(), { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק", consequenceHe: quoteDoc ? "פותח את ההצעה המצורפת לעיון; הרשומה לא משתנה עד להחלטה" : consequence.open("עד לבירור מול הספק") }], freeText: false },
       sectionId: po.sectionId,
       record: { type: "po", id: String(po.id) },
       detailsTable: [["שדה", "בהזמנה", facts ? "לפי ההצעה" : "לפי הנספח"], ["כמות", num(po.qty), num(rightQty)], ["יחידה", po.unit, rightUnit], ["מחיר יח׳", `${po.unitPrice} ₪`, `${num(rightPrice)} ₪`], ["סכום", nis(po.amount), nis(Math.round(rightQty * rightPrice))]],
@@ -408,7 +427,7 @@ export function checkPrices(pkg: HadarimPackage, erp: ErpState, draft: HForecast
         checkHe,
         meaningHe: `תחזית סעיף ${sectionShort(line.sectionId)}: ${nis(recorded)} + ${nis(newCost)} = ${nis(recorded + newCost)} · תוספת ${nis(impact)} · חריגה של ${(((recorded + newCost - section.budget) / section.budget) * 100).toFixed(0)}% מתקציב הסעיף.`,
         impact: { kind: "amount", amount: impact, labelHe: `+${nis(impact)}` },
-        decision: { questionHe: "המחיר החדש חל על כל היתרה?", options: [{ id: "all", labelHe: `כן, על כל ${num(line.qty)} ה${unit}` }, { id: "partial", labelHe: "לא — חלק במחיר ישן" }], freeText: false },
+        decision: { questionHe: "המחיר החדש חל על כל היתרה?", options: [{ id: "all", labelHe: `כן, על כל ${num(line.qty)} ה${unit}`, consequenceHe: `מוסיף לתחזית שינוי מחיר של ${nis(impact)} לפי הנספח (סעיף 4א בדוח); מערכת המידע לא משתנה` }, { id: "partial", labelHe: "לא — חלק במחיר ישן", consequenceHe: consequence.open("עד שתיכתב הכמות שנשארת במחיר הישן, ואז החישוב") }], freeText: false },
         sectionId: line.sectionId,
         record: { type: "forecast_line", id: line.id },
         detailsTable: [["רכיב", "נתון"], ["תקציב", nis(section.budget)], ["עלות שנרשמה", nis(recorded)], ["יתרה צפויה", `${num(line.qty)} ${unit}`], ["עלות היתרה — תחזית קודמת", nis(oldCost)], ["עלות היתרה — לפי הנספח", nis(newCost)]],
@@ -422,6 +441,15 @@ export function checkPrices(pkg: HadarimPackage, erp: ErpState, draft: HForecast
 // ---------------------------------------------------------------------------
 // Check 4 — BOQ coverage versus contracts and the forecast
 // ---------------------------------------------------------------------------
+
+/** The three ways a BOQ line gets covered, with what each answer sets in motion. */
+function coverageOptions(): HDecisionOption[] {
+  return [
+    { id: "other_contract", labelHe: "חוזה אחר", consequenceHe: consequence.open("עד שיאושר החוזה שמכסה את העבודה; בינתיים ללא אומדן") },
+    { id: "self", labelHe: "ביצוע עצמי", consequenceHe: "רושם ביצוע עצמי וסוגר את הממצא; התחזית מקבלת שורת אומדן פנימי שסכומה טרם נקבע" },
+    { id: "order", labelHe: "צריך להזמין", consequenceHe: "מחפש הצעת מחיר בתיקיית הפרויקט: נמצאה — שאלה נוספת אם להוסיפה לתחזית כאומדן; לא נמצאה — נפתחת משימה להשגת הצעה והפער נשאר לא מוערך" },
+  ];
+}
 
 /** A BOQ line that a contract excludes (or that has no contract) and that no uncovered forecast line estimates. */
 export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, onlySectionId?: SectionId): HFinding[] {
@@ -453,7 +481,7 @@ export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, only
       ],
       meaningHe: "יש עבודה בכתב הכמויות שאין לה חוזה ואין לה אומדן.",
       impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },
-      decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: [{ id: "other_contract", labelHe: "חוזה אחר" }, { id: "self", labelHe: "ביצוע עצמי" }, { id: "order", labelHe: "צריך להזמין" }], freeText: true },
+      decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: coverageOptions(), freeText: true },
       sectionId: line.sectionId,
       record: { type: "boq_line", id: line.id },
       notesHe: contract ? [`${section.nameHe}: יתר שורות הפרק מכוסות בחוזה ${contract.id}`] : [],
@@ -486,7 +514,7 @@ export function checkCoverage(pkg: HadarimPackage, draft: HForecastVersion, only
       ],
       meaningHe: "שורה בכתב הכמויות הוסרה במסמך מעודכן, אך הרשומה במערכת עדיין מפנה לחוזה כמכוסה — נדרש לוודא אם העבודה עדיין נדרשת ומי מכסה אותה.",
       impact: { kind: "unknown", amount: 0, labelHe: "טרם הוערך" },
-      decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: [{ id: "other_contract", labelHe: "חוזה אחר" }, { id: "self", labelHe: "ביצוע עצמי" }, { id: "order", labelHe: "צריך להזמין" }], freeText: true },
+      decision: { questionHe: `${item} מכוסה בחוזה אחר, יבוצע בביצוע עצמי, או שצריך להזמין אותו?`, options: coverageOptions(), freeText: true },
       sectionId: line.sectionId,
       record: { type: "boq_line", id: line.id },
       notesHe: contract ? [`${section.nameHe}: יתר שורות הפרק מכוסות בחוזה ${contract.id}`] : [],
@@ -537,8 +565,8 @@ function invoiceSource(pkg: HadarimPackage, inv: HInvoice): HSource {
  * The standard decision of a data-quality card: apply the proposed fix now (when the right values are known),
  * refer the fix to bookkeeping, or confirm the record is right.
  */
-function fixDecision(questionHe: string, fixHe: string, applyHe?: string): HFinding["decision"] {
-  return { questionHe, options: [...(applyHe ? [{ id: "apply", labelHe: applyHe }] : []), { id: "refer", labelHe: fixHe }, { id: "accept", labelHe: "תקין — לא נדרש תיקון" }], freeText: true };
+function fixDecision(questionHe: string, fixHe: string, applyHe?: string, applyWhatHe = "את הרשומה לפי התיקון המוצע"): HFinding["decision"] {
+  return { questionHe, options: [...(applyHe ? [{ id: "apply", labelHe: applyHe, consequenceHe: consequence.update(applyWhatHe) }] : []), { id: "refer", labelHe: fixHe, consequenceHe: consequence.refer(accountantPerson().nameHe) }, { id: "accept", labelHe: "תקין — לא נדרש תיקון", consequenceHe: consequence.close("שהרשומה תקינה") }], freeText: true };
 }
 
 /** Who entered, approved or changed the record — the people to ask when the operator does not know. */
@@ -630,7 +658,7 @@ export function checkContractOverrun(pkg: HadarimPackage, erp: ErpState, onlyCon
       checkHe: `${num(invoices.length)} חשבונות מאושרים; אין פקודת שינוי רשומה בבקרה.`,
       meaningHe: `הנרשם כבר בתחזית; יתרת ההתחייבות בחוזה היא אפס והתוספת ${nis(over)} היא חריגה מהחוזה שדורשת פקודת שינוי מאושרת או בירור מול הקבלן.`,
       impact: { kind: "amount", amount: over, labelHe: `+${nis(over)} מעבר לחוזה` },
-      decision: { questionHe: "יש פקודת שינוי מאושרת שמכסה את התוספת?", options: [{ id: "change_order", labelHe: "כן — לרשום פקודת שינוי" }, { id: "refer", labelHe: "לא — לברר מול הקבלן" }, { id: "accept", labelHe: "תקין (חשבון סופי מוסכם)" }], freeText: true },
+      decision: { questionHe: "יש פקודת שינוי מאושרת שמכסה את התוספת?", options: [{ id: "change_order", labelHe: "כן — לרשום פקודת שינוי", consequenceHe: `רושם פקודת שינוי של ${nis(over)} לחוזה (סעיף 6 בדוח) וסוגר את הממצא; התחזית לא משתנה` }, { id: "refer", labelHe: "לא — לברר מול הקבלן", consequenceHe: `פותח משימת בירור מול הקבלן${executionPerson() ? ` ל${executionPerson()!.nameHe}` : ""}; הממצא ממתין לביצוע` }, { id: "accept", labelHe: "תקין (חשבון סופי מוסכם)", consequenceHe: consequence.close("שהחשבון הסופי מוסכם") }], freeText: true },
       sectionId: contract.sectionId,
       record: { type: "contract", id: contract.id },
       detailsTable: [["רכיב", "נתון"], ["סכום החוזה", nis(contract.amount)], ["חשבונות מאושרים", nis(recorded)], ["מעבר לחוזה", nis(over)]],
@@ -743,7 +771,7 @@ export function checkReviewAging(pkg: HadarimPackage, erp: ErpState, controlDate
       sources: [invoiceSource(pkg, inv)],
       meaningHe: `כל עוד החשבון בבדיקה הוא אינו נספר בנרשם של ${sectionLabel(inv.sectionId, pkg)}; אם יאושר, הנרשם יעלה ב-${nis(inv.amount)}.`,
       impact: { kind: "amount", amount: inv.amount, labelHe: `+${nis(inv.amount)} אם יאושר` },
-      decision: { questionHe: "מה מעכב את האישור?", options: [{ id: "apply", labelHe: "לאשר את החשבון עכשיו" }, { id: "refer", labelHe: "לזרז אישור — הנהלת חשבונות" }, { id: "accept", labelHe: "נשאר בבדיקה בכוונה" }], freeText: true },
+      decision: { questionHe: "מה מעכב את האישור?", options: [{ id: "apply", labelHe: "לאשר את החשבון עכשיו", consequenceHe: `מאשר את חשבון ${inv.id} במערכת המידע מיד, על שם המחליט; הנרשם עולה ב-${nis(inv.amount)}; נרשם ביומן השינויים` }, { id: "refer", labelHe: "לזרז אישור — הנהלת חשבונות", consequenceHe: `פותח משימה ל${accountantPerson().nameHe}; החשבון נשאר בבדיקה עד האישור` }, { id: "accept", labelHe: "נשאר בבדיקה בכוונה", consequenceHe: consequence.close("שהחשבון נשאר בבדיקה בכוונה") }], freeText: true },
       proposedFix: { labelHe: "סטטוס: אושר", patch: { status: "אושר" } },
       sectionId: inv.sectionId,
       record: { type: "invoice", id: String(inv.id) },
@@ -1031,7 +1059,7 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
         checkHe: `הושוו ${num(rows.length)} שדות מול ${docs.length === 1 ? `המסמך ״${docs[0].titleHe}״` : `${num(docs.length)} מסמכים`} — העובדות שנרשמו מהמסמך מול הרשומה.`,
         meaningHe: amountDelta ? `המסמך הוא המקור: הסכום שנרשם לסעיף ${sectionLabel(inv.sectionId, pkg)} ${amountDelta > 0 ? "נמוך" : "גבוה"} ב-${nis(Math.abs(amountDelta))} מהחשבון שהספק הגיש.` : "המסמך הוא המקור: פרטי הרשומה במערכת המידע שגויים, או שהעובדות שנקראו מהמסמך שגויות — יש לפתוח את המסמך.",
         impact: amountDelta ? { kind: "amount", amount: amountDelta, labelHe: `${amountDelta > 0 ? "+" : "−"}${nis(Math.abs(amountDelta))} על הסעיף` } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-        decision: fixDecision("לתקן את הרשומה לפי המסמך?", "לתקן בהנהלת חשבונות (או לתקן את עובדות המסמך אם הקריאה שגויה)", proposed?.labelHe),
+        decision: fixDecision("לתקן את הרשומה לפי המסמך?", "לתקן בהנהלת חשבונות (או לתקן את עובדות המסמך אם הקריאה שגויה)", proposed?.labelHe, `את חשבון ${inv.id} לערכי המסמך`),
         ...(proposed ? { proposedFix: proposed } : {}),
         sectionId: inv.sectionId,
         record: { type: "invoice", id: String(inv.id) },
@@ -1066,7 +1094,7 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
         checkHe: `הושוו סכום וספק מול ${docs.length === 1 ? `המסמך ״${docs[0].titleHe}״` : `${num(docs.length)} מסמכים`}; כמויות ויחידות נבדקות בבדיקת היחידות.`,
         meaningHe: amountDelta ? `ההתחייבות שנרשמה לסעיף ${sectionLabel(po.sectionId, pkg)} ${amountDelta > 0 ? "נמוכה" : "גבוהה"} ב-${nis(Math.abs(amountDelta))} מהמסמך.` : "המסמך הוא המקור; פרטי ההזמנה במערכת המידע שגויים או שהעובדות שנקראו מהמסמך שגויות.",
         impact: amountDelta ? { kind: "amount", amount: amountDelta, labelHe: `${amountDelta > 0 ? "+" : "−"}${nis(Math.abs(amountDelta))} התחייבות` } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-        decision: fixDecision("לתקן את ההזמנה לפי המסמך?", "לתקן ברכש / הנהלת חשבונות (correct_purchase_order)"),
+        decision: fixDecision("לתקן את ההזמנה לפי המסמך?", "לתקן בהנהלת חשבונות"),
         sectionId: po.sectionId,
         record: { type: "po", id: String(po.id) },
         detailsTable: [["שדה", "נרשם", "במסמך", "מסמך"], ...rows],

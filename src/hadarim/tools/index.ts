@@ -8,7 +8,7 @@ import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed, reportBlockers } from "../engine/heartbeat";
-import { DATA_QUALITY_KINDS, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, FINDING_KINDS, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
 import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
@@ -60,7 +60,6 @@ const personId = z.string().describe("Person id (see list_people), e.g. EYAL");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const CHANGE_TYPES = Object.keys(CHANGE_TYPE_HE) as [keyof typeof CHANGE_TYPE_HE, ...(keyof typeof CHANGE_TYPE_HE)[]];
 const BASES = ["contract", "po", "quote", "appendix", "estimate"] as const;
-const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"] as const;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const signed = (v: number) => (v === 0 ? "0 ₪" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
@@ -698,7 +697,7 @@ define({
 define({
   name: "decide_finding",
   title: "Decide on a finding",
-  description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. The engine replies with what follows (a route question, a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
+  description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. Every option carries consequenceHe — what happens the moment it is chosen (an ERP write, a task, a closed or an open finding); that line, not the card's text, is the option's description when you ask. The engine replies with what follows (a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
   kind: "decision",
   input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-ALLOC-PO-<order>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
   run: async (a) => {
@@ -981,7 +980,7 @@ define({
     sources: z.array(sourceRef).optional(),
     reasoningHe: z.string().optional().describe("what you read and why it does not fit"),
     questionHe: z.string().optional(),
-    options: z.array(z.object({ id: z.enum(["apply", "refer", "accept"]), labelHe: z.string() })).optional(),
+    options: z.array(z.object({ id: z.enum(["apply", "refer", "accept"]), labelHe: z.string(), consequenceHe: z.string().optional().describe("what choosing it does, one line (default: the engine's text for the id)") })).optional(),
     impact: z.object({ kind: z.enum(["none", "amount", "unknown"]), amount: z.number().optional(), labelHe: z.string().optional() }).optional(),
     proposedFix: z
       .object({
