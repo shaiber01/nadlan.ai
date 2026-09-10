@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Badge, Notice } from "../../../components/primitives";
+import { Badge, Notice } from "../../components/primitives";
 import { erpRecordUrl, store } from "../../app/store";
 import { updateInvoiceBuilding } from "../../engine/commands";
 import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, SectionRow, UncoveredRow } from "../../engine/report";

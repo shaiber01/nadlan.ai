@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Notice } from "../../../components/primitives";
+import { Badge, Button, Notice } from "../../components/primitives";
 import { store, useReportVersions, useUi, useV2State } from "../../app/store";
 import { pkg } from "../../engine/commands";
 import { buildReport, type ReportModel } from "../../engine/report";

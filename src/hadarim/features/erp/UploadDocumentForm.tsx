@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { store } from "../../app/store";
 import { DOCUMENT_KIND_HE, type DocumentKind, type HDocument, type PersonId } from "../../data/types";
 import { pkg } from "../../engine/commands";

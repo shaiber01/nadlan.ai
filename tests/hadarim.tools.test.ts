@@ -4,7 +4,7 @@ import { initialState, pkg } from "../src/hadarim/engine/commands";
 import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, setTaskStatus } from "../src/hadarim/engine/operations";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import { buildReport } from "../src/hadarim/engine/report";
-import { tools } from "../src/hadarim/tools";
+import { callTool, tools } from "../src/hadarim/tools";
 
 /**
  * The general-purpose tool layer: the registry the MCP server exposes, and the free-standing operations
@@ -21,7 +21,7 @@ describe("tool registry", () => {
       expect(["read", "check", "decision", "write", "destructive"]).toContain(t.kind);
       if (t.name !== "list_projects") expect(Object.keys(t.input)).toContain("projectId");
     }
-    expect(names).toEqual(expect.arrayContaining(["get_project", "get_forecast", "run_check", "run_control", "decide_finding", "route_finding", "reallocate_invoice", "add_forecast_adjustment", "open_task", "add_control_note", "build_report", "reset_project"]));
+    expect(names).toEqual(expect.arrayContaining(["get_project", "get_forecast", "run_check", "run_control", "decide_finding", "route_finding", "reallocate_invoice", "add_forecast_adjustment", "open_task", "add_control_note", "report_readiness", "build_report", "reset_project"]));
   });
 
   it("read tools accept an empty argument object (defaults fill the project)", () => {
@@ -30,6 +30,13 @@ describe("tool registry", () => {
       if (t.name !== "list_projects") expect(parsed.projectId).toBe("HADARIM");
     }
     expect(() => z.object(tools.find((t) => t.name === "get_section")!.input).parse({})).toThrow();
+  });
+
+  it("report_readiness is a check over the project and the control date, nothing else", () => {
+    const t = tools.find((x) => x.name === "report_readiness")!;
+    expect(t.kind).toBe("check");
+    expect(Object.keys(t.input).sort()).toEqual(["controlDate", "projectId"]);
+    expect(z.object(t.input).parse({}).projectId).toBe("HADARIM");
   });
 
   it("add_document takes the document it replaces; search_documents hides replaced documents unless asked", () => {
@@ -141,6 +148,18 @@ describe("free-standing operations", () => {
     expect(c3!.afterHe).toBe("12,000 ק״ג × 4,800 ₪ לטון");
     expect(() => correctPurchaseOrder(seed, 2291, { unit: "ק״ג", priceUnit: "מ״ר" }, "EYAL")).toThrow(/אינן ניתנות להמרה/);
   });
+});
+
+describe.skipIf(!process.env.RUN_DB_TESTS)("report_readiness against build_report (live database)", () => {
+  it("says the same attentionHe and lists the same open findings as a build, without the report", async () => {
+    const readiness = (await callTool("report_readiness", {})) as { ok: boolean; ready: boolean; attentionHe: string | null; openFindings: { id: string }[]; summary?: unknown };
+    const built = (await callTool("build_report", {})) as { ok: boolean; attentionHe?: string; summary: { openFindings: { id: string }[] } };
+    expect(readiness.ok && built.ok).toBe(true);
+    expect(readiness).not.toHaveProperty("summary");
+    expect(readiness.attentionHe).toEqual(built.attentionHe ?? null);
+    expect(readiness.ready).toBe(!built.attentionHe);
+    expect(readiness.openFindings.map((f) => f.id)).toEqual(built.summary.openFindings.map((f) => f.id));
+  }, 60_000);
 });
 
 describe.skipIf(!process.env.RUN_DB_TESTS)("MCP server over stdio (live database)", () => {

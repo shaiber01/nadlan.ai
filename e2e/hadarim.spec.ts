@@ -57,6 +57,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await fresh(page);
     await page.getByTestId("erp-nav-documents").click();
     await expect(page.getByTestId("erp-documents")).toBeVisible();
+    // the seed's pages all carry their facts (source: seed); nothing waits for the agent until someone uploads a file
     await expect(page.getByTestId("erp-doc-pending")).toHaveText("כל המסמכים עובדו");
     const rows = page.locator("[data-testid^='erp-doc-row-']");
     expect(await rows.count()).toBeGreaterThan(3);
@@ -96,10 +97,10 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await page.getByTestId("erp-boq-section").selectOption("03");
     await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("ברזל");
     await shot(page, "08-boq");
-    // a covered line links to its contract
-    await page.getByTestId("erp-boq-section").selectOption("05");
-    await page.locator("[data-testid^='erp-boq-contract-']").first().click();
-    await expect(page.getByTestId("erp-contract-view")).toHaveAttribute("data-contract-id", "05-01");
+    // a covered line links to its contract: the drainage line opens 07-01
+    await page.getByTestId("erp-boq-section").selectOption("07");
+    await page.getByTestId("erp-boq-contract-57.03.040").click();
+    await expect(page.getByTestId("erp-contract-view")).toHaveAttribute("data-contract-id", "07-01");
     // the report's source link addresses a line by URL: the screen opens on it, highlighted, and its document page is one click away
     await page.goto("/hadarim.html?screen=boq&line=57.03.040");
     await expect(page.getByTestId("erp-boq")).toBeVisible();

@@ -1,5 +1,5 @@
-import { Surface } from "../../../components/Drawer";
-import { Button, KeyValue } from "../../../components/primitives";
+import { Surface } from "../../components/Drawer";
+import { Button, KeyValue } from "../../components/primitives";
 import { erpRecordUrl, store, useV2State, type UiState } from "../../app/store";
 import { recordDocuments, sectionLabel } from "../../engine/checks";
 import { DocumentFacts } from "../../components/DocumentFacts";

@@ -3,8 +3,10 @@ import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, rese
 import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
-import { buildReport } from "../src/hadarim/engine/report";
 import { installScenario } from "./fixtures/scenario";
+import { changeLogId, isUnprocessed } from "../src/hadarim/engine/heartbeat";
+import { recordReviewPass } from "../src/hadarim/engine/operations";
+import { buildReport, reportReadiness } from "../src/hadarim/engine/report";
 
 // the seed is clean: the flow below needs the three errors a control acts on, with the revised BOQ page
 // already read, the way the agent would before this control runs
@@ -321,5 +323,50 @@ describe("Hadarim v2 engine — the report", () => {
     expect(s.control.decisions[first].pending ?? s.control.decisions[first].status).toBeTruthy();
     const cfg = setReportConfig(s, { splitByBuilding: true });
     expect(cfg.control.reportConfig.splitByBuilding).toBe(true);
+  });
+});
+
+describe("report readiness — what stands between the state and a deliverable report, without rendering it", () => {
+  const lastLogId = (s: V2State) => Math.max(0, ...s.erp.changeLog.map(changeLogId));
+
+  it("on the seed: no heartbeat, the checks' findings and the review pass stand in the way; the rows are the report's own", () => {
+    const seed = initialState();
+    const r = reportReadiness(pkg, seed, { lastHeartbeat: null, latestChangeLogId: lastLogId(seed) });
+    expect(r.ready).toBe(false);
+    expect(r.attentionHe).toContain("לא נרשמה פעימת לב");
+    expect(r.attentionHe).toContain(`${r.openFindings.length} ממצאים דורשים החלטה`);
+    expect(r.attentionHe).toContain("הבקרה לא רצה על הנתונים הנוכחיים");
+    expect(r.attentionHe).toContain("סקירת הסוכן טרם בוצעה");
+    expect(r.openFindings.length).toBeGreaterThan(0);
+    expect(r.openFindings.every((f) => f.statusHe === "הבקרה טרם רצה" && f.fixHe && f.peopleHe)).toBe(true);
+    expect(r.openFindings.map((f) => f.id)).toEqual(buildReport(pkg, seed).openFindings.map((f) => f.id));
+    expect(r).toMatchObject({ reviewPassDone: false, pendingDocuments: 0, heartbeat: null, canSaveVersion: false });
+    expect(r.blockersHe.join(" ")).toContain("לא נרשמה פעימת לב");
+  });
+
+  it("is ready once every finding is decided, the heartbeat covers the change log and the review pass is recorded", () => {
+    const { final } = runScript();
+    const hb = { id: 1, at: final.clock, untilChangeLogId: lastLogId(final) };
+    const decided = reportReadiness(pkg, final, { lastHeartbeat: hb, latestChangeLogId: lastLogId(final) });
+    expect(decided.openFindings).toEqual([]);
+    expect(decided.ready).toBe(false);
+    expect(decided.attentionHe).toBe("סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass.");
+    expect(decided.canSaveVersion).toBe(true);
+    const [passed] = recordReviewPass(final, "נקראו כל החשבונות מול החוזים; ללא אי-התאמות");
+    const ready = reportReadiness(pkg, passed, { lastHeartbeat: hb, latestChangeLogId: lastLogId(passed) });
+    expect(ready).toMatchObject({ ready: true, attentionHe: null, reviewPassDone: true, pendingDocuments: 0, canSaveVersion: true, heartbeat: { id: 1, changesSince: 0 }, latestChangeLogId: lastLogId(passed), blockersHe: [] });
+    // changes after the heartbeat are counted and the report waits for the next pass
+    const stale = reportReadiness(pkg, passed, { lastHeartbeat: { ...hb, untilChangeLogId: hb.untilChangeLogId - 2 }, latestChangeLogId: lastLogId(passed) });
+    expect(stale.ready).toBe(false);
+    expect(stale.attentionHe).toBe("2 שינויים במערכת המידע מאז פעימת הלב האחרונה — הרץ /bakara-heartbeat לפני הדוח.");
+    expect(stale.heartbeat?.changesSince).toBe(2);
+    // a pending document stands in the way of the report and of saving a version
+    const pendingDoc = { ...pkg.documents[0], id: "upload_1", fileName: "scan.pdf", facts: undefined, factsSource: undefined, supersededBy: undefined };
+    const withPending = { ...pkg, documents: [...pkg.documents, pendingDoc] };
+    expect(withPending.documents.filter(isUnprocessed)).toHaveLength(1);
+    const pending = reportReadiness(withPending, passed, { lastHeartbeat: hb, latestChangeLogId: lastLogId(passed) });
+    expect(pending).toMatchObject({ ready: false, pendingDocuments: 1, canSaveVersion: false });
+    expect(pending.attentionHe).toBe("1 מסמכים בתיקייה טרם עובדו — עבד אותם לפני הדוח (/bakara-heartbeat).");
+    expect(pending.blockersHe[0]).toContain("scan.pdf");
   });
 });

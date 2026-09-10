@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import { DOCUMENT_KIND_HE, type PersonId } from "../../data/types";
 import { pkg } from "../../engine/commands";

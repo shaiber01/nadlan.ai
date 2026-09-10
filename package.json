@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.1.0",
   "type": "module",
-  "description": "Interactive Hebrew RTL demo of an AI-enabled construction budget-control service (synthetic data, deterministic behavior)",
+  "description": "Budget-control prototype for construction projects (Hebrew, RTL): a simulated ERP, a living control report and the bakara agent over a shared database",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",

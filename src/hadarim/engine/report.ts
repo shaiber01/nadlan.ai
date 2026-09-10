@@ -1,9 +1,10 @@
 import { priceAppendixAt } from "../data/generate";
 import { chapterLabelHe } from "../data/bluebook";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { boqPageFor, documentById, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
+import { boqPageFor, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
+import { isUnprocessed, reportBlockers } from "./heartbeat";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
 import { CHANNEL_HE } from "./operations";
 
@@ -604,11 +605,13 @@ function periodEvents(pkg: HadarimPackage, state: V2State, from: string, to: str
 // ---------------------------------------------------------------------------
 
 function findingRow(f: HFinding, statusHe: string): ReportModel["openFindings"][number] {
-  const fix = f.proposedFix?.labelHe ?? (f.kind === "allocation" || f.kind === "unit" || f.kind === "price" || f.kind === "coverage" ? f.decision.options[0].labelHe : f.decision.options[0].labelHe);
+  // a control card's first option is the fix in the user's words; a data-quality or composite card names the values
+  const fix = f.kind === "allocation" || f.kind === "unit" || f.kind === "price" || f.kind === "coverage" ? f.decision.options[0].labelHe : (f.proposedFix?.labelHe ?? f.decision.options[0].labelHe);
   return { id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, fixHe: fix, peopleHe: (f.people ?? []).map((p) => `${p.nameHe} (${p.relationHe})`).join("; ") || "—", statusHe };
 }
 
-function openFindingRows(pkg: HadarimPackage, state: V2State): ReportModel["openFindings"] {
+/** The findings nobody decided on: the session's open ones, then what a fresh run of the checks raises beyond it. Runs the checks once. */
+export function openFindingRows(pkg: HadarimPackage, state: V2State): ReportModel["openFindings"] {
   const c = state.control;
   const undecided = c.findings.filter((f) => {
     const d = c.decisions[f.id];
@@ -617,9 +620,69 @@ function openFindingRows(pkg: HadarimPackage, state: V2State): ReportModel["open
   // a fresh run of the checks on the data as it is now: anything the session does not know about is unreviewed
   const draft = pkg.forecasts.find((f) => f.controlDate === c.controlDate && f.sections);
   const fresh = draft ? runChecks(pkg, state.erp, draft, c.controlDate, state.clock.slice(0, 10)).findings : [];
-  const known = new Set(c.findings.map((f) => f.id));
-  const unreviewed = fresh.filter((f) => !known.has(f.id));
+  const known = findingIds(c.findings);
+  const unreviewed = fresh.filter((f) => !findingReported(f, known));
   return [...undecided.map((f) => findingRow(f, c.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע")), ...unreviewed.map((f) => findingRow(f, c.status === "idle" ? "הבקרה טרם רצה" : "חדש מאז הרצת הבקרה"))];
+}
+
+// ---------------------------------------------------------------------------
+// Readiness: what stands between the current state and a deliverable report, without rendering it
+// ---------------------------------------------------------------------------
+
+/** The last recorded heartbeat and the change log's top id, as the tools read them from the database. */
+export interface ReadinessContext {
+  lastHeartbeat: { id: number; at: string; untilChangeLogId: number } | null;
+  latestChangeLogId: number;
+  /** finding ids an earlier heartbeat presented (repeated only if their record changes again) */
+  previouslyReported?: Iterable<string>;
+  today?: string;
+}
+
+export interface ReportReadiness {
+  /** nothing stands in the way: no pending document, the heartbeat covers the change log, no open finding, the review pass done */
+  ready: boolean;
+  /** what stands in the way, one Hebrew sentence per item — the same text `build_report` returns */
+  attentionHe: string | null;
+  openFindings: ReportModel["openFindings"];
+  reviewPassDone: boolean;
+  pendingDocuments: number;
+  heartbeat: { id: number; at: string; changesSince: number } | null;
+  latestChangeLogId: number;
+  /** what refuses a saved version or a final control (`reportBlockers`) */
+  blockersHe: string[];
+  canSaveVersion: boolean;
+}
+
+/**
+ * Whether the report can go out, and what stands in the way: pending documents, changes since the last
+ * heartbeat, findings nobody decided on (the session's open ones and what the checks raise beyond it), the
+ * review pass. `openFindings` is computed here unless the caller already has it (a report build runs the
+ * checks once for both).
+ */
+export function reportReadiness(pkg: HadarimPackage, state: V2State, ctx: ReadinessContext, openFindings: ReportModel["openFindings"] = openFindingRows(pkg, state)): ReportReadiness {
+  const today = ctx.today ?? state.clock.slice(0, 10);
+  const blockers = reportBlockers(pkg, state, ctx.lastHeartbeat, ctx.latestChangeLogId, ctx.previouslyReported ?? [], today);
+  const pendingDocuments = pkg.documents.filter(isUnprocessed).length;
+  const sinceHeartbeat = ctx.lastHeartbeat ? Math.max(0, ctx.latestChangeLogId - ctx.lastHeartbeat.untilChangeLogId) : null;
+  const unreviewed = openFindings.filter((f) => f.statusHe !== "טרם הוכרע" && f.statusHe !== "בהחלטה").length;
+  const reviewPassDone = state.control.notes.some((n) => n.kind === "review_pass");
+  const parts = [
+    pendingDocuments ? `${pendingDocuments} מסמכים בתיקייה טרם עובדו — עבד אותם לפני הדוח (/bakara-heartbeat).` : "",
+    sinceHeartbeat === null ? (ctx.latestChangeLogId ? "לא נרשמה פעימת לב לפרויקט: הרץ /bakara-heartbeat לפני הדוח." : "") : sinceHeartbeat > 0 ? `${sinceHeartbeat} שינויים במערכת המידע מאז פעימת הלב האחרונה — הרץ /bakara-heartbeat לפני הדוח.` : "",
+    openFindings.length ? `${openFindings.length} ממצאים דורשים החלטה לפני שהדוח סופי${unreviewed ? ` (${unreviewed} מהם טרם נבדקו — הבקרה לא רצה על הנתונים הנוכחיים; הרץ run_control)` : ""}: הצג כל אחד עם התיקון המומלץ, ומי מעורב ברשומה אם המשתמש אינו יודע, וקבל אישור.` : "",
+    reviewPassDone ? "" : "סקירת הסוכן טרם בוצעה לבקרה זו: get_review_material → raise_finding לכל אי-התאמה → record_review_pass.",
+  ].filter(Boolean);
+  return {
+    ready: parts.length === 0,
+    attentionHe: parts.length ? parts.join(" ") : null,
+    openFindings,
+    reviewPassDone,
+    pendingDocuments,
+    heartbeat: ctx.lastHeartbeat ? { id: ctx.lastHeartbeat.id, at: ctx.lastHeartbeat.at, changesSince: sinceHeartbeat ?? 0 } : null,
+    latestChangeLogId: ctx.latestChangeLogId,
+    blockersHe: blockers.map((b) => b.textHe),
+    canSaveVersion: blockers.length === 0,
+  };
 }
 
 // ---------------------------------------------------------------------------

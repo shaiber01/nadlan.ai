@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { store, useUi, useV2State } from "../../app/store";
 import type { HInvoice, PersonId, SectionId } from "../../data/types";
 import { createInvoice, pkg, updateInvoiceBuilding, updateInvoiceSection } from "../../engine/commands";

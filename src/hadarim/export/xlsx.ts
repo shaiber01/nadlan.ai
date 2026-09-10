@@ -1,4 +1,4 @@
-import { buildWorkbook, type WorkbookSheet } from "../../export/xlsx";
+import { buildWorkbook, type WorkbookSheet } from "./workbook";
 import type { ReportModel } from "../engine/report";
 
 /**

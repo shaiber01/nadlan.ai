@@ -1,4 +1,4 @@
-import { Button } from "../../../components/primitives";
+import { Button } from "../../components/primitives";
 import { AttachedDocuments } from "./AttachedDocuments";
 import { store, useUi, useV2State } from "../../app/store";
 import { pkg } from "../../engine/commands";

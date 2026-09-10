@@ -23,11 +23,12 @@ This repository is a budget-control prototype for construction projects (Hebrew,
   - `engine/heartbeat.ts` — what is new since the last heartbeat, measured on the change-log id (the watermark in `heartbeats`): changed records, the checks' findings on them, pending documents.
   - `db/` — Supabase: `config.ts` (URL + publishable key; the secret key is never committed), `client.ts` (rows ↔ engine types, attributed ERP writes, documents and Storage files, budget changes, heartbeats, realtime, project status), `session.ts` (control session load/save), `types.ts` (generated; `npm run db:types`).
   - `features/` — React screens: `erp/` (simulated ERP, including תיקיית מסמכים — upload to the Storage bucket `documents`, also from a record's card: upload for the record or replace one of its documents), `report/` (living report, its own page `report.html`). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
-  - `export/` — Word (`docx.ts`), Markdown (`markdown.ts`) and Excel (`xlsx.ts`) renderers of the report model.
+  - `export/` — Word (`docx.ts`), Markdown (`markdown.ts`) and Excel (`xlsx.ts`, over the SpreadsheetML writer `workbook.ts`) renderers of the report model.
+  - `components/` — the UI primitives both pages share (`primitives.tsx`: `Button`, `Badge`, `Notice`, `KeyValue`; `Drawer.tsx`: the `Surface` drawer/modal; the document viewer). `styles/` — `tokens.css` (palette, Heebo from `assets/fonts/`), `base.css`, `components.css`, `hadarim.css`; the screens carry their own stylesheets.
 - `mcp/bakara-server.ts` — the registry as an MCP server over stdio (`npx vite-node mcp/bakara-server.ts`; stdout is protocol-only, log to stderr).
 - `scripts/` — `bakara.ts` (CLI: demo commands, `heartbeat`, plus `tool <name> [json]` passthrough), `heartbeat.sh` (the agent's heartbeat headless), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
 - `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, the Storage bucket `documents` and the `heartbeats` table, grants and permissive RLS policies (prototype: open access through the publishable key).
-- `src/` (rest), `index.html` — the earlier v1 sixteen-scenario demo; leave it alone unless asked.
+- `index.html` — redirects to `hadarim.html`, so the site root opens the ERP. `src/` holds only `src/hadarim/`.
 - Specs: `hadarimdataspec.md` (data, numbers win), `budgetcontrolreportstandard.md` (report standard). Status and decisions: `docs/hadarim-v2-plan.md`.
 
 ## Conventions
@@ -45,10 +46,10 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 ## Commands
 
 ```bash
-npm run dev                 # v1 at /, Hadarim at /hadarim.html
+npm run dev                 # the ERP at /hadarim.html (/ redirects there), the report at /report.html
 npm test                    # vitest (RUN_DB_TESTS=1 adds the live round trip and the MCP stdio test)
 npm run test:e2e            # Playwright (offline data; RUN_DB_E2E=1 adds the live browser test)
-npm run build               # both entries; GitHub Pages deploys main
+npm run build               # the pages into dist/; GitHub Pages deploys main
 npm run bakara -- tools     # the tool registry; `tool <name> '{...}'` calls one
 npm run bakara -- heartbeat # the deterministic heartbeat work list (the agent's /bakara-heartbeat does the reading)
 npm run hadarim:seed        # load the generator package into Supabase and snapshot it as the seed
