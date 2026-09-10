@@ -17,7 +17,7 @@ Purpose: define every dataset and document the prototype needs, with numbers tha
 | Controls to date | 1.5, 1.6, 1.7, 1.8.2026 (monthly). Current: 1.9.2026 |
 | People | אייל — מנהל פרויקט · רועי — סמנכ״ל ביצוע · דנה — מנכ״לית · שרית — הנהלת חשבונות (appears only in change logs / routing) |
 
-**Change to the script this forces:** scene 2 "215 חשבונות, 31.4 מ׳" → **20.1 מ׳**. Cost incurred at \~42% is what a skeleton-stage project looks like; 65% would be caught instantly. Scene 9 "still estimate" answer also changes (see §7).
+Recorded cost is **20.1M**, \~42% of budget — what a skeleton-stage project looks like; 65% would be caught instantly.
 
 ---
 
@@ -25,15 +25,15 @@ Purpose: define every dataset and document the prototype needs, with numbers tha
 
 Budget control in contractor firms runs on work packages; the BOQ runs on blue-book chapters (פרקי המפרט הכללי). The demo shows both, and that's realistic: the drainage line is "פרק 57" in the BOQ and lands in section 07 in the budget.
 
-| \# | Section | Budget | Recorded to 1.9 | Committed (contract) | Prev. forecast (1.8) | New forecast (1.9) |
+| \# | Section | Budget | Recorded to 1.9 | Committed (contract) | Forecast 1.8 (final) | Forecast 1.9 (draft) |
 | :---- | :---- | ----: | ----: | ----: | ----: | ----: |
 | 01 | ארגון אתר, מנוף, שמירה ושירותי אתר | 1,900,000 | 1,250,000 | — (standing POs) | 1,950,000 | 1,950,000 |
 | 02 | שלד — עבודה ובטון (קבלן משנה) | 12,600,000 | 8,400,000 | 12,600,000 | 12,600,000 | 12,600,000 |
-| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,240,000 | **3,240,000** |
+| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,240,000 | 3,240,000 |
 | 04 | עבודות עפר, דיפון וכלונסאות | 2,900,000 | 2,850,000 | 2,850,000 (closed) | 2,850,000 | 2,850,000 |
 | 05 | איטום | 900,000 | 320,000 | 900,000 | 900,000 | 900,000 |
 | 06 | בנייה (בלוקים) וטיח | 2,400,000 | 180,000 | 2,400,000 | 2,400,000 | 2,400,000 |
-| 07 | פיתוח ותשתיות חוץ | 3,200,000 | 2,280,000 ¹ | 3,200,000 | 3,200,000 | **3,320,000** |
+| 07 | פיתוח ותשתיות חוץ | 3,200,000 | 2,280,000 | 3,200,000 | 3,200,000 | 3,200,000 |
 | 08 | אינסטלציה ותברואה | 2,300,000 | 350,000 | 2,300,000 | 2,300,000 | 2,300,000 |
 | 09 | חשמל ותקשורת | 2,600,000 | 280,000 | 2,600,000 | 2,600,000 | 2,600,000 |
 | 10 | מיזוג אוויר | 1,500,000 | 0 | 1,500,000 | 1,500,000 | 1,500,000 |
@@ -45,13 +45,11 @@ Budget control in contractor firms runs on work packages; the BOQ runs on blue-b
 | 16 | מערכות חניון (שערים, אוורור, כיבוי) | 1,200,000 | 0 | — estimate | 1,200,000 | 1,200,000 |
 | 17 | בלתי צפוי | 1,500,000 | 0 | — | 1,500,000 | 1,500,000 |
 | 18 | הנהלה, פיקוח, ביטוח ואגרות | 3,200,000 | 2,100,000 | — | 3,200,000 | 3,200,000 |
-|  | **Total** | **48,000,000** | **20,120,000** |  | **48,000,000** | **48,360,000** |
+|  | **Total** | **48,000,000** | **20,070,000** |  | **48,240,000** | **48,240,000** |
 
-¹ 2,100,000 before invoice 1147 is corrected; 02-שלד shows 8,580,000 until then.
+Both forecast columns are the seed's own stored versions. The forecast holds at 48.0M through 1.7 via two small, explainable variances (site organisation \+50K for schedule, earth/piling −50K closed under budget); the steel price appendix א׳-2 takes force on 15.7.2026, so from 1.8 the remainder is carried at 4,800 ₪/טון and the total stands at 48.24M. Trend: 1.5: 47.90 · 1.6: 47.95 · 1.7: 48.00 · 1.8: 48.24 · 1.9: 48.24.
 
-Previous forecast nets to exactly 48.0M via two small, explainable variances (site organisation \+50K for schedule, earth/piling −50K closed under budget). The scene-7 trend line: 1.5: 47.90 · 1.6: 47.95 · 1.7: 48.00 · 1.8: 48.00 · 1.9: 48.36.
-
-**Per-building split (scene 7, change 2):** shell, steel, block work, aluminium, tiling, carpentry, paint, HVAC, plumbing, electrical split A/B by floors cast and planned quantities; earthworks, development, parking systems, elevators (2 per building — split), site org and overhead go to "משותף". Invoice 1147 has no building tag → "משותף", which the system says out loud.
+**Per-building split:** shell, steel, block work, aluminium, tiling, carpentry, paint, HVAC, plumbing, electrical split A/B by floors cast and planned quantities; earthworks, development, parking systems, elevators (2 per building — split), site org and overhead go to "משותף". Invoice 1147 has no building tag → "משותף", which the system says out loud.
 
 ---
 
@@ -85,7 +83,7 @@ Generation rules, so the totals in §2 reconcile exactly:
 
 - Shell (02-01): monthly partials 1–10, Nov 2025 → Aug 2026, cumulative 8,400,000; retention 5%.  
 - Steel (03-F): \~18 delivery invoices, 450 t total at 4,000 ₪/t \= 1,800,000; last delivery 28.8.2026 against **PO 2240** (60 t, issued 1.7.2026 at 4,000 — old price, legitimately: issued before appendix A-2). Quantities in the invoices are in **tons**, consistent.  
-- Development (07-01): partials 1–7. **Partial 7 \= invoice 1147**: 180,000, received 31.8, "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳". In the seed data it is correctly on 07; scene 1 (variant A) moves it to 02 live. Change log row pre-seeded: created 2.9.2026 by שרית, section 07\.  
+- Development (07-01): partials 1–7. **Partial 7 \= invoice 1147**: 180,000, received 31.8, "עבודות עפר וקווי ניקוז — פיתוח חוץ, שלב א׳". In the seed data it is correctly on 07; the ERP's variant A lets it be moved to 02 live. Change log row pre-seeded: created 2.9.2026 by שרית, section 07\.  
 - Earth/piling: partials 1–6 \+ final account.  
 - Waterproofing: 3 partials. Elevators: advance invoice. Plumbing/electrical: 2 partials each. Blocks: 1 partial.  
 - Site services: monthly invoices from crane rental, guarding, toilets, scaffolding/formwork rental, water/electricity, testing lab, surveyor (\~90 small invoices, section 01).  
@@ -126,7 +124,7 @@ Per section: budget, recorded, committed, remaining-to-complete lines (each line
 
 Open issues carried from 1.8 (3): שינוי מס׳ 2 בחוזה השלד — closed 18.8 · חתימת חוזה אלומיניום — closed 25.8 · אישור תאגיד/עירייה לחיבור ביוב — open.
 
-**Scene 9 "still estimate" answer, corrected to the data:** \~8.2M — four uncontracted packages (12, 13, 15, 16 \= 6.7M), steel balance 288 t (1,382,400), drainage line (120,000). The 637,600 "finishes phase B" line in the current script is dropped.
+**Uncovered remainder (“still estimate”):** \~8.2M — four uncontracted packages (12, 13, 15, 16 \= 6.7M), steel balance 288 t (1,382,400) and the drainage line (120,000) once a control has put them there.
 
 ---
 
