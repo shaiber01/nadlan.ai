@@ -7,8 +7,8 @@ import { buildReport } from "../src/hadarim/engine/report";
 
 /**
  * The engine is generic: whatever is keyed into the ERP flows through the forecast, the checks and the
- * report by the data alone. Every expectation here is derived from the record that was written, not from
- * a value of the demo script.
+ * report by the data alone. Every expectation here is derived from the record that was written, never
+ * from a pre-agreed number.
  */
 
 const wf = (s: ReturnType<typeof initialState>) => workingForecast(pkg, s.erp, s.control.adjustments, s.control.controlDate);

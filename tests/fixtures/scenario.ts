@@ -6,10 +6,8 @@ import { setPackage } from "../../src/hadarim/engine/package";
 /**
  * The demo scenario, injected into the clean seed.
  *
- * The seed itself is deliberately correct: a first control on it raises nothing and leaves nothing
- * unread (see `tests/hadarim.data.test.ts`). The scripted walkthrough — `hadarimdemoscript.md`, the
- * sample report in `budgetcontrolreportstandard.md` — needs the three errors the checks are meant to
- * catch, so they live here instead, and the tests that exercise the script install them first.
+ * The seed itself is deliberately correct (see `tests/hadarim.data.test.ts`), so the tests that need
+ * an error for a check to catch inject it from here rather than finding it pre-seeded.
  *
  * What is injected:
  *  - purchase order 2291 keyed in kilograms against a ton unit (12,000 טון × 4.80 ₪, amount still right);

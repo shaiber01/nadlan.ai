@@ -9,7 +9,6 @@ Written 2026-09-08 after reading the three new specs. Purpose: let a fresh sessi
 | File | Role | Precedence |
 | --- | --- | --- |
 | `hadarimdataspec.md` | Entities, numbers, generation rules, traps, package layout | 1 (numbers win) |
-| `hadarimdemoscript.md` | 9 scenes, UI shape, Hebrew copy, presenter flow | 2 (flow and copy win) |
 | `budgetcontrolreportstandard.md` | Report structure (sections 0–11), definitions, disqualifier checklist, CEO one-pager | 3 (report engine spec) |
 | `Construction_AI_Demo_Build_Brief.md` | The v1 brief. Keep only its engineering conventions (integer agorot, immutable sources, review before write, frozen reports, deterministic adapter boundary) | 4 |
 

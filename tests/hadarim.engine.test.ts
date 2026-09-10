@@ -6,7 +6,7 @@ import type { V2State } from "../src/hadarim/engine/model";
 import { buildReport } from "../src/hadarim/engine/report";
 import { installScenario } from "./fixtures/scenario";
 
-// the seed is clean: the scripted walkthrough below needs its three errors, and the revised BOQ page
+// the seed is clean: the flow below needs the three errors a control acts on, with the revised BOQ page
 // already read, the way the agent would before this control runs
 installScenario({ processedBoqRevision: true });
 

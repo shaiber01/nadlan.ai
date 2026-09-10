@@ -1,6 +1,6 @@
 # nadlan.ai — how the system works
 
-This is the one document to read first. It describes the Hadarim budget-control prototype as it is built today: the simulated ERP, the shared database, the documents, the budget, the Claude agent that acts as the budget controller, its tools and skills, the heartbeat, and the report. Status history and decisions are in `hadarim-v2-plan.md`; day-to-day developer conventions are in `CLAUDE.md`; the product specs are `hadarimdataspec.md` (data), `hadarimdemoscript.md` (demo flow), `budgetcontrolreportstandard.md` (report standard).
+This is the one document to read first. It describes the Hadarim budget-control prototype as it is built today: the simulated ERP, the shared database, the documents, the budget, the Claude agent that acts as the budget controller, its tools and skills, the heartbeat, and the report. Status history and decisions are in `hadarim-v2-plan.md`; day-to-day developer conventions are in `CLAUDE.md`; the product specs are `hadarimdataspec.md` (data) and `budgetcontrolreportstandard.md` (report standard).
 
 ## 1. Two things live in this repository
 
