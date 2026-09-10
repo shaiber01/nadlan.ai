@@ -4,6 +4,8 @@ import { runChecks } from "../src/hadarim/engine/checks";
 import { lineAmount } from "../src/hadarim/engine/units";
 import type { SectionId } from "../src/hadarim/data/types";
 import { scenarioPackage } from "./fixtures/scenario";
+import reportVersions from "../src/hadarim/data/report-versions.json";
+import type { ReportModel } from "../src/hadarim/engine/report";
 
 const pkg = generateHadarimPackage();
 
@@ -114,6 +116,18 @@ describe("Hadarim v2 data package", () => {
     for (const d of pkg.documents) expect(d.footerHe).toBe("מסמך הדגמה — נתונים בדויים");
     expect(pkg.documents.find((d) => d.id === "contract_07_01_excerpt")!.anchors.exclusion).toBeGreaterThan(0);
     expect(pkg.documents.find((d) => d.id === "quote_pladot_12t")!.blocks.some((b) => b.text?.includes("12,000 ק״ג (12 טון) × 4,800"))).toBe(true);
+  });
+  it("ships one saved report version with the seed: the 09/2026 draft, saved by a person of the project", () => {
+    const p = generateHadarimPackage();
+    expect(reportVersions).toHaveLength(1);
+    const [v] = reportVersions;
+    const model = v.model as unknown as ReportModel;
+    expect(v.controlDate).toBe(CURRENT_CONTROL);
+    expect(v.label).toBe("בקרה 09/2026");
+    expect(p.people.map((x) => x.id)).toContain(v.createdBy);
+    expect(model.header.projectNameHe).toBe(p.project.nameHe);
+    expect(model.header.controlLabelHe).toContain("09/2026");
+    expect(model.finalized).toBe(false);
   });
 });
 

@@ -1,12 +1,14 @@
 /**
- * Loads the deterministic Hadarim data package into Supabase and snapshots it as the project's seed
- * (so "reset to seed" can restore it). Re-runnable: the project's rows are replaced.
+ * Loads the deterministic Hadarim data package into Supabase, adds the saved report versions that ship with
+ * the seed (src/hadarim/data/report-versions.json, exported from the database) and snapshots it all as the
+ * project's seed (so "reset to seed" can restore it). Re-runnable: the project's rows are replaced.
  *
  *   npm run hadarim:seed            # uses the publishable key from src/hadarim/db/config.ts
  *   SUPABASE_SECRET_KEY=... npm run hadarim:seed   # or with a secret key
  */
 import { createClient } from "@supabase/supabase-js";
 import { documentFacts } from "../src/hadarim/data/documents";
+import reportVersions from "../src/hadarim/data/report-versions.json";
 import { generateHadarimPackage, openIssuesAtAugust } from "../src/hadarim/data/generate";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "../src/hadarim/db/config";
 
@@ -159,6 +161,9 @@ async function main() {
   await insert("change_log", pkg.changeLog.map((c) => ({ project_id: P, record_type: c.recordType, record_id: c.recordId, field: c.field, before: c.before, after: c.after, at: ts(c.at), by_id: c.byId, note_he: c.noteHe ?? null })));
 
   if (droppedRefs) console.log(`  (${droppedRefs} dangling references set to null)`);
+
+  // the saved report versions that ship with the seed: author and dates as saved, the Word file path not (it was local)
+  await insert("report_versions", reportVersions.map((v) => ({ project_id: P, control_date: v.controlDate, label: v.label, created_by: v.createdBy, created_at: v.createdAt, model: v.model, docx_path: null })));
 
   const { error } = await supabase.rpc("snapshot_project_seed", { p_project_id: P });
   if (error) fail("snapshot_project_seed", error);

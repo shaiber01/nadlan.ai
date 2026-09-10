@@ -1,6 +1,6 @@
 /**
- * "Reset to seed": restores a project's ERP data and change log from the seed snapshot and clears its
- * control sessions, audit and report versions. Same effect as the reset button in the app.
+ * "Reset to seed": restores a project's ERP data, change log and the saved report versions of the seed
+ * snapshot, and clears its control sessions, audit and heartbeats. Same effect as the reset button in the app.
  *
  *   npm run hadarim:reset            # project HADARIM
  *   npm run hadarim:reset -- OTHER   # another project id

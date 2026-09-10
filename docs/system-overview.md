@@ -55,12 +55,12 @@ One Postgres project shared by local development and the hosted pages (URL and p
 | ERP | `invoices`, `purchase_orders`, `change_log` | Triggers on invoices, orders and budget changes write `change_log` (who, what, before, after, note) whenever a row inserted or edited carries `updated_by`. |
 | Forecast | `forecast_versions`, `forecast_sections`, `forecast_lines` | Final versions of past controls and the draft of the current one. |
 | Control session | `controls`, `decisions`, `forecast_adjustments`, `data_corrections`, `open_issues`, `questions`, `audit`, `report_versions`, `heartbeats` | Written only by the agent's tools. `open_issues` holds the responsibility table across controls. |
-| Seed | schema `seed` (a copy of every reference, ERP and forecast table) | `snapshot_project_seed()` takes the snapshot after seeding; `reset_project()` restores it and clears the session tables, heartbeats and budget changes; the client also removes the project's uploaded files. |
+| Seed | schema `seed` (a copy of every reference, ERP and forecast table, and of the saved report versions) | `snapshot_project_seed()` takes the snapshot after seeding; `reset_project()` restores it — the seed's saved report versions included, with their author and dates — and clears the session tables, heartbeats, budget changes and versions saved since; the client also removes the project's uploaded files. |
 | Files | Storage bucket `documents` | Object path `<project_id>/<document_id>/<file name>`; public read (prototype). |
 
 Access is open through the publishable key: row-level security is on with one permissive policy per table, so restricting access later is a policy change, not a code change. Realtime is enabled on the ERP, session, documents, heartbeats and budget-changes tables; the pages re-read on every change.
 
-Schema changes are migrations in `supabase/migrations/`, applied to the project and followed by `npm run db:types`; `npm run hadarim:seed` loads the generator package (`src/hadarim/data/generate.ts`, deterministic) and takes the seed snapshot; `npm run hadarim:reset` restores it.
+Schema changes are migrations in `supabase/migrations/`, applied to the project and followed by `npm run db:types`; `npm run hadarim:seed` loads the generator package (`src/hadarim/data/generate.ts`, deterministic) plus the saved report versions that ship with the seed (`src/hadarim/data/report-versions.json`, exported from the database) and takes the seed snapshot; `npm run hadarim:reset` restores it.
 
 ## 5. The ERP mock (`hadarim.html`)
 

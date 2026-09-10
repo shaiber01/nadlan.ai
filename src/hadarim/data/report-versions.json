@@ -1,0 +1,1819 @@
+[
+  {
+    "controlDate": "2026-09-01",
+    "label": "בקרה 09/2026",
+    "createdBy": "EYAL",
+    "createdAt": "2026-09-10T15:14:11.705744+00:00",
+    "model": {
+      "ceo": {
+        "issues": [
+          {
+            "id": "OI-3",
+            "dueHe": "—",
+            "stale": true,
+            "ownerHe": "אייל",
+            "titleHe": "אישור תאגיד/עירייה לחיבור ביוב",
+            "impactHe": "עיכוב בחיבור המבנה לתשתית העירונית לקראת אכלוס",
+            "openedHe": "1.7.2026",
+            "statusHe": "פתוח",
+            "sectionHe": "07-פיתוח"
+          }
+        ],
+        "changes": [],
+        "keyTable": [
+          {
+            "pctHe": "",
+            "labelHe": "תקציב מעודכן",
+            "valueHe": "48,000,000 ₪"
+          },
+          {
+            "pctHe": "",
+            "labelHe": "תחזית לגמר",
+            "valueHe": "48,240,000 ₪"
+          },
+          {
+            "pctHe": "0.50%",
+            "labelHe": "סטייה מתקציב",
+            "valueHe": "+240,000 ₪"
+          },
+          {
+            "pctHe": "0.00%",
+            "labelHe": "שינוי מבקרה קודמת",
+            "valueHe": "—"
+          }
+        ],
+        "riskLineHe": "עדכון נוסף במחיר ברזל: 300 טון חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר",
+        "paragraphHe": "תחזית ההשלמה נותרה מ-48.24 מ׳ ל-48.24 מ׳ ₪ — חריגה צפויה של 240,000 ₪ (0.50%). 1 נושאים פתוחים לטיפול."
+      },
+      "risks": [
+        {
+          "ownerHe": "רועי",
+          "topicHe": "עדכון נוסף במחיר ברזל",
+          "sectionHe": "03-ברזל",
+          "triggerHe": "נספח מחיר חדש",
+          "exposureHe": "30,000 ₪ לכל 100 ₪/טון",
+          "likelihoodHe": "בינונית",
+          "descriptionHe": "300 טון חשופים לשינוי מחיר (יתרה ללא הזמנה); ההסכם מתעדכן בנספחי מחיר"
+        },
+        {
+          "ownerHe": "אייל",
+          "topicHe": "אישור תאגיד/עירייה לחיבור ביוב",
+          "sectionHe": "07-פיתוח",
+          "triggerHe": "סגירת הנושא",
+          "exposureHe": "לא כומת",
+          "likelihoodHe": "בינונית",
+          "descriptionHe": "פתוח מ-1.7.2026; עיכוב בחיבור המבנה לתשתית העירונית לקראת אכלוס"
+        }
+      ],
+      "header": {
+        "cutoffHe": "נתונים עד 1.9.2026 (חשבונות שהתקבלו לפני מועד החתך)",
+        "companyHe": "אופק ביצוע בע״מ",
+        "projectHe": "הדרים — 2 בניינים, 48 יח״ד",
+        "sourcesHe": "מקורות: מערכת המידע (משיכה 10.9.2026 18:14) · תיקיית הפרויקט (7 מסמכים) · דוח התקדמות מהאתר (מדידת ביצוע פיזי) · סקירת הסוכן בוצעה",
+        "approvedByHe": "מאשר: אייל, מנהל פרויקט",
+        "boqVersionHe": "כתב כמויות: גרסה 4 (12.8.2026)",
+        "preparedByHe": "מכין: מערכת הבקרה",
+        "reviewPassHe": "סקירת הסוכן 10.9.2026 18:11: נקראו 11 חוזים מול החשבונות שנרשמו עליהם באוגוסט 2026, 17 חשבונות ללא חוזה בסעיף 01 (עלויות אתר שוטפות) וחשבון אחד בסעיף 18 (הקצאת הנהלה), וכתב הכמויות הלא-מכוסה (סעיפים 12, 13, 15, 16 — טרם החל ביצוע, ללא הצעות מחיר ממתינות). נבדקו גם 7 המסמכים הפעילים בתקופה (נספחי מחיר ברזל, קטע חוזה 07-01, עמוד כתב כמויות פרק 57, שתי הצעות מחיר, חשבון 1147) מול העובדות הרשומות מהם. לא נמצאה אי-התאמה: תיאורי החשבונות תואמים את תכולת החוזים ואינם נוגעים בסעיפי החרגה; חשבונות סעיף 03 במחיר 4,000 ₪/טון משויכים במלואם להזמנה 2240 שנפתחה לפני כניסת נספח המחיר החדש לתוקף; עובדות המסמכים תואמות את הרשום בחשבונות ובהזמנות. 0 ממצאים חדשים.",
+        "projectNameHe": "הדרים",
+        "controlLabelHe": "בקרה 09/2026, טיוטה",
+        "distributionHe": "תפוצה: רועי (סמנכ״ל ביצוע), דנה (מנכ״לית)",
+        "budgetVersionHe": "תקציב: גרסה 3, אושר 15.3.2026",
+        "previousControlHe": "בקרה קודמת: 1.8.2026 (סופית)"
+      },
+      "issues": {
+        "open": [
+          {
+            "id": "OI-3",
+            "dueHe": "—",
+            "stale": true,
+            "ownerHe": "אייל",
+            "titleHe": "אישור תאגיד/עירייה לחיבור ביוב",
+            "impactHe": "עיכוב בחיבור המבנה לתשתית העירונית לקראת אכלוס",
+            "openedHe": "1.7.2026",
+            "statusHe": "פתוח",
+            "sectionHe": "07-פיתוח"
+          }
+        ],
+        "closed": [
+          {
+            "id": "OI-1",
+            "dueHe": "20.8.2026",
+            "stale": false,
+            "ownerHe": "רועי",
+            "titleHe": "שינוי מס׳ 2 בחוזה השלד — פירוט תכולה בחניון",
+            "closedHe": "18.8.2026",
+            "impactHe": "—",
+            "openedHe": "1.7.2026",
+            "statusHe": "נסגר",
+            "sectionHe": "02-שלד"
+          },
+          {
+            "id": "OI-2",
+            "dueHe": "31.8.2026",
+            "stale": false,
+            "ownerHe": "אייל",
+            "titleHe": "חתימת חוזה אלומיניום (11-01)",
+            "closedHe": "25.8.2026",
+            "impactHe": "—",
+            "openedHe": "1.7.2026",
+            "statusHe": "נסגר",
+            "sectionHe": "11-אלומיניום"
+          }
+        ]
+      },
+      "status": {
+        "stageHe": "בניין A: קומה 7 מתוך 8 יצוקה · בניין B: קומה 5 · תחילת בנייה בקומות התחתונות של A · שרוולי אינסטלציה וחשמל תת-קרקעיים · פיתוח שלב א׳ (עפר, קירות תומכים, תשתיות ראשיות) ברובו הושלם",
+        "eventsHe": [
+          "חוזה 02-01: נספחים — נספח שינוי מס׳ 2 (ללא שינוי בסכום) (18.8.2026)",
+          "הזמנה 2291: יצירה — הזמנה נוצרה: 12 טון × 4,800 ₪ = 57,600 ₪ (22.8.2026)",
+          "חוזה 11-01: נחתם 25.8.2026 (25.8.2026)",
+          "הזמנה 2240: סגורה — סופק במלואו (28.8.2026)"
+        ],
+        "expensePct": 41.6044776119403,
+        "scheduleHe": "סיום חוזי: — · צפוי: —",
+        "physicalPct": 38,
+        "commitmentPct": 77.58084577114428
+      },
+      "trends": {
+        "eacSeries": [
+          {
+            "value": 47900000,
+            "labelHe": "1.5.2026"
+          },
+          {
+            "value": 47950000,
+            "labelHe": "1.6.2026"
+          },
+          {
+            "value": 48000000,
+            "labelHe": "1.7.2026"
+          },
+          {
+            "value": 48240000,
+            "labelHe": "1.8.2026"
+          },
+          {
+            "value": 48240000,
+            "labelHe": "1.9.2026"
+          }
+        ],
+        "comparison": null,
+        "commentaryHe": "התחזית בתוך התקציב לאורך כל הבקרות.",
+        "uncoveredNow": 8215000,
+        "uncoveredSeries": [
+          {
+            "value": 10216030,
+            "labelHe": "1.8.2026"
+          },
+          {
+            "value": 8215000,
+            "labelHe": "1.9.2026"
+          }
+        ],
+        "uncoveredCommentaryHe": "יתרה לא מכוסה: 10,216,030 ₪ → 8,215,000 ₪ (−2,001,030 ₪). צריכה לרדת מבקרה לבקרה ככל שאומדנים הופכים להזמנות. הפעם: 01-ארגון אתר −1,030 ₪ · 11-אלומיניום −2,000,000 ₪ (נחתם חוזה)."
+      },
+      "changes": {
+        "forecast": [],
+        "corrections": [],
+        "forecastTotal": 0
+      },
+      "working": {
+        "sections": [
+          {
+            "eac": 1950000,
+            "lines": [
+              {
+                "id": "2026-09-01-01-po",
+                "qty": 5,
+                "kind": "remaining_commitment",
+                "unit": "חודשים",
+                "basis": "po",
+                "amount": 625000,
+                "sectionId": "01",
+                "sourceRef": "הזמנות מסגרת 2201–2215",
+                "unitPrice": null,
+                "descriptionHe": "יתרת הזמנות מסגרת לשירותי אתר — 5 חודשים"
+              },
+              {
+                "id": "2026-09-01-01-est",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "estimate",
+                "amount": 75000,
+                "sectionId": "01",
+                "sourceRef": "לוח זמנים מעודכן 06/2026",
+                "unitPrice": null,
+                "descriptionHe": "אומדן הארכת ארגון אתר — 1 חודש נוסף לפי לוח הזמנים המעודכן"
+              }
+            ],
+            "budget": 1900000,
+            "change": 0,
+            "basisPct": 96,
+            "recorded": 1250000,
+            "variance": 50000,
+            "committed": 1875000,
+            "sectionId": "01",
+            "uncovered": 75000,
+            "previousEac": 1950000,
+            "budgetChanges": 0,
+            "originalBudget": 1900000,
+            "remainingCommitment": 625000
+          },
+          {
+            "eac": 12600000,
+            "lines": [
+              {
+                "id": "2026-09-01-02-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 4200000,
+                "sectionId": "02",
+                "sourceRef": "חוזה 02-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 02-01 — ב.מ. בנייה מהירה בע״מ"
+              }
+            ],
+            "budget": 12600000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 8400000,
+            "variance": 0,
+            "committed": 12600000,
+            "sectionId": "02",
+            "uncovered": 0,
+            "previousEac": 12600000,
+            "budgetChanges": 0,
+            "originalBudget": 12600000,
+            "remainingCommitment": 4200000
+          },
+          {
+            "eac": 3240000,
+            "lines": [
+              {
+                "id": "2026-09-01-03-rem",
+                "qty": 300,
+                "kind": "uncovered",
+                "unit": "טון",
+                "basis": "appendix",
+                "amount": 1440000,
+                "sectionId": "03",
+                "sourceRef": "נספח א׳-2 (07/2026) — 4,800 ₪/טון",
+                "unitPrice": 4800,
+                "descriptionHe": "יתרת ברזל זיון לפי כתב הכמויות — 300 טון"
+              }
+            ],
+            "budget": 3000000,
+            "change": 0,
+            "basisPct": 56,
+            "recorded": 1800000,
+            "variance": 240000,
+            "committed": 0,
+            "sectionId": "03",
+            "uncovered": 1440000,
+            "previousEac": 3240000,
+            "budgetChanges": 0,
+            "originalBudget": 3000000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 2850000,
+            "lines": [],
+            "budget": 2900000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 2850000,
+            "variance": -50000,
+            "committed": 2850000,
+            "sectionId": "04",
+            "uncovered": 0,
+            "previousEac": 2850000,
+            "budgetChanges": 0,
+            "coverageNoteHe": "החוזה נסגר בחשבון סופי 30.04.2026 — סטייה חיובית מאומתת",
+            "originalBudget": 2900000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 900000,
+            "lines": [
+              {
+                "id": "2026-09-01-05-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 580000,
+                "sectionId": "05",
+                "sourceRef": "חוזה 05-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 05-01 — איטום פלוס"
+              }
+            ],
+            "budget": 900000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 320000,
+            "variance": 0,
+            "committed": 900000,
+            "sectionId": "05",
+            "uncovered": 0,
+            "previousEac": 900000,
+            "budgetChanges": 0,
+            "originalBudget": 900000,
+            "remainingCommitment": 580000
+          },
+          {
+            "eac": 2400000,
+            "lines": [
+              {
+                "id": "2026-09-01-06-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 2220000,
+                "sectionId": "06",
+                "sourceRef": "חוזה 06-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 06-01 — גל בנייה קלה"
+              }
+            ],
+            "budget": 2400000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 180000,
+            "variance": 0,
+            "committed": 2400000,
+            "sectionId": "06",
+            "uncovered": 0,
+            "previousEac": 2400000,
+            "budgetChanges": 0,
+            "originalBudget": 2400000,
+            "remainingCommitment": 2220000
+          },
+          {
+            "eac": 3200000,
+            "lines": [
+              {
+                "id": "2026-09-01-07-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 920000,
+                "sectionId": "07",
+                "sourceRef": "חוזה 07-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 07-01 — נ.ת.ב. תשתיות ופיתוח בע״מ"
+              }
+            ],
+            "budget": 3200000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 2280000,
+            "variance": 0,
+            "committed": 3200000,
+            "sectionId": "07",
+            "uncovered": 0,
+            "previousEac": 3200000,
+            "budgetChanges": 0,
+            "coverageNoteHe": "חבילת הפיתוח מכוסה בחוזה 07-01; אומדן נוסף: 0",
+            "originalBudget": 3200000,
+            "remainingCommitment": 920000
+          },
+          {
+            "eac": 2300000,
+            "lines": [
+              {
+                "id": "2026-09-01-08-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 1950000,
+                "sectionId": "08",
+                "sourceRef": "חוזה 08-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 08-01 — ש.י. אינסטלציה"
+              }
+            ],
+            "budget": 2300000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 350000,
+            "variance": 0,
+            "committed": 2300000,
+            "sectionId": "08",
+            "uncovered": 0,
+            "previousEac": 2300000,
+            "budgetChanges": 0,
+            "originalBudget": 2300000,
+            "remainingCommitment": 1950000
+          },
+          {
+            "eac": 2600000,
+            "lines": [
+              {
+                "id": "2026-09-01-09-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 2320000,
+                "sectionId": "09",
+                "sourceRef": "חוזה 09-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 09-01 — חשמל א.ר."
+              }
+            ],
+            "budget": 2600000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 280000,
+            "variance": 0,
+            "committed": 2600000,
+            "sectionId": "09",
+            "uncovered": 0,
+            "previousEac": 2600000,
+            "budgetChanges": 0,
+            "originalBudget": 2600000,
+            "remainingCommitment": 2320000
+          },
+          {
+            "eac": 1500000,
+            "lines": [
+              {
+                "id": "2026-09-01-10-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 1500000,
+                "sectionId": "10",
+                "sourceRef": "חוזה 10-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 10-01 — קור-אויר מערכות"
+              }
+            ],
+            "budget": 1500000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 1500000,
+            "sectionId": "10",
+            "uncovered": 0,
+            "previousEac": 1500000,
+            "budgetChanges": 0,
+            "originalBudget": 1500000,
+            "remainingCommitment": 1500000
+          },
+          {
+            "eac": 2000000,
+            "lines": [
+              {
+                "id": "2026-09-01-11-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 2000000,
+                "sectionId": "11",
+                "sourceRef": "חוזה 11-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 11-01 — אלומיניום גלעד"
+              }
+            ],
+            "budget": 2000000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 2000000,
+            "sectionId": "11",
+            "uncovered": 0,
+            "previousEac": 2000000,
+            "budgetChanges": 0,
+            "originalBudget": 2000000,
+            "remainingCommitment": 2000000
+          },
+          {
+            "eac": 2700000,
+            "lines": [
+              {
+                "id": "2026-09-01-12-est",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "estimate",
+                "amount": 2700000,
+                "sectionId": "12",
+                "sourceRef": "אומדן פנימי לפי תקציב",
+                "unitPrice": null,
+                "descriptionHe": "ריצוף וחיפוי — אומדן פנימי, טרם נחתם חוזה"
+              }
+            ],
+            "budget": 2700000,
+            "change": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "12",
+            "uncovered": 2700000,
+            "previousEac": 2700000,
+            "budgetChanges": 0,
+            "originalBudget": 2700000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1700000,
+            "lines": [
+              {
+                "id": "2026-09-01-13-est",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "estimate",
+                "amount": 1700000,
+                "sectionId": "13",
+                "sourceRef": "אומדן פנימי לפי תקציב",
+                "unitPrice": null,
+                "descriptionHe": "נגרות, מסגרות ומעקות — אומדן פנימי, טרם נחתם חוזה"
+              }
+            ],
+            "budget": 1700000,
+            "change": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "13",
+            "uncovered": 1700000,
+            "previousEac": 1700000,
+            "budgetChanges": 0,
+            "originalBudget": 1700000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1300000,
+            "lines": [
+              {
+                "id": "2026-09-01-14-ct",
+                "qty": null,
+                "kind": "remaining_commitment",
+                "unit": null,
+                "basis": "contract",
+                "amount": 1040000,
+                "sectionId": "14",
+                "sourceRef": "חוזה 14-01",
+                "unitPrice": null,
+                "descriptionHe": "יתרת חוזה 14-01 — מעליות אורן"
+              }
+            ],
+            "budget": 1300000,
+            "change": 0,
+            "basisPct": 100,
+            "recorded": 260000,
+            "variance": 0,
+            "committed": 1300000,
+            "sectionId": "14",
+            "uncovered": 0,
+            "previousEac": 1300000,
+            "budgetChanges": 0,
+            "originalBudget": 1300000,
+            "remainingCommitment": 1040000
+          },
+          {
+            "eac": 1100000,
+            "lines": [
+              {
+                "id": "2026-09-01-15-est",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "estimate",
+                "amount": 1100000,
+                "sectionId": "15",
+                "sourceRef": "אומדן פנימי לפי תקציב",
+                "unitPrice": null,
+                "descriptionHe": "צבע וגבס — אומדן פנימי, טרם נחתם חוזה"
+              }
+            ],
+            "budget": 1100000,
+            "change": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "15",
+            "uncovered": 1100000,
+            "previousEac": 1100000,
+            "budgetChanges": 0,
+            "originalBudget": 1100000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1200000,
+            "lines": [
+              {
+                "id": "2026-09-01-16-est",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "estimate",
+                "amount": 1200000,
+                "sectionId": "16",
+                "sourceRef": "אומדן פנימי לפי תקציב",
+                "unitPrice": null,
+                "descriptionHe": "מערכות חניון (שערים, אוורור, כיבוי) — אומדן פנימי, טרם נחתם חוזה"
+              }
+            ],
+            "budget": 1200000,
+            "change": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "16",
+            "uncovered": 1200000,
+            "previousEac": 1200000,
+            "budgetChanges": 0,
+            "originalBudget": 1200000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1500000,
+            "lines": [
+              {
+                "id": "2026-09-01-17",
+                "qty": null,
+                "kind": "uncovered",
+                "unit": null,
+                "basis": "allocation",
+                "amount": 1500000,
+                "sectionId": "17",
+                "sourceRef": "תקציב גרסה 3",
+                "unitPrice": null,
+                "descriptionHe": "בלתי צפוי — יתרה לא מנוצלת"
+              }
+            ],
+            "budget": 1500000,
+            "change": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "17",
+            "uncovered": 1500000,
+            "previousEac": 1500000,
+            "budgetChanges": 0,
+            "originalBudget": 1500000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 3200000,
+            "lines": [
+              {
+                "id": "2026-09-01-18",
+                "qty": 6,
+                "kind": "uncovered",
+                "unit": "חודשים",
+                "basis": "allocation",
+                "amount": 1100000,
+                "sectionId": "18",
+                "sourceRef": "תקציב גרסה 3 — הקצאה חודשית",
+                "unitPrice": null,
+                "descriptionHe": "הנהלה, פיקוח, ביטוח ואגרות — 6 חודשים × 210,000 ₪ (מותאם לתקציב)"
+              }
+            ],
+            "budget": 3200000,
+            "change": 0,
+            "basisPct": 66,
+            "recorded": 2100000,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "18",
+            "uncovered": 1100000,
+            "previousEac": 3200000,
+            "budgetChanges": 0,
+            "originalBudget": 3200000,
+            "remainingCommitment": 0
+          }
+        ],
+        "totalEac": 48240000,
+        "controlDate": "2026-09-01",
+        "totalBudget": 48000000,
+        "totalRecorded": 20070000,
+        "totalCommitted": 33525000,
+        "totalUncovered": 10815000,
+        "invoicesInReview": {
+          "count": 5,
+          "amount": 419500
+        },
+        "previousTotalEac": 48240000,
+        "totalBudgetChanges": 0,
+        "previousControlDate": "2026-08-01",
+        "totalOriginalBudget": 48000000,
+        "totalRemainingCommitment": 17355000
+      },
+      "material": [
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "12,600,000 ₪"
+            ],
+            [
+              "נרשם",
+              "8,400,000 ₪"
+            ],
+            [
+              "התחייבויות",
+              "12,600,000 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "4,200,000 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "0 ₪"
+            ],
+            [
+              "תחזית לגמר",
+              "12,600,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "100%"
+            ]
+          ],
+          "sources": [
+            {
+              "labelHe": "חוזה 02-01",
+              "recordRef": {
+                "id": "02-01",
+                "type": "contract"
+              }
+            },
+            {
+              "erp": {
+                "screen": "boq",
+                "sectionId": "02"
+              },
+              "labelHe": "כתב הכמויות של הסעיף במערכת המידע"
+            },
+            {
+              "erp": {
+                "screen": "invoices",
+                "sectionId": "02"
+              },
+              "labelHe": "חשבונות הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "02 — שלד — עבודה ובטון (קבלן משנה)",
+          "reasonHe": "מעל 10% מהתקציב",
+          "sectionId": "02",
+          "paragraphsHe": [
+            "חוזה 02-01 — ב.מ. בנייה מהירה בע״מ, 12,600,000 ₪, נחתם 20.10.2025. נרשמו 8,400,000 ₪ (10 חשבונות); יתרת התחייבות 4,200,000 ₪.",
+            "כתב הכמויות (גרסה 4): 12 שורות בפרק 02 בטון יצוק באתר — 12 מכוסות בחוזה.",
+            "כל היתרה מכוסה בהתחייבות (בסיס 100%).",
+            "מה יכול עוד להשתנות: פקודות שינוי וכמויות בפועל מול התכנון; החוזה אינו צמוד למדד."
+          ],
+          "recommendationHe": "אין פעולה נדרשת; מעקב אחר שינויים בתכולה."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "3,000,000 ₪"
+            ],
+            [
+              "עלות שנרשמה",
+              "1,800,000 ₪ (428 טון)"
+            ],
+            [
+              "יתרה צפויה",
+              "300 טון"
+            ],
+            [
+              "מהם בהזמנה מאושרת",
+              "—"
+            ],
+            [
+              "מחיר יח׳ — תקציב",
+              "3,807 ₪/טון"
+            ],
+            [
+              "מחיר יח׳ — נספח בתוקף",
+              "4,800 ₪/טון"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "1,440,000 ₪ (נספח מחיר)"
+            ],
+            [
+              "תחזית לגמר",
+              "3,240,000 ₪"
+            ],
+            [
+              "סטייה",
+              "+240,000 ₪"
+            ],
+            [
+              "בסיס",
+              "56%"
+            ]
+          ],
+          "sources": [
+            {
+              "labelHe": "הסכם מסגרת 03-F",
+              "recordRef": {
+                "id": "03-F",
+                "type": "contract"
+              }
+            },
+            {
+              "anchor": "price",
+              "labelHe": "נספח א׳ — 4,000 ₪ לטון — 4,000 ₪/טון",
+              "documentId": "appendix_A_steel_price_2025_11"
+            },
+            {
+              "anchor": "price",
+              "labelHe": "נספח א׳-2 — 4,800 ₪ לטון — 4,800 ₪/טון",
+              "documentId": "appendix_A2_steel_price_2026_07_15"
+            },
+            {
+              "labelHe": "הזמנה 2291",
+              "recordRef": {
+                "id": "2291",
+                "type": "po"
+              }
+            },
+            {
+              "erp": {
+                "screen": "invoices",
+                "sectionId": "03"
+              },
+              "labelHe": "חשבונות הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "03 — אספקת ברזל זיון",
+          "reasonHe": "סטייה מעל סף המהותיות · בסיס 56% — מתחת ל-70% התחייבות",
+          "sectionId": "03",
+          "paragraphsHe": [
+            "הסכם מסגרת ⁨03-F⁩ עם פלדות הצפון בע״מ; מחיר לפי נספח. סופקו 428 טון מתוך 788 טון בכתב הכמויות (54%).",
+            "יתרה: 300 טון ו-300 טון ללא הזמנה.",
+            "מחירי יחידה: תקציב 3,807 ₪/טון · נספח א׳ — 4,000 ₪ לטון (מ-1.11.2025) 4,000 ₪/טון · נספח א׳-2 — 4,800 ₪ לטון (מ-15.7.2026) 4,800 ₪/טון.",
+            "מה יכול עוד להשתנות: עדכון נספח נוסף (ההסכם מתעדכן בנספחי מחיר בכתב); כמויות בפועל מול כתב הכמויות."
+          ],
+          "recommendationHe": "לשקול הזמנה מרוכזת ל-300 הטון הנותרים (1,440,000 ₪) כדי לקבע מחיר."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "2,700,000 ₪"
+            ],
+            [
+              "נרשם",
+              "0 ₪"
+            ],
+            [
+              "התחייבויות",
+              "0 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "0 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "2,700,000 ₪ (אומדן פנימי)"
+            ],
+            [
+              "תחזית לגמר",
+              "2,700,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "0%"
+            ]
+          ],
+          "sources": [
+            {
+              "erp": {
+                "screen": "boq",
+                "sectionId": "12"
+              },
+              "labelHe": "כתב הכמויות של הסעיף במערכת המידע"
+            },
+            {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "12"
+              },
+              "labelHe": "הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "12 — ריצוף וחיפוי",
+          "reasonHe": "בסיס 0% — מתחת ל-70% התחייבות",
+          "sectionId": "12",
+          "paragraphsHe": [
+            "טרם נחתם חוזה ולא הוצאו הזמנות; נרשמו 0 ₪.",
+            "כתב הכמויות (גרסה 4): 8 שורות בפרק 10 ריצוף וחיפוי — 8 טרם נחתם להן חוזה.",
+            "יתרה להשלמה לא מכוסה: 2,700,000 ₪ — בסיס: אומדן פנימי. מחירי יחידה: לפי התקציב (טרם נבדקו מול הצעות).",
+            "מה יכול עוד להשתנות: תוצאות המכרז מול האומדן; מועד החתימה."
+          ],
+          "recommendationHe": "להוציא מכרז ולחתום חוזה לפני תחילת העבודות; עד אז היתרה נשארת אומדן."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "1,700,000 ₪"
+            ],
+            [
+              "נרשם",
+              "0 ₪"
+            ],
+            [
+              "התחייבויות",
+              "0 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "0 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "1,700,000 ₪ (אומדן פנימי)"
+            ],
+            [
+              "תחזית לגמר",
+              "1,700,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "0%"
+            ]
+          ],
+          "sources": [
+            {
+              "erp": {
+                "screen": "boq",
+                "sectionId": "13"
+              },
+              "labelHe": "כתב הכמויות של הסעיף במערכת המידע"
+            },
+            {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "13"
+              },
+              "labelHe": "הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "13 — נגרות, מסגרות ומעקות",
+          "reasonHe": "בסיס 0% — מתחת ל-70% התחייבות",
+          "sectionId": "13",
+          "paragraphsHe": [
+            "טרם נחתם חוזה ולא הוצאו הזמנות; נרשמו 0 ₪.",
+            "כתב הכמויות (גרסה 4): 8 שורות בפרק 06 נגרות ומסגרות — 8 טרם נחתם להן חוזה.",
+            "יתרה להשלמה לא מכוסה: 1,700,000 ₪ — בסיס: אומדן פנימי. מחירי יחידה: לפי התקציב (טרם נבדקו מול הצעות).",
+            "מה יכול עוד להשתנות: תוצאות המכרז מול האומדן; מועד החתימה."
+          ],
+          "recommendationHe": "להוציא מכרז ולחתום חוזה לפני תחילת העבודות; עד אז היתרה נשארת אומדן."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "1,100,000 ₪"
+            ],
+            [
+              "נרשם",
+              "0 ₪"
+            ],
+            [
+              "התחייבויות",
+              "0 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "0 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "1,100,000 ₪ (אומדן פנימי)"
+            ],
+            [
+              "תחזית לגמר",
+              "1,100,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "0%"
+            ]
+          ],
+          "sources": [
+            {
+              "erp": {
+                "screen": "boq",
+                "sectionId": "15"
+              },
+              "labelHe": "כתב הכמויות של הסעיף במערכת המידע"
+            },
+            {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "15"
+              },
+              "labelHe": "הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "15 — צבע וגבס",
+          "reasonHe": "בסיס 0% — מתחת ל-70% התחייבות",
+          "sectionId": "15",
+          "paragraphsHe": [
+            "טרם נחתם חוזה ולא הוצאו הזמנות; נרשמו 0 ₪.",
+            "כתב הכמויות (גרסה 4): 8 שורות בפרק 11 צבע, 22 גבס — 8 טרם נחתם להן חוזה.",
+            "יתרה להשלמה לא מכוסה: 1,100,000 ₪ — בסיס: אומדן פנימי. מחירי יחידה: לפי התקציב (טרם נבדקו מול הצעות).",
+            "מה יכול עוד להשתנות: תוצאות המכרז מול האומדן; מועד החתימה."
+          ],
+          "recommendationHe": "להוציא מכרז ולחתום חוזה לפני תחילת העבודות; עד אז היתרה נשארת אומדן."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "1,200,000 ₪"
+            ],
+            [
+              "נרשם",
+              "0 ₪"
+            ],
+            [
+              "התחייבויות",
+              "0 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "0 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "1,200,000 ₪ (אומדן פנימי)"
+            ],
+            [
+              "תחזית לגמר",
+              "1,200,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "0%"
+            ]
+          ],
+          "sources": [
+            {
+              "erp": {
+                "screen": "boq",
+                "sectionId": "16"
+              },
+              "labelHe": "כתב הכמויות של הסעיף במערכת המידע"
+            },
+            {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "16"
+              },
+              "labelHe": "הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "16 — מערכות חניון (שערים, אוורור, כיבוי)",
+          "reasonHe": "בסיס 0% — מתחת ל-70% התחייבות",
+          "sectionId": "16",
+          "paragraphsHe": [
+            "טרם נחתם חוזה ולא הוצאו הזמנות; נרשמו 0 ₪.",
+            "כתב הכמויות (גרסה 4): 6 שורות בפרק 34 גילוי וכיבוי אש, 44 שערים ומחסומים — 6 טרם נחתם להן חוזה.",
+            "יתרה להשלמה לא מכוסה: 1,200,000 ₪ — בסיס: אומדן פנימי. מחירי יחידה: לפי התקציב (טרם נבדקו מול הצעות).",
+            "מה יכול עוד להשתנות: תוצאות המכרז מול האומדן; מועד החתימה."
+          ],
+          "recommendationHe": "להוציא מכרז ולחתום חוזה לפני תחילת העבודות; עד אז היתרה נשארת אומדן."
+        },
+        {
+          "table": [
+            [
+              "רכיב",
+              "נתון"
+            ],
+            [
+              "תקציב",
+              "3,200,000 ₪"
+            ],
+            [
+              "נרשם",
+              "2,100,000 ₪"
+            ],
+            [
+              "התחייבויות",
+              "0 ₪"
+            ],
+            [
+              "יתרת התחייבות",
+              "0 ₪"
+            ],
+            [
+              "יתרה לא מכוסה",
+              "1,100,000 ₪ (הקצאה תקציבית פנימית)"
+            ],
+            [
+              "תחזית לגמר",
+              "3,200,000 ₪"
+            ],
+            [
+              "סטייה",
+              "—"
+            ],
+            [
+              "בסיס",
+              "66%"
+            ]
+          ],
+          "sources": [
+            {
+              "erp": {
+                "screen": "purchase_orders",
+                "sectionId": "18"
+              },
+              "labelHe": "הזמנות הסעיף"
+            },
+            {
+              "erp": {
+                "screen": "invoices",
+                "sectionId": "18"
+              },
+              "labelHe": "חשבונות הסעיף במערכת המידע"
+            }
+          ],
+          "titleHe": "18 — הנהלה, פיקוח, ביטוח ואגרות",
+          "reasonHe": "בסיס 66% — מתחת ל-70% התחייבות",
+          "sectionId": "18",
+          "paragraphsHe": [
+            "5 הזמנות פתוחות (משרד קונסטרוקטורים ד.ק., סוכנות ביטוח קבלנים, מכון התקנים ועוד) בסך 317,200 ₪; נרשמו 2,100,000 ₪ (10 חשבונות); יתרת התחייבות 0 ₪.",
+            "יתרה להשלמה לא מכוסה: 1,100,000 ₪ — בסיס: הקצאה תקציבית פנימית. מחירי יחידה: לפי התקציב (טרם נבדקו מול הצעות).",
+            "מה יכול עוד להשתנות: משך הפרויקט — כל חודש נוסף מוסיף כ-183,333 ₪."
+          ],
+          "recommendationHe": "לעדכן את ההקצאה אם לו״ז הסיום ישתנה."
+        }
+      ],
+      "sections": {
+        "rows": [
+          {
+            "eac": 1950000,
+            "budget": 1900000,
+            "change": 0,
+            "nameHe": "ארגון אתר, מנוף, שמירה ושירותי אתר",
+            "changes": 0,
+            "basisPct": 96,
+            "recorded": 1250000,
+            "variance": 50000,
+            "committed": 1875000,
+            "sectionId": "01",
+            "uncovered": 75000,
+            "chaptersHe": "00",
+            "highlighted": false,
+            "previousEac": 1950000,
+            "variancePct": 2.631578947368421,
+            "isContingency": false,
+            "updatedBudget": 1900000,
+            "remainingCommitment": 625000
+          },
+          {
+            "eac": 12600000,
+            "budget": 12600000,
+            "change": 0,
+            "nameHe": "שלד — עבודה ובטון (קבלן משנה)",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 8400000,
+            "variance": 0,
+            "committed": 12600000,
+            "sectionId": "02",
+            "uncovered": 0,
+            "chaptersHe": "02, 03",
+            "highlighted": false,
+            "previousEac": 12600000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 12600000,
+            "remainingCommitment": 4200000
+          },
+          {
+            "eac": 3240000,
+            "budget": 3000000,
+            "change": 0,
+            "nameHe": "אספקת ברזל זיון",
+            "changes": 0,
+            "basisPct": 56,
+            "recorded": 1800000,
+            "variance": 240000,
+            "committed": 0,
+            "sectionId": "03",
+            "uncovered": 1440000,
+            "chaptersHe": "02",
+            "highlighted": true,
+            "previousEac": 3240000,
+            "variancePct": 8,
+            "isContingency": false,
+            "updatedBudget": 3000000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 2850000,
+            "budget": 2900000,
+            "change": 0,
+            "nameHe": "עבודות עפר, דיפון וכלונסאות",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 2850000,
+            "variance": -50000,
+            "committed": 2850000,
+            "sectionId": "04",
+            "uncovered": 0,
+            "chaptersHe": "01, 23",
+            "highlighted": false,
+            "previousEac": 2850000,
+            "variancePct": -1.7241379310344827,
+            "isContingency": false,
+            "updatedBudget": 2900000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 900000,
+            "budget": 900000,
+            "change": 0,
+            "nameHe": "איטום",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 320000,
+            "variance": 0,
+            "committed": 900000,
+            "sectionId": "05",
+            "uncovered": 0,
+            "chaptersHe": "05",
+            "highlighted": false,
+            "previousEac": 900000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 900000,
+            "remainingCommitment": 580000
+          },
+          {
+            "eac": 2400000,
+            "budget": 2400000,
+            "change": 0,
+            "nameHe": "בנייה (בלוקים) וטיח",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 180000,
+            "variance": 0,
+            "committed": 2400000,
+            "sectionId": "06",
+            "uncovered": 0,
+            "chaptersHe": "04, 09",
+            "highlighted": false,
+            "previousEac": 2400000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 2400000,
+            "remainingCommitment": 2220000
+          },
+          {
+            "eac": 3200000,
+            "budget": 3200000,
+            "change": 0,
+            "nameHe": "פיתוח ותשתיות חוץ",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 2280000,
+            "variance": 0,
+            "committed": 3200000,
+            "sectionId": "07",
+            "uncovered": 0,
+            "chaptersHe": "40, 51, 57",
+            "highlighted": false,
+            "previousEac": 3200000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 3200000,
+            "remainingCommitment": 920000
+          },
+          {
+            "eac": 2300000,
+            "budget": 2300000,
+            "change": 0,
+            "nameHe": "אינסטלציה ותברואה",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 350000,
+            "variance": 0,
+            "committed": 2300000,
+            "sectionId": "08",
+            "uncovered": 0,
+            "chaptersHe": "07",
+            "highlighted": false,
+            "previousEac": 2300000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 2300000,
+            "remainingCommitment": 1950000
+          },
+          {
+            "eac": 2600000,
+            "budget": 2600000,
+            "change": 0,
+            "nameHe": "חשמל ותקשורת",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 280000,
+            "variance": 0,
+            "committed": 2600000,
+            "sectionId": "09",
+            "uncovered": 0,
+            "chaptersHe": "08",
+            "highlighted": false,
+            "previousEac": 2600000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 2600000,
+            "remainingCommitment": 2320000
+          },
+          {
+            "eac": 1500000,
+            "budget": 1500000,
+            "change": 0,
+            "nameHe": "מיזוג אוויר",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 1500000,
+            "sectionId": "10",
+            "uncovered": 0,
+            "chaptersHe": "15",
+            "highlighted": false,
+            "previousEac": 1500000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 1500000,
+            "remainingCommitment": 1500000
+          },
+          {
+            "eac": 2000000,
+            "budget": 2000000,
+            "change": 0,
+            "nameHe": "אלומיניום",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 2000000,
+            "sectionId": "11",
+            "uncovered": 0,
+            "chaptersHe": "12",
+            "highlighted": false,
+            "previousEac": 2000000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 2000000,
+            "remainingCommitment": 2000000
+          },
+          {
+            "eac": 2700000,
+            "budget": 2700000,
+            "change": 0,
+            "nameHe": "ריצוף וחיפוי",
+            "changes": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "12",
+            "uncovered": 2700000,
+            "chaptersHe": "10",
+            "highlighted": false,
+            "previousEac": 2700000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 2700000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1700000,
+            "budget": 1700000,
+            "change": 0,
+            "nameHe": "נגרות, מסגרות ומעקות",
+            "changes": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "13",
+            "uncovered": 1700000,
+            "chaptersHe": "06",
+            "highlighted": false,
+            "previousEac": 1700000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 1700000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1300000,
+            "budget": 1300000,
+            "change": 0,
+            "nameHe": "מעליות",
+            "changes": 0,
+            "basisPct": 100,
+            "recorded": 260000,
+            "variance": 0,
+            "committed": 1300000,
+            "sectionId": "14",
+            "uncovered": 0,
+            "chaptersHe": "16",
+            "highlighted": false,
+            "previousEac": 1300000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 1300000,
+            "remainingCommitment": 1040000
+          },
+          {
+            "eac": 1100000,
+            "budget": 1100000,
+            "change": 0,
+            "nameHe": "צבע וגבס",
+            "changes": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "15",
+            "uncovered": 1100000,
+            "chaptersHe": "11, 22",
+            "highlighted": false,
+            "previousEac": 1100000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 1100000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1200000,
+            "budget": 1200000,
+            "change": 0,
+            "nameHe": "מערכות חניון (שערים, אוורור, כיבוי)",
+            "changes": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "16",
+            "uncovered": 1200000,
+            "chaptersHe": "34, 08",
+            "highlighted": false,
+            "previousEac": 1200000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 1200000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 1500000,
+            "budget": 1500000,
+            "change": 0,
+            "nameHe": "בלתי צפוי",
+            "changes": 0,
+            "basisPct": 0,
+            "recorded": 0,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "17",
+            "uncovered": 1500000,
+            "chaptersHe": "",
+            "highlighted": false,
+            "previousEac": 1500000,
+            "variancePct": 0,
+            "isContingency": true,
+            "updatedBudget": 1500000,
+            "remainingCommitment": 0
+          },
+          {
+            "eac": 3200000,
+            "budget": 3200000,
+            "change": 0,
+            "nameHe": "הנהלה, פיקוח, ביטוח ואגרות",
+            "changes": 0,
+            "basisPct": 66,
+            "recorded": 2100000,
+            "variance": 0,
+            "committed": 0,
+            "sectionId": "18",
+            "uncovered": 1100000,
+            "chaptersHe": "",
+            "highlighted": false,
+            "previousEac": 3200000,
+            "variancePct": 0,
+            "isContingency": false,
+            "updatedBudget": 3200000,
+            "remainingCommitment": 0
+          }
+        ],
+        "totals": {
+          "eac": 48240000,
+          "budget": 48000000,
+          "change": 0,
+          "nameHe": "סה״כ",
+          "changes": 0,
+          "basisPct": 78,
+          "recorded": 20070000,
+          "variance": 240000,
+          "committed": 33525000,
+          "sectionId": "01",
+          "uncovered": 10815000,
+          "highlighted": false,
+          "previousEac": 48240000,
+          "variancePct": 0.5,
+          "isContingency": false,
+          "updatedBudget": 48000000,
+          "remainingCommitment": 17355000
+        },
+        "byChapter": null,
+        "byBuilding": null,
+        "materialityHe": "סף מהותיות: 100,000 ₪ וגם 3% מהסעיף, או 250,000 ₪ בכל מקרה",
+        "byBuildingNoteHe": null,
+        "byBuildingOptions": [
+          {
+            "id": "A",
+            "kind": "building",
+            "labelHe": "בניין A"
+          },
+          {
+            "id": "B",
+            "kind": "building",
+            "labelHe": "בניין B"
+          },
+          {
+            "id": "משותף",
+            "kind": "shared",
+            "labelHe": "משותף"
+          }
+        ],
+        "byBuildingChangeable": []
+      },
+      "verified": [
+        {
+          "textHe": "איטום: היקף כתב הכמויות תואם לחוזה (100%), התחזית בתוך התקציב. מוצג כהתאמה שנבדקה, לא כחיסכון.",
+          "titleHe": "איטום: היקף כתב הכמויות תואם לחוזה (100%)"
+        }
+      ],
+      "executive": {
+        "keyTable": [
+          {
+            "pctHe": "",
+            "labelHe": "תקציב מעודכן",
+            "valueHe": "48,000,000 ₪"
+          },
+          {
+            "pctHe": "",
+            "labelHe": "תחזית לגמר",
+            "valueHe": "48,240,000 ₪"
+          },
+          {
+            "pctHe": "0.50%",
+            "labelHe": "סטייה מתקציב",
+            "valueHe": "+240,000 ₪"
+          },
+          {
+            "pctHe": "0.00%",
+            "labelHe": "שינוי מבקרה קודמת",
+            "valueHe": "—"
+          },
+          {
+            "pctHe": "42% הוצאה",
+            "labelHe": "נרשם עד מועד החתך",
+            "valueHe": "20,070,000 ₪"
+          },
+          {
+            "pctHe": "מדידה מהאתר",
+            "labelHe": "ביצוע פיזי",
+            "valueHe": "~38%"
+          },
+          {
+            "pctHe": "100% מהמקור",
+            "labelHe": "בלתי צפוי — יתרה",
+            "valueHe": "1,500,000 ₪"
+          },
+          {
+            "pctHe": "17% מהתחזית",
+            "labelHe": "יתרה להשלמה לא מכוסה (אומדנים)",
+            "valueHe": "8,215,000 ₪"
+          }
+        ],
+        "bulletsHe": [
+          "8,215,000 ₪ בתחזית עדיין מבוססים על אומדן ולא על הזמנה (5 חבילות שטרם נחתמו, יתרת ברזל).",
+          "נושא פתוח יותר משתי בקרות: אישור תאגיד/עירייה לחיבור ביוב."
+        ],
+        "decisionsHe": [
+          "האם לממן את 240,000 ₪ מהבלתי צפוי (יתרה 1,500,000 ₪) או להציג כחריגה — החלטת דנה עד הבקרה הבאה."
+        ],
+        "paragraphHe": "תחזית ההשלמה נותרה מ-48.24 מ׳ ל-48.24 מ׳ ₪ — חריגה צפויה של 240,000 ₪ (0.50%). 1 נושאים פתוחים לטיפול."
+      },
+      "finalized": false,
+      "appendices": {
+        "inReview": {
+          "count": 5,
+          "amount": 419500
+        },
+        "sourcesHe": [
+          "מערכת המידע — 216 חשבונות, 39 הזמנות, 11 חוזים",
+          "כתב כמויות גרסה 4",
+          "תחזית 1.8.2026 (סופית)",
+          "תיקיית הפרויקט: נספח א׳ להסכם מסגרת ⁨03-F⁩, חוזה קבלנות משנה 07-01, נספח א׳-2 להסכם מסגרת ⁨03-F⁩, כתב כמויות גרסה 4 (12.8.2026), הצעת מחיר, הצעת מחיר / אישור הזמנה, חשבון חלקי מס׳ 7"
+        ],
+        "uncovered": [
+          {
+            "amount": 75000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "01"
+              },
+              "labelHe": "לוח זמנים מעודכן 06/2026"
+            },
+            "basisHe": "אומדן פנימי",
+            "sectionHe": "01-ארגון אתר",
+            "descriptionHe": "אומדן הארכת ארגון אתר — 1 חודש נוסף לפי לוח הזמנים המעודכן"
+          },
+          {
+            "amount": 1440000,
+            "source": {
+              "anchor": "price",
+              "labelHe": "נספח א׳-2 — 4,800 ₪ לטון",
+              "documentId": "appendix_A2_steel_price_2026_07_15"
+            },
+            "basisHe": "נספח מחיר",
+            "sectionHe": "03-ברזל",
+            "descriptionHe": "יתרת ברזל זיון לפי כתב הכמויות — 300 טון"
+          },
+          {
+            "amount": 2700000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "12"
+              },
+              "labelHe": "אומדן פנימי לפי תקציב"
+            },
+            "basisHe": "אומדן פנימי",
+            "sectionHe": "12-ריצוף",
+            "descriptionHe": "ריצוף וחיפוי — אומדן פנימי, טרם נחתם חוזה"
+          },
+          {
+            "amount": 1700000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "13"
+              },
+              "labelHe": "אומדן פנימי לפי תקציב"
+            },
+            "basisHe": "אומדן פנימי",
+            "sectionHe": "13-נגרות",
+            "descriptionHe": "נגרות, מסגרות ומעקות — אומדן פנימי, טרם נחתם חוזה"
+          },
+          {
+            "amount": 1100000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "15"
+              },
+              "labelHe": "אומדן פנימי לפי תקציב"
+            },
+            "basisHe": "אומדן פנימי",
+            "sectionHe": "15-צבע וגבס",
+            "descriptionHe": "צבע וגבס — אומדן פנימי, טרם נחתם חוזה"
+          },
+          {
+            "amount": 1200000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "16"
+              },
+              "labelHe": "אומדן פנימי לפי תקציב"
+            },
+            "basisHe": "אומדן פנימי",
+            "sectionHe": "16-מערכות חניון",
+            "descriptionHe": "מערכות חניון (שערים, אוורור, כיבוי) — אומדן פנימי, טרם נחתם חוזה"
+          }
+        ],
+        "allocations": [
+          {
+            "amount": 1100000,
+            "source": {
+              "erp": {
+                "screen": "budget",
+                "sectionId": "18"
+              },
+              "labelHe": "תקציב גרסה 3 — הקצאה חודשית"
+            },
+            "basisHe": "הקצאה תקציבית פנימית",
+            "sectionHe": "18-הנהלה",
+            "descriptionHe": "הנהלה, פיקוח, ביטוח ואגרות — 6 חודשים × 210,000 ₪ (מותאם לתקציב)"
+          }
+        ],
+        "afterCutoffHe": [
+          "2.9.2026 — חשבון 1147: קליטה: חשבון חלקי 7 נקלט · סעיף תקציבי 07 — פיתוח (שרית)"
+        ],
+        "assumptionsHe": [
+          "הצמדה: 10 חוזי משנה בסכום קבוע ללא הצמדה למדד; הסכם המסגרת ⁨03-F⁩ מתעדכן בנספחי מחיר בכתב (נספח א׳ — 4,000 ₪ לטון, נספח א׳-2 — 4,800 ₪ לטון)",
+          "לו״ז: סיום חוזי: — · צפוי: —",
+          "מחירים: 01-ארגון אתר לפי אומדן פנימי; 03-ברזל לפי נספח מחיר; 12-ריצוף לפי אומדן פנימי; 13-נגרות לפי אומדן פנימי; 15-צבע וגבס לפי אומדן פנימי; 16-מערכות חניון לפי אומדן פנימי"
+        ],
+        "correctionLog": [],
+        "definitionsHe": [
+          "תקציב מאושר — התקציב האחרון שאושר, לפי סעיפים, עם גרסה ותאריך",
+          "נרשם — חשבונות שאושרו לתשלום עד מועד החתך, לפני מע״מ, כולל עכבונות; חשבונות בבדיקה מוצגים בנפרד",
+          "התחייבויות — חוזים חתומים והזמנות מאושרות בסכומן המלא",
+          "יתרת התחייבות — התחייבויות פחות מה שנרשם מתוכן",
+          "יתרה להשלמה — לא מכוסה — עבודות ורכש נדרשים ללא התחייבות; בסיס: הצעה / אומדן. הקצאות פנימיות (הנהלה, בלתי צפוי) מוצגות בנפרד ואינן נספרות כאומדני רכש",
+          "תחזית לגמר (EAC) — נרשם + יתרת התחייבות + יתרה לא מכוסה",
+          "סטייה — תחזית לגמר פחות תקציב מעודכן; חיובית = חריגה",
+          "סף מהותיות — 100,000 ₪ וגם 3% מהסעיף, או 250,000 ₪ בכל מקרה; סעיף מנותח בסעיף 5 גם כשהוא מעל 10% מהתקציב או כשהבסיס שלו מתחת ל-70% התחייבות"
+        ],
+        "uncoveredTotal": 8215000,
+        "allocationTotal": 1100000
+      },
+      "contingency": {
+        "used": 0,
+        "claimsHe": "לא נרשמו דרישות או תביעות קבלנים פתוחות (המבקר לא רשם)",
+        "original": 1500000,
+        "remaining": 1500000,
+        "decisionHe": "האם לממן את 240,000 ₪ מהבלתי צפוי (יתרה 1,500,000 ₪) או להציג כחריגה — החלטת דנה עד הבקרה הבאה.",
+        "pendingChangeOrdersHe": "לא נרשמו פקודות שינוי ממתינות לאישור (מערכת המידע אינה מנהלת פקודות שינוי; המבקר לא רשם)"
+      },
+      "openFindings": [],
+      "openQuestions": []
+    }
+  }
+]

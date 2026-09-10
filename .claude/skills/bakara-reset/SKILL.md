@@ -5,9 +5,9 @@ description: Reset a project to its seed data before a rehearsal or demo, or re-
 
 # Reset to seed
 
-The database is shared by the web app (local and hosted) and this agent. `reset_project` restores the project's reference and ERP data and change log to the seed snapshot and clears the control session, audit, saved report versions, heartbeats and budget changes; documents uploaded after the seed are removed with their files.
+The database is shared by the web app (local and hosted) and this agent. `reset_project` restores the project's reference and ERP data, change log and the saved report versions of the seed snapshot, and clears the control session, audit, heartbeats, budget changes and report versions saved since the seed; documents uploaded after the seed are removed with their files.
 
-1. Ask with `AskUserQuestion` (header "איפוס"): "לאפס את נתוני <project>? זה מוחק את הבקרה הנוכחית, את ההיסטוריה של היום ואת גרסאות הדוח השמורות." — options "כן, אפס" / "לא". Proceed only on the yes.
+1. Ask with `AskUserQuestion` (header "איפוס"): "לאפס את נתוני <project>? זה מוחק את הבקרה הנוכחית, את ההיסטוריה של היום ואת גרסאות הדוח שנשמרו מאז הסיד (הגרסאות שבסיד נשארות)." — options "כן, אפס" / "לא". Proceed only on the yes.
 2. `reset_project` with `variant`: `A` (default — the seed as is, ready for the demo's live re-allocation) or `B` (the seed's last invoice removed so it can be keyed in live with `create_invoice`).
 3. Confirm from the result: `invoices` (one fewer in variant B), `controlStatus: idle`, and `headline` (forecast equal to the budget when the seed carries no overrun).
 

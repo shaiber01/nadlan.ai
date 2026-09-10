@@ -31,7 +31,7 @@ The data lives in a Supabase Postgres project shared by local and hosted runs (`
 
 ```bash
 npm run hadarim:seed    # load the deterministic data package and snapshot it as the seed
-npm run hadarim:reset   # restore the seed and clear control sessions ("reset to seed")
+npm run hadarim:reset   # restore the seed, its saved report versions included, and clear control sessions ("reset to seed")
 npm run db:types        # regenerate src/hadarim/db/types.ts after a migration
 ```
 
