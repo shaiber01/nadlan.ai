@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkAllocation, checkOrderAllocation, checkUnits, isContingency, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
-import { createInvoice, initialState, pkg, setReportConfig, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { checkAllocation, checkOrderAllocation, checkUnits, describedSection, isContingency, orderTargetSection, sectionLabel, sectionShort } from "../src/hadarim/engine/checks";
+import { createInvoice, decide, initialState, pkg, revealAllSteps, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import { recordedBySection, workingForecast } from "../src/hadarim/engine/forecast";
 import { addAdjustment } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
@@ -115,6 +115,59 @@ describe("generic checks", () => {
     const findings = checkUnits(pkg, broken.erp, target.id);
     expect(findings).toHaveLength(1);
     expect(findings[0].record.id).toBe(String(target.id));
+  });
+
+  it("a record with no contract is checked against its own description: the section its wording speaks of", () => {
+    const seed = initialState();
+    // an order that nothing but its own wording places: no contract, no invoices against it, and no other
+    // record of its supplier — moved to a section its description says nothing about
+    const candidates = seed.erp.purchaseOrders.flatMap((p) =>
+      pkg.sections
+        .filter((x) => x.id !== p.sectionId)
+        .map((x) => ({ po: p, wrong: x.id }))
+        .filter(({ po, wrong }) => orderTargetSection(pkg, { ...seed.erp, purchaseOrders: seed.erp.purchaseOrders.map((q) => (q.id === po.id ? { ...q, sectionId: wrong } : q)) }, { ...po, sectionId: wrong })?.basis === "description"),
+    );
+    expect(candidates.length).toBeGreaterThan(0);
+    const { po, wrong } = candidates[0];
+    const moved = updatePurchaseOrderSection(seed, po.id, wrong, "EYAL");
+    const findings = checkOrderAllocation(pkg, moved.erp, po.id);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].sectionId).toBe(wrong);
+    expect(findings[0].decision.options[0].labelHe).toBe(`כן — לעדכן ל${sectionShort(po.sectionId)} במערכת המידע`);
+    // the card says what it read: the terms of the description and the section they belong to
+    expect(findings[0].sources.some((x) => x.kind === "section" && x.refId === po.sectionId)).toBe(true);
+    expect(findings[0].problemHe).toContain(po.descriptionHe);
+    // approving it writes the section the description points at
+    const decided = decide(revealAllSteps(startControl(moved, "בקרה")), findings[0].id, "yes_target");
+    expect(decided.erp.purchaseOrders.find((p) => p.id === po.id)!.sectionId).toBe(po.sectionId);
+    // and back where it belongs, nothing is raised
+    expect(checkOrderAllocation(pkg, updatePurchaseOrderSection(moved, po.id, po.sectionId, "EYAL").erp, po.id)).toHaveLength(0);
+  });
+
+  it("an invoice with no contract whose description speaks of another section is an allocation finding, and applying it moves the invoice", () => {
+    const seed = initialState();
+    const pair = seed.erp.purchaseOrders.flatMap((p) => pkg.sections.filter((x) => x.id !== p.sectionId).map((x) => ({ source: p, wrong: x.id }))).find(({ source, wrong }) => describedSection(pkg, source.descriptionHe, wrong)?.sectionId === source.sectionId)!;
+    const { source, wrong } = pair;
+    const [withInvoice, inv] = createInvoice(seed, { supplierId: source.supplierId, supplierDocNo: "DESC-1", date: "2026-08-20", amount: 12_345, descriptionHe: source.descriptionHe, sectionId: wrong, contractId: null, attachmentId: null, byId: "SARIT" });
+    const findings = checkAllocation(pkg, withInvoice.erp, inv.id);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].checkHe).toContain("תיאור הרשומה");
+    const decided = decide(revealAllSteps(startControl(withInvoice, "בקרה")), findings[0].id, "yes_target");
+    expect(decided.erp.invoices.find((i) => i.id === inv.id)!.sectionId).toBe(source.sectionId);
+    expect(checkAllocation(pkg, decided.erp, inv.id)).toHaveLength(0);
+  });
+
+  it("the description decides nothing when it speaks of the section it sits on, of several sections, or of none", () => {
+    const seed = initialState();
+    const works = pkg.sections.filter((s) => s.kind === "works");
+    // a description in the words of its own section
+    const own = works.find((s) => (s.chapters ?? []).length)!;
+    expect(describedSection(pkg, `${own.nameHe} — עבודות החודש`, own.id)).toBeNull();
+    // wording that carries no trade term at all
+    expect(describedSection(pkg, "שירותים ניידים — יוני", works[0].id)).toBeNull();
+    // the seed as it stands: every record is where its own description puts it
+    expect(checkAllocation(pkg, seed.erp)).toHaveLength(0);
+    expect(checkOrderAllocation(pkg, seed.erp)).toHaveLength(0);
   });
 
   it("section names and the contingency section come from the package, not from code", () => {

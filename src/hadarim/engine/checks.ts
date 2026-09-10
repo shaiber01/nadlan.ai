@@ -1,5 +1,6 @@
+import { chapterLabelHe, chapterTermsIn, contentWords, wordMatches } from "../data/bluebook";
 import { priceAppendixAt } from "../data/generate";
-import type { HBoqLine, HContract, HDocument, HForecastVersion, HInvoice, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, PersonId, QuoteFacts, SectionId } from "../data/types";
+import type { HBoqLine, HContract, HDocument, HSection, HForecastVersion, HInvoice, HOpenIssue, HPriceAppendix, HPurchaseOrder, HadarimPackage, PersonId, QuoteFacts, SectionId } from "../data/types";
 import type { ErpState } from "./model";
 import { pkg } from "./package";
 import { convertQuantity, lineValue } from "./units";
@@ -201,16 +202,32 @@ export function carriedIssues(pkg: HadarimPackage, controlDate: string): HOpenIs
 // Check 1 — allocation of an invoice versus its contract, supplier history and change log
 // ---------------------------------------------------------------------------
 
+/**
+ * The section an invoice belongs to when other stored data determines it: its contract's section; else, for
+ * an invoice with no contract, the section its own description speaks of (`describedSection`). Null when
+ * nothing determines it — including an invoice whose contract id points at no contract.
+ */
+export function invoiceTargetSection(pkg: HadarimPackage, inv: HInvoice): { sectionId: SectionId; basis: "contract" | "description"; contract?: HContract; described?: DescribedTarget } | null {
+  if (inv.contractId) {
+    const contract = pkg.contracts.find((c) => c.id === inv.contractId);
+    return contract ? { sectionId: contract.sectionId, basis: "contract", contract } : null;
+  }
+  const described = describedSection(pkg, inv.descriptionHe, inv.sectionId);
+  return described ? { sectionId: described.sectionId, basis: "description", described } : null;
+}
+
 export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceId?: number): HFinding[] {
   const out: HFinding[] = [];
   for (const inv of erp.invoices) {
     if (onlyInvoiceId != null && inv.id !== onlyInvoiceId) continue;
-    if (!inv.contractId) continue;
-    const contract = pkg.contracts.find((c) => c.id === inv.contractId);
-    if (!contract || contract.sectionId === inv.sectionId) continue;
+    // With a contract the contract decides; without one, the invoice's own description does — when it speaks
+    // of exactly one other section and of none of the section it sits on.
+    const target = invoiceTargetSection(pkg, inv);
+    if (!target || target.sectionId === inv.sectionId) continue;
+    const { contract, described } = target;
     const supplier = pkg.suppliers.find((s) => s.id === inv.supplierId);
     const wrong = inv.sectionId;
-    const right = contract.sectionId;
+    const right = target.sectionId;
     const wrongSection = pkg.sections.find((s) => s.id === wrong);
     const wrongMainContract = wrongSection?.contractIds[0] ? pkg.contracts.find((c) => c.id === wrongSection.contractIds[0]) : undefined;
     const history = erp.invoices.filter((i) => i.supplierId === inv.supplierId && i.id !== inv.id);
@@ -218,7 +235,9 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
     const log = erp.changeLog.filter((c) => c.recordType === "invoice" && c.recordId === String(inv.id));
     const sources: HSource[] = [
       { kind: "invoice", refId: String(inv.id), labelHe: `חשבון ${inv.id} · ${supplier?.nameHe} · ${nis(inv.amount)} · סעיף: ${sectionLabel(wrong)} · תיאור: ״${inv.descriptionHe}״`, fieldHe: "סעיף תקציבי", valueHe: sectionLabel(wrong), documentId: inv.attachmentId ?? undefined, anchor: "description" },
-      { kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${sectionShort(wrong)}`, documentId: contract.documentId, anchor: "included" },
+      ...(contract
+        ? [{ kind: "contract" as const, refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · אין סעיפי ${sectionShort(wrong)}`, documentId: contract.documentId, anchor: "included" }]
+        : [{ kind: "contract" as const, refId: `${inv.id}-no-contract`, labelHe: `לחשבון אין חוזה — הסעיף לא נקבע על ידי חוזה` }, describedSource(described!)]),
     ];
     if (wrongMainContract) {
       const mainSupplier = pkg.suppliers.find((s) => s.id === wrongMainContract.supplierId);
@@ -230,8 +249,9 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       id: `F-ALLOC-${inv.id}`,
       kind: "allocation",
       titleHe: `שיוך חשבון ${inv.id} — ${supplier?.nameHe}`,
-      problemHe: `חשבון ${inv.id} של ${supplier?.nameHe}, ${nis(inv.amount)}, שויך לסעיף ${sectionLabel(wrong)}. תיאור החשבון והחוזה מצביעים על ${sectionLabel(right)}.`,
+      problemHe: `חשבון ${inv.id} של ${supplier?.nameHe}, ${nis(inv.amount)}, שויך לסעיף ${sectionLabel(wrong)}. ${contract ? `תיאור החשבון והחוזה מצביעים על ${sectionLabel(right)}` : describedBasisHe(described!, wrong, inv.descriptionHe)}.`,
       sources,
+      ...(contract ? {} : { checkHe: DESCRIPTION_CHECK_HE }),
       meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
       decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, { id: "yes_refer", labelHe: `כן — להעביר ל${accountantPerson().nameHe} לתיקון` }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
@@ -246,12 +266,83 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
 // Check 1b — a purchase order's section against its contract, the invoices billed against it, and the supplier's records
 // ---------------------------------------------------------------------------
 
+/** A section a record's description points at, with the terms and chapters that point there. */
+export type DescribedTarget = { sectionId: SectionId; terms: string[]; chapters: string[] };
+
+/**
+ * The trade terms of a section that a free text uses: the terms of the Blue Book chapters the section covers
+ * (reference data, `CHAPTER_TERMS`) and the words of the section's own name. Nothing scenario-specific — a
+ * section says which chapters it covers and what it is called, and the text either speaks of them or does not.
+ */
+const sectionTermsCache = new Map<string, { terms: string[]; chapters: string[] }>();
+
+export function sectionTermsIn(text: string, section: HSection): { terms: string[]; chapters: string[] } {
+  const key = `${section.id}\u0000${section.nameHe}\u0000${text}`;
+  const cached = sectionTermsCache.get(key);
+  if (cached) return cached;
+  const hits = chapterTermsIn(text).filter((h) => (section.chapters ?? []).includes(h.chapter));
+  const terms = new Set<string>(hits.flatMap((h) => h.terms));
+  const words = contentWords(text);
+  for (const nameTerm of contentWords(`${section.nameHe} ${section.shortHe}`)) if (words.some((w) => wordMatches(w, nameTerm))) terms.add(nameTerm);
+  const out = { terms: [...terms], chapters: hits.map((h) => h.chapter) };
+  if (sectionTermsCache.size > 20_000) sectionTermsCache.clear();
+  sectionTermsCache.set(key, out);
+  return out;
+}
+
+/** A record's description has to speak of at least this many of a section's terms to point at it. */
+const DESCRIPTION_TERMS_REQUIRED = 2;
+
+/**
+ * The section a record's own description points at, when nothing else determines it. The wording must
+ * speak of no term of the section the record sits on, and of at least two terms of exactly one other
+ * section (never the reserve) — otherwise the description decides nothing and no finding is raised.
+ */
+export function describedSection(pkg: HadarimPackage, text: string, current: SectionId): DescribedTarget | null {
+  const currentSection = pkg.sections.find((s) => s.id === current);
+  if (currentSection && sectionTermsIn(text, currentSection).terms.length) return null;
+  const scored = pkg.sections
+    .filter((s) => s.id !== current && !isContingency(s.id, pkg))
+    .map((s) => ({ sectionId: s.id, ...sectionTermsIn(text, s) }))
+    .sort((a, b) => b.terms.length - a.terms.length);
+  const best = scored[0];
+  if (!best || best.terms.length < DESCRIPTION_TERMS_REQUIRED) return null;
+  if (scored[1] && scored[1].terms.length === best.terms.length) return null;
+  return best;
+}
+
+/** "פרק 01 — עבודות עפר, פרק 23 — כלונסאות קדוחים" */
+function chaptersHe(chapters: string[]): string {
+  return chapters.map((c) => `פרק ${chapterLabelHe(c)}`).join(", ");
+}
+
+/** The description of a record, as the source line of a description-based finding. */
+function describedSource(target: DescribedTarget, p: HadarimPackage = pkg): HSource {
+  return {
+    kind: "section",
+    refId: target.sectionId,
+    labelHe: `${sectionLabel(target.sectionId, p)} — התיאור מדבר על ${target.terms.map((t) => `״${t}״`).join(", ")}${target.chapters.length ? ` (${chaptersHe(target.chapters)}, מהמפרט הבין-משרדי)` : ""}`,
+  };
+}
+
+/** What the description check compares, in the words of the card. */
+const DESCRIPTION_CHECK_HE = "תיאור הרשומה מול המונחים של הסעיפים (שם הסעיף והפרקים שהוא מכסה במפרט הבין-משרדי), כשאין חוזה, חשבונות או רשומות אחרות של הספק שקובעים את הסעיף.";
+
+/** Why the description points elsewhere, in one sentence. */
+function describedBasisHe(target: DescribedTarget, current: SectionId, text: string, p: HadarimPackage = pkg): string {
+  const terms = target.terms.map((t) => `״${t}״`).join(", ");
+  return `אין לרשומה חוזה, ואף רשומה אחרת אינה קובעת את סעיפה; תיאורה — ״${text}״ — מדבר על ${terms}${target.chapters.length ? ` (${chaptersHe(target.chapters)})` : ""}, שבתחום ${sectionLabel(target.sectionId, p)}, ואינו מזכיר אף מונח של ${sectionLabel(current, p)}`;
+}
+
+export type OrderBasis = "contract" | "invoices" | "history" | "description";
+
 /**
  * The section an order belongs to when other stored data determines it: its contract's section; else the one
  * section of the invoices billed against it; else, for an order with neither, the one section every other
- * record of the supplier is on (two or more). Null when nothing determines it.
+ * record of the supplier is on (two or more); else the section its own description speaks of, when it speaks
+ * of exactly one and of none of the section it sits on. Null when nothing determines it.
  */
-export function orderTargetSection(pkg: HadarimPackage, erp: ErpState, po: HPurchaseOrder): { sectionId: SectionId; basis: "contract" | "invoices" | "history" } | null {
+export function orderTargetSection(pkg: HadarimPackage, erp: ErpState, po: HPurchaseOrder): { sectionId: SectionId; basis: OrderBasis; described?: DescribedTarget } | null {
   const contract = po.contractId ? pkg.contracts.find((c) => c.id === po.contractId) : undefined;
   if (contract) return { sectionId: contract.sectionId, basis: "contract" };
   const against = erp.invoices.filter((i) => i.poId === po.id);
@@ -261,6 +352,8 @@ export function orderTargetSection(pkg: HadarimPackage, erp: ErpState, po: HPurc
   const history = [...erp.purchaseOrders.filter((p) => p.supplierId === po.supplierId && p.id !== po.id), ...erp.invoices.filter((i) => i.supplierId === po.supplierId)].map((r) => r.sectionId);
   const historySections = [...new Set(history)];
   if (history.length >= 2 && historySections.length === 1) return { sectionId: historySections[0], basis: "history" };
+  const described = describedSection(pkg, po.descriptionHe, po.sectionId);
+  if (described) return { sectionId: described.sectionId, basis: "description", described };
   return null;
 }
 
@@ -284,17 +377,26 @@ export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoI
       { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · ${nis(po.amount)} · סעיף: ${sectionLabel(wrong)} · תיאור: ״${po.descriptionHe}״`, fieldHe: "סעיף תקציבי", valueHe: sectionLabel(wrong), documentId: po.attachmentId ?? undefined },
     ];
     if (contract) sources.push({ kind: "contract", refId: contract.id, labelHe: `חוזה ${supplier?.nameHe} (חוזה ${contract.id}) · היקף: ״${contract.scopeHe}״ · ${sectionLabel(contract.sectionId)}`, documentId: contract.documentId, anchor: "included" });
+    if (target.basis === "description") sources.push({ kind: "contract", refId: `${po.id}-no-contract`, labelHe: `להזמנה אין חוזה, ואין חשבונות שנרשמו כנגדה — הסעיף לא נקבע על ידי אף רשומה אחרת` }, describedSource(target.described!));
     if (against.length) sources.push({ kind: "history", refId: `po-${po.id}-invoices`, labelHe: `${num(against.length)} חשבונות כנגד ההזמנה (${against.map((i) => i.id).join(", ")}) — ${[...new Set(against.map((i) => i.sectionId))].map((id) => sectionLabel(id)).join(", ")}` });
     if (otherOrders.length + otherInvoices.length) sources.push({ kind: "history", refId: po.supplierId, labelHe: `${num(otherOrders.length)} הזמנות ו-${num(otherInvoices.length)} חשבונות אחרים של ${supplier?.nameHe} — ${historySections.map((id) => sectionLabel(id)).join(", ")}` });
     for (const entry of log) sources.push({ kind: "changelog", refId: entry.id, labelHe: `יומן שינויים: ${entry.field} · ${entry.before} → ${entry.after} · ${dateHe(entry.at)} ${entry.at.slice(11, 16)} · ${pkg.people.find((p) => p.id === entry.byId)?.nameHe ?? entry.byId}` });
-    const basisHe = target.basis === "contract" ? `ההזמנה מחויבת לחוזה ${contract!.id}, השייך ל${sectionLabel(right)}` : target.basis === "invoices" ? `החשבונות שנרשמו כנגד ההזמנה משויכים ל${sectionLabel(right)}` : `כל הרשומות האחרות של ${supplier?.nameHe} משויכות ל${sectionLabel(right)}`;
+    const basisHe =
+      target.basis === "contract" ? `ההזמנה מחויבת לחוזה ${contract!.id}, השייך ל${sectionLabel(right)}`
+      : target.basis === "invoices" ? `החשבונות שנרשמו כנגד ההזמנה משויכים ל${sectionLabel(right)}`
+      : target.basis === "history" ? `כל הרשומות האחרות של ${supplier?.nameHe} משויכות ל${sectionLabel(right)}`
+      : describedBasisHe(target.described!, wrong, po.descriptionHe);
     out.push({
       id: `F-ALLOC-PO-${po.id}`,
       kind: "allocation",
       titleHe: `שיוך הזמנה ${po.id} — ${supplier?.nameHe}`,
       problemHe: `הזמנה ${po.id} של ${supplier?.nameHe}, ${nis(po.amount)}, משויכת לסעיף ${sectionLabel(wrong)}. ${basisHe}.`,
       sources,
-      checkHe: target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו." : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה." : "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק.",
+      checkHe:
+        target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו."
+        : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה."
+        : target.basis === "history" ? "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק."
+        : DESCRIPTION_CHECK_HE,
       meaningHe: `התחייבות של ${nis(po.amount)} תוצג ב${sectionShort(wrong)} במקום ב${sectionShort(right)}${against.length ? `; החשבונות כנגד ההזמנה נשארים בסעיפם` : ""}. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
       decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע` }, ...referOption(), { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}` }, { id: "unsure", labelHe: "לא בטוח" }], freeText: true },
@@ -1080,7 +1182,7 @@ export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, control
   return [...checkDuplicates(pkg, erp), ...checkContractOverrun(pkg, erp), ...checkCumulative(pkg, erp), ...checkRetention(pkg, erp), ...checkDates(pkg, erp, today), ...checkReviewAging(pkg, erp, controlDate), ...checkDocuments(pkg, erp)];
 }
 
-export const CHECK_STEPS_HE = ["שיוך חשבונות והזמנות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
+export const CHECK_STEPS_HE = ["שיוך חשבונות והזמנות מול חוזים, היסטוריית הספק ותיאור הרשומה", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
 
 /** All checks. `today` bounds the date check (the control date when the run is not "live"). */
 export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {

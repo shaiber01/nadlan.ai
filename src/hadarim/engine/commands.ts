@@ -1,7 +1,7 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
 import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
-import { CHECK_STEPS_HE, accountantPerson, executionPerson, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFix, type InvoiceFixPatch, type OrderFixPatch } from "./checks";
+import { CHECK_STEPS_HE, accountantPerson, invoiceTargetSection, executionPerson, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFix, type InvoiceFixPatch, type OrderFixPatch } from "./checks";
 import { workingForecast } from "./forecast";
 import { lineValue, pricePerUnitHe } from "./units";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
@@ -400,17 +400,18 @@ function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null,
 
 function decideAllocation(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
   const invoice = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
-  const contract = pkg.contracts.find((c) => c.id === invoice.contractId)!;
+  const target = invoiceTargetSection(pkg, invoice);
+  const right = target?.sectionId ?? invoice.sectionId;
   const forecastOnly = !!freeTextHe && /רק בתחזית|בתחזית בלבד/.test(freeTextHe);
   const yes = choiceId === "yes_target" || choiceId === "yes_refer" || forecastOnly || (!!freeTextHe && /כן|לפיתוח|שייך/.test(freeTextHe));
   if (choiceId === "no_stay") {
     let s = setDecision(state, f.id, { status: "handled", routeId: undefined, auditHe: `השיוך נשאר ${sectionLabel(invoice.sectionId)} לפי החלטת ${pkg.people.find((p) => p.id === state.operatorId)?.nameHe}`, resolvedAt: state.clock });
-    s = push(s, { role: "system", kind: "text", textHe: `הבנתי. החשבון נשאר ב-${sectionLabel(invoice.sectionId)}. ההחלטה נרשמה בדוח כהערה, כי היא סותרת את החוזה ${contract.id} ואת היסטוריית הספק.` });
+    s = push(s, { role: "system", kind: "text", textHe: `הבנתי. החשבון נשאר ב-${sectionLabel(invoice.sectionId)}. ההחלטה נרשמה בדוח כהערה, כי היא סותרת את ${target?.contract ? `החוזה ${target.contract.id} ואת היסטוריית הספק` : `מה שמצביע על ${sectionLabel(right)}`}.` });
     return nextFinding(s);
   }
   if (!yes) {
     let s = setDecision(state, f.id, { status: "referred", ownerId: accountantId(), auditHe: "הועבר לבירור" });
-    s = push(s, { role: "system", kind: "text", textHe: `נרשם כ״לא בטוח״. הממצא יישאר פתוח ויועבר להנהלת חשבונות לבירור; הדוח יציג את ${nis(invoice.amount)} כ״בבירור״ בין ${sectionLabel(invoice.sectionId)} ל-${sectionLabel(contract.sectionId)}.` });
+    s = push(s, { role: "system", kind: "text", textHe: `נרשם כ״לא בטוח״. הממצא יישאר פתוח ויועבר להנהלת חשבונות לבירור; הדוח יציג את ${nis(invoice.amount)} כ״בבירור״ בין ${sectionLabel(invoice.sectionId)} ל-${sectionLabel(right)}.` });
     return nextFinding(s);
   }
   // The answer carries its own route: approving the fix writes it to the ERP right away — no second question.
@@ -625,16 +626,16 @@ export function route(state: V2State, findingId: string, routeId: RouteId, echo 
   if (f.kind === "allocation" && f.record.type === "po") return routeOrderAllocation(s, f, routeId);
   if (f.kind === "allocation") {
     const invoice = s.erp.invoices.find((i) => i.id === Number(f.record.id))!;
-    const contract = pkg.contracts.find((c) => c.id === invoice.contractId)!;
+    const right = invoiceTargetSection(pkg, invoice)?.sectionId ?? invoice.sectionId;
     const before = sectionLabel(invoice.sectionId);
-    const after = sectionLabel(contract.sectionId);
+    const after = sectionLabel(right);
     if (routeId === "update") {
       if (!operator.canWriteAllocation) {
         s = push(s, { role: "system", kind: "text", textHe: `⟳ בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, אינו מורשה לשינוי שיוך. מעביר להנהלת חשבונות.` });
         return route(s, findingId, "refer_accounting", false);
       }
-      s = updateInvoiceSection(s, invoice.id, contract.sectionId, s.operatorId, `אישור ממצא ${f.id} בבקרה ${dateHe(s.control.controlDate)}`);
-      const verified = s.erp.invoices.find((i) => i.id === invoice.id)!.sectionId === contract.sectionId;
+      s = updateInvoiceSection(s, invoice.id, right, s.operatorId, `אישור ממצא ${f.id} בבקרה ${dateHe(s.control.controlDate)}`);
+      const verified = s.erp.invoices.find((i) => i.id === invoice.id)!.sectionId === right;
       const [s2, corrId] = nextId(s, "COR");
       const correction: DataCorrection = { id: corrId, recordType: "invoice", recordId: String(invoice.id), fieldHe: "סעיף תקציבי", beforeHe: before, afterHe: after, approvedById: s.operatorId, crossSectionHe: `${sectionLabel(invoice.sectionId)} −${nis(invoice.amount)} · ${after} +${nis(invoice.amount)}`, findingId, at: s.clock, status: "applied" };
       s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, correction] } };
@@ -646,7 +647,7 @@ export function route(state: V2State, findingId: string, routeId: RouteId, echo 
     }
     if (routeId === "refer_accounting") {
       const [s2, taskId] = nextId(s, "TASK");
-      s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון שיוך חשבון ${invoice.id} (${before} → ${after})`, sectionId: contract.sectionId, ownerId: accountant, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }] } };
+      s = { ...s2, control: { ...s2.control, tasks: [...s2.control.tasks, { id: taskId, titleHe: `תיקון שיוך חשבון ${invoice.id} (${before} → ${after})`, sectionId: right, ownerId: accountant, dueDate: null, openedInControl: s.control.controlDate, status: "pending_execution", closedAt: null, findingId }] } };
       s = setDecision(s, findingId, { pending: undefined, status: "pending_execution", routeId, ownerId: accountant, auditHe: `הועבר ל${personName(accountant)} לביצוע: ${before} → ${after}` });
       s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(accountant)}. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון יאומת במערכת המידע. בדוח: החשבון יוצג ב-${after} עם הערה שהתיקון במקור ממתין.` });
       return nextFinding(s);
