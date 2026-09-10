@@ -941,7 +941,7 @@ const sourceRef = z.object({ kind: z.enum(["invoice", "po", "contract", "documen
 define({
   name: "get_review_material",
   title: "Material for the review pass",
-  description: "What the deterministic checks cannot judge, gathered for reading: each contract's scope, inclusions and exclusions with the invoices billed against it in the period (descriptions, amounts, sections), invoices without a contract, BOQ lines that are not covered with the quotes that may price them (with their extracted facts), and every document's text next to its recorded facts and their provenance. Read it and raise findings with raise_finding for what does not fit; then record_review_pass.",
+  description: "What the deterministic checks cannot judge, gathered for reading: each contract's scope, inclusions and exclusions with the invoices and open purchase orders billed against it in the period, invoices and open purchase orders without a contract, BOQ lines that are not covered with the quotes that may price them (with their extracted facts), and every document's text next to its recorded facts and their provenance. Read it and raise findings with raise_finding for what does not fit; then record_review_pass.",
   kind: "read",
   input: { projectId, controlDate, since: isoDate.optional().describe("invoices received on/after this date (default: the previous control date)"), sectionId: sectionId.optional() },
   run: async (a) => {
@@ -952,9 +952,10 @@ define({
     const sec = a.sectionId as HInvoice["sectionId"] | undefined;
     const period = state.erp.invoices.filter((i) => i.dateReceived >= since && (!sec || i.sectionId === sec));
     const brief = (i: HInvoice) => ({ id: i.id, date: i.date, dateReceived: i.dateReceived, docType: i.docType, partialNo: i.partialNo, descriptionHe: i.descriptionHe, amount: i.amount, sectionId: i.sectionId, sectionHe: sectionLabel(i.sectionId), status: i.status, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice, attachmentId: i.attachmentId, enteredBy: i.enteredBy });
+    const openPOs = state.erp.purchaseOrders.filter((p) => p.status === "פתוחה");
     const contracts = pkg.contracts
       .filter((k) => !sec || k.sectionId === sec)
-      .map((k) => ({ id: k.id, supplierHe: supplierName(k.supplierId), sectionId: k.sectionId, sectionHe: sectionLabel(k.sectionId), amount: k.amount, scopeHe: k.scopeHe, inclusionsHe: k.inclusionsHe, exclusions: k.exclusions, priceAppendices: k.priceAppendices ?? [], closed: k.closed ?? null, invoices: period.filter((i) => i.contractId === k.id).map(brief) }));
+      .map((k) => ({ id: k.id, supplierHe: supplierName(k.supplierId), sectionId: k.sectionId, sectionHe: sectionLabel(k.sectionId), amount: k.amount, scopeHe: k.scopeHe, inclusionsHe: k.inclusionsHe, exclusions: k.exclusions, priceAppendices: k.priceAppendices ?? [], closed: k.closed ?? null, invoices: period.filter((i) => i.contractId === k.id).map(brief), purchaseOrders: openPOs.filter((p) => p.contractId === k.id).map(poView) }));
     const keywords = (t: string) => t.split(/[\s,()״"]+/).filter((w) => w.length >= 4);
     const boq = pkg.boq
       .filter((l) => (!sec || l.sectionId === sec) && l.coverage !== "covered")
@@ -963,6 +964,7 @@ define({
       period: { from: since, to: c },
       contracts,
       invoicesWithoutContract: period.filter((i) => !i.contractId).map(brief),
+      purchaseOrdersWithoutContract: openPOs.filter((p) => !p.contractId && (!sec || p.sectionId === sec)).map(poView),
       boq,
       documents: pkg.documents.map((d) => ({ id: d.id, kind: d.kind, titleHe: d.titleHe, date: d.date, supplierHe: supplierName(d.supplierId), processed: !isUnprocessed(d), recordRef: d.recordRef ?? null, facts: d.facts ?? null, factsSource: d.factsSource ?? null, text: documentText(d) })),
       reviewPassHe: state.control.notes.find((n) => n.kind === "review_pass")?.textHe ?? null,
