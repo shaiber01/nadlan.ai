@@ -8,7 +8,7 @@ import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed, reportBlockers } from "../engine/heartbeat";
-import { DATA_QUALITY_KINDS, FINDING_KINDS, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
+import { DATA_QUALITY_KINDS, FINDING_KINDS, groupByRecord, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
 import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
@@ -141,6 +141,7 @@ function findingView(f: HFinding, state: V2State) {
     impact: f.impact,
     ...(f.notesHe?.length ? { notesHe: f.notesHe } : {}),
     ...(f.proposedFix ? { proposedFix: f.proposedFix } : {}),
+    ...(f.members?.length ? { members: f.members.map((m) => ({ id: m.id, kind: m.kind, titleHe: m.titleHe, fixHe: m.proposedFix?.labelHe ?? null })) } : {}),
     people: f.people ?? [],
     decision: f.decision,
     status: d?.status ?? "open",
@@ -157,6 +158,9 @@ function findingView(f: HFinding, state: V2State) {
 function resolveFinding(state: V2State, ref: string): HFinding {
   const byId = state.control.findings.find((f) => f.id === ref);
   if (byId) return byId;
+  // a member of a composite card is decided through the card
+  const byMember = state.control.findings.find((f) => f.members?.some((m) => m.id === ref));
+  if (byMember) return byMember;
   const byKind = state.control.findings.filter((f) => f.kind === ref);
   if (byKind.length === 1) return byKind[0];
   if (byKind.length > 1) throw new Error(`יש ${byKind.length} ממצאים מסוג ${ref}: ${byKind.map((f) => f.id).join(", ")} — נא לציין מזהה`);
@@ -633,7 +637,7 @@ define({
 define({
   name: "run_check",
   title: "Run a check (no save)",
-  description: "Run one check, a group, or all of them on the live data without opening a control. Control checks: allocation (an invoice vs its contract and the supplier's history; an order vs its contract, the invoices billed against it, or the supplier's other records), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
+  description: "Run one check, a group, or all of them on the live data without opening a control. With kind 'all', the findings of one invoice or order whose fixes agree fold into one card of kind 'record' (members listed); one kind at a time returns the individual findings. Control checks: allocation (an invoice vs its contract and the supplier's history; an order vs its contract, the invoices billed against it, or the supplier's other records), unit (order quantities/units vs quotes and appendices), price (forecast remainders vs the appendix in force), coverage (BOQ lines vs contracts). Data-quality checks ('data_quality' runs them all): duplicate (same supplier document number), contract_overrun (approved invoices above the contract), cumulative (partial-invoice cumulative chains), retention (retention arithmetic and rate), dates (received before issued, future dates), review_aging (invoices in review longer than the project's policy). Optionally limited to one invoice, order, contract or section. Nothing is recorded.",
   kind: "check",
   input: { projectId, controlDate, kind: z.enum([...FINDING_KINDS, "data_quality", "all"]).default("all"), invoiceId: z.number().int().optional(), poId: z.number().int().optional(), contractId: z.string().optional(), sectionId: sectionId.optional() },
   run: async (a) => {
@@ -656,14 +660,16 @@ define({
       ...(want("review_aging") ? bySection(checkReviewAging(pkg, state.erp, state.control.controlDate, a.invoiceId)) : []),
       ...(want("document") ? bySection(checkDocuments(pkg, state.erp, { invoiceId: a.invoiceId, poId: a.poId })) : []),
     ];
-    return { controlDate: state.control.controlDate, findings: withPeople(pkg, state.erp, findings).map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
+    // one kind: the individual findings; all of them: the findings of one record fold into one card, as the control sees them
+    const listed = a.kind === "all" ? groupByRecord(pkg, state.erp, withPeople(pkg, state.erp, findings)) : withPeople(pkg, state.erp, findings);
+    return { controlDate: state.control.controlDate, findings: listed.map((f) => findingView(f, state)), positives: a.kind === "all" ? positives(pkg, draft).map((p) => ({ id: p.id, titleHe: p.titleHe, textHe: p.textHe, sectionId: p.sectionId })) : [] };
   },
 });
 
 define({
   name: "run_control",
   title: "Run the control",
-  description: "Open the control for the project: run all checks on the live data, record findings and verified matches in the session, and return the data-gathering steps, the summary and the findings. Refuses when the control already ran unless force=true (which discards its decisions — confirm with the user first).",
+  description: "Open the control for the project: run all checks on the live data, record findings and verified matches in the session, and return the data-gathering steps, the summary and the findings. Several findings on one invoice or order whose fixes agree come as one card (kind 'record', with members and one union fix) — one question decides them all. Refuses when the control already ran unless force=true (which discards its decisions — confirm with the user first).",
   kind: "write",
   input: { projectId, controlDate, force: z.boolean().default(false), operatorId: personId.optional().describe("who asked for the control (defaults to the project's operator)"), requestTextHe: z.string().default("תכיני בקרה תקציבית") },
   run: async (a) => {
@@ -699,7 +705,7 @@ define({
   title: "Decide on a finding",
   description: "Record the user's decision on a finding: one of the finding's option ids, or free text where the finding allows it. Every option carries consequenceHe — what happens the moment it is chosen (an ERP write, a task, a closed or an open finding); that line, not the card's text, is the option's description when you ask. The engine replies with what follows (a quote to confirm, a forecast change) — relay its messages verbatim. Finding may be given by id or, when unique, by kind.",
   kind: "decision",
-  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-ALLOC-PO-<order>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
+  input: { projectId, controlDate, findingId: z.string().describe("finding id (F-ALLOC-<invoice>, F-ALLOC-PO-<order>, F-UNIT-<order>, F-PRICE-<line>, F-COV-<boq line>, F-REC-<invoice> / F-REC-PO-<order> for one record's composite card — a member's id resolves to its card) or the kind when unique"), choiceId: z.string().optional(), freeTextHe: z.string().optional() },
   run: async (a) => {
     if (!a.choiceId && !a.freeTextHe) throw new Error("נדרש choiceId או freeTextHe");
     let f!: HFinding;
@@ -1193,7 +1199,7 @@ define({
 define({
   name: "record_heartbeat",
   title: "Record a heartbeat",
-  description: "Close a heartbeat pass: store its watermark (the untilChangeLogId from get_heartbeat_work, so nothing that happened meanwhile is skipped next time), the counts, the finding ids you presented (the next heartbeat will not repeat them unless their record changes again) and a Hebrew summary of what was processed, what was found and what awaits the user.",
+  description: "Close a heartbeat pass: store its watermark (the untilChangeLogId from get_heartbeat_work, so nothing that happened meanwhile is skipped next time), the counts, the finding ids you presented (the next heartbeat will not repeat them unless their record changes again; a composite card's id covers its members) and a Hebrew summary of what was processed, what was found and what awaits the user.",
   kind: "write",
   input: { projectId, untilChangeLogId: z.number().int().optional().describe("from get_heartbeat_work (default: the latest change-log id)"), sinceChangeLogId: z.number().int().optional(), summaryHe: z.string().describe("what was processed, what was found, what needs the user"), documentsProcessed: z.number().int().default(0), documentsPending: z.number().int().default(0), recordsChanged: z.number().int().default(0), findingIds: z.array(z.string()).default([]).describe("finding ids presented in this pass"), documentIds: z.array(z.string()).default([]).describe("documents processed in this pass"), byId: personId.optional() },
   run: async (a) => {

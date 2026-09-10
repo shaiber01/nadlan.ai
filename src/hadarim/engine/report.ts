@@ -1,7 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
 import { chapterLabelHe } from "../data/bluebook";
 import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
-import { boqPageFor, documentById, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
+import { boqPageFor, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { isUnprocessed, reportBlockers } from "./heartbeat";
@@ -605,7 +605,8 @@ function periodEvents(pkg: HadarimPackage, state: V2State, from: string, to: str
 // ---------------------------------------------------------------------------
 
 function findingRow(f: HFinding, statusHe: string): ReportModel["openFindings"][number] {
-  const fix = f.proposedFix?.labelHe ?? (f.kind === "allocation" || f.kind === "unit" || f.kind === "price" || f.kind === "coverage" ? f.decision.options[0].labelHe : f.decision.options[0].labelHe);
+  // a control card's first option is the fix in the user's words; a data-quality or composite card names the values
+  const fix = f.kind === "allocation" || f.kind === "unit" || f.kind === "price" || f.kind === "coverage" ? f.decision.options[0].labelHe : (f.proposedFix?.labelHe ?? f.decision.options[0].labelHe);
   return { id: f.id, kind: f.kind, titleHe: f.titleHe, sectionHe: label(f.sectionId), questionHe: f.decision.questionHe, fixHe: fix, peopleHe: (f.people ?? []).map((p) => `${p.nameHe} (${p.relationHe})`).join("; ") || "—", statusHe };
 }
 
@@ -619,8 +620,8 @@ export function openFindingRows(pkg: HadarimPackage, state: V2State): ReportMode
   // a fresh run of the checks on the data as it is now: anything the session does not know about is unreviewed
   const draft = pkg.forecasts.find((f) => f.controlDate === c.controlDate && f.sections);
   const fresh = draft ? runChecks(pkg, state.erp, draft, c.controlDate, state.clock.slice(0, 10)).findings : [];
-  const known = new Set(c.findings.map((f) => f.id));
-  const unreviewed = fresh.filter((f) => !known.has(f.id));
+  const known = findingIds(c.findings);
+  const unreviewed = fresh.filter((f) => !findingReported(f, known));
   return [...undecided.map((f) => findingRow(f, c.decisions[f.id]?.pending ? "בהחלטה" : "טרם הוכרע")), ...unreviewed.map((f) => findingRow(f, c.status === "idle" ? "הבקרה טרם רצה" : "חדש מאז הרצת הבקרה"))];
 }
 

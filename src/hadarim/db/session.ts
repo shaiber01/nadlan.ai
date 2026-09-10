@@ -32,6 +32,8 @@ function describeForKind(inv: HInvoice, kind: HFinding["kind"]): string {
       return `סטטוס = ${inv.status}${inv.approvedBy ? ` · אישר ${inv.approvedBy}` : ""}`;
     case "dates":
       return `תאריך ${inv.date} · התקבל ${inv.dateReceived}`;
+    case "record":
+      return `סעיף = ${sectionLabel(inv.sectionId)} · סכום ${nis(inv.amount)} · עכבון ${nis(inv.retentionAmt)} · לתשלום ${nis(inv.netPayable)} · סטטוס ${inv.status}`;
     default:
       return `סעיף = ${sectionLabel(inv.sectionId)}`;
   }

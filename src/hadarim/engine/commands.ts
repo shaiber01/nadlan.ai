@@ -317,6 +317,8 @@ export function decide(state: V2State, findingId: string, choiceId: string | nul
       return decidePrice(s, f, choiceId);
     case "coverage":
       return decideCoverage(s, f, choiceId, freeTextHe);
+    case "record":
+      return decideComposite(s, f, choiceId, freeTextHe);
     default:
       return decideDataQuality(s, f, choiceId, freeTextHe);
   }
@@ -326,6 +328,43 @@ export function decide(state: V2State, findingId: string, choiceId: string | nul
  * Data-quality cards share one decision shape: the record is confirmed correct, the fix is referred to the
  * person who keys the ERP (a pending task), or — for a contract overrun — a change order is recorded.
  */
+/**
+ * Write a card's proposed fix to the ERP through the same guarded commands the checks use: the section
+ * move (allocation permission) and the invoice's fields or the order's line, each logged. Returns the
+ * change-log entries it produced and what the re-read record says.
+ */
+function writeFix(state: V2State, f: HFinding, fix: NonNullable<HFinding["proposedFix"]>, note: string): { state: V2State; changed: V2State["erp"]["changeLog"]; crossSectionHe: string; recordHe: string; verifiedHe: string; recordRef: { type: "invoice" | "po"; id: string } } {
+  let s = state;
+  let crossSectionHe = "ללא השפעה בין סעיפים";
+  let recordHe: string;
+  let verifiedHe: string;
+  let recordRef: { type: "invoice" | "po"; id: string };
+  if (f.record.type === "invoice") {
+    const before = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
+    const { sectionId, ...fields } = fix.patch as InvoiceFix;
+    if (sectionId) s = updateInvoiceSection(s, before.id, sectionId, s.operatorId, note);
+    if (Object.keys(fields).length) s = updateInvoiceFields(s, before.id, fields, s.operatorId, note);
+    const after = s.erp.invoices.find((i) => i.id === before.id)!;
+    if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} −${nis(after.amount)} · ${sectionLabel(after.sectionId)} +${nis(after.amount)}`;
+    else if (f.kind === "review_aging") crossSectionHe = `${sectionLabel(after.sectionId)} +${nis(after.amount)} (אושר)`;
+    recordHe = `חשבון ${after.id}`;
+    verifiedHe = `חשבון ${after.id} נקרא מחדש — ${fix.labelHe}`;
+    recordRef = { type: "invoice", id: String(after.id) };
+  } else {
+    const before = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
+    const { sectionId, ...line } = fix.patch as OrderFixPatch;
+    if (sectionId) s = updatePurchaseOrderSection(s, before.id, sectionId, s.operatorId, note);
+    if (Object.keys(line).length) s = updatePurchaseOrder(s, before.id, line, s.operatorId, note);
+    const after = s.erp.purchaseOrders.find((p) => p.id === before.id)!;
+    if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} → ${sectionLabel(after.sectionId)} · התחייבות ${nis(after.amount)}`;
+    recordHe = `הזמנה ${after.id}`;
+    verifiedHe = `הזמנה ${after.id} נקראה מחדש — ${sectionLabel(after.sectionId)} · ${orderLineHe(after)} = ${nis(after.amount)}`;
+    recordRef = { type: "po", id: String(after.id) };
+  }
+  const changed = s.erp.changeLog.slice(state.erp.changeLog.length);
+  return { state: s, changed, crossSectionHe, recordHe, verifiedHe, recordRef };
+}
+
 function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
   const reason = freeTextHe ? ` (${freeTextHe})` : "";
   const text = freeTextHe ?? "";
@@ -337,35 +376,9 @@ function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null,
     state = push(state, { role: "system", kind: "text", textHe: `⟳ בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, אינו מורשה לשינוי שיוך. מעביר לביצוע.` });
   } else if (wantsFix) {
     const fix = f.proposedFix!;
-    const note = `אישור ממצא ${f.id}`;
-    let s = state;
-    let crossSectionHe = "ללא השפעה בין סעיפים";
-    let recordHe: string;
-    let verifiedHe: string;
-    let recordRef: { type: "invoice" | "po"; id: string };
-    if (f.record.type === "invoice") {
-      const before = state.erp.invoices.find((i) => i.id === Number(f.record.id))!;
-      const { sectionId, ...fields } = fix.patch as InvoiceFix;
-      if (sectionId) s = updateInvoiceSection(s, before.id, sectionId, s.operatorId, note);
-      if (Object.keys(fields).length) s = updateInvoiceFields(s, before.id, fields, s.operatorId, note);
-      const after = s.erp.invoices.find((i) => i.id === before.id)!;
-      if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} −${nis(after.amount)} · ${sectionLabel(after.sectionId)} +${nis(after.amount)}`;
-      else if (f.kind === "review_aging") crossSectionHe = `${sectionLabel(after.sectionId)} +${nis(after.amount)} (אושר)`;
-      recordHe = `חשבון ${after.id}`;
-      verifiedHe = `חשבון ${after.id} נקרא מחדש — ${fix.labelHe}`;
-      recordRef = { type: "invoice", id: String(after.id) };
-    } else {
-      const before = state.erp.purchaseOrders.find((p) => p.id === Number(f.record.id))!;
-      const { sectionId, ...line } = fix.patch as OrderFixPatch;
-      if (sectionId) s = updatePurchaseOrderSection(s, before.id, sectionId, s.operatorId, note);
-      if (Object.keys(line).length) s = updatePurchaseOrder(s, before.id, line, s.operatorId, note);
-      const after = s.erp.purchaseOrders.find((p) => p.id === before.id)!;
-      if (after.sectionId !== before.sectionId) crossSectionHe = `${sectionLabel(before.sectionId)} → ${sectionLabel(after.sectionId)} · התחייבות ${nis(after.amount)}`;
-      recordHe = `הזמנה ${after.id}`;
-      verifiedHe = `הזמנה ${after.id} נקראה מחדש — ${sectionLabel(after.sectionId)} · ${orderLineHe(after)} = ${nis(after.amount)}`;
-      recordRef = { type: "po", id: String(after.id) };
-    }
-    const changed = s.erp.changeLog.slice(state.erp.changeLog.length);
+    const w = writeFix(state, f, fix, `אישור ממצא ${f.id}`);
+    let s = w.state;
+    const { changed, crossSectionHe, recordHe, verifiedHe, recordRef } = w;
     const beforeHe = changed.map((c) => `${c.field}: ${c.before}`).join(" · ");
     const afterHe = changed.map((c) => `${c.field}: ${c.after}`).join(" · ");
     const [s2, corrId] = nextId(s, "COR");
@@ -395,6 +408,62 @@ function decideDataQuality(state: V2State, f: HFinding, choiceId: string | null,
   let s: V2State = { ...s1, control: { ...s1.control, tasks: [...s1.control.tasks, task] } };
   s = setDecision(s, f.id, { status: "pending_execution", ownerId, auditHe: `הועבר ל${personName(ownerId)} לביצוע${reason}` });
   s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(ownerId)}: ״${task.titleHe}״. הממצא יישאר ״ממתין לביצוע״ עד שהתיקון ייראה במערכת המידע; הנתונים בתחזית ללא שינוי בינתיים.` });
+  return nextFinding(audit(s, s.operatorId, `ממצא ${f.id}: הועבר ל${personName(ownerId)} לביצוע${reason}`));
+}
+
+/** Which change-log fields a fix's patch keys write, so a composite's per-field corrections name the member that asked for them. */
+const LOG_FIELD_KEYS: Record<string, string[]> = { "סעיף תקציבי": ["sectionId"], "כמות / יחידה / מחיר יח׳": ["qty", "unit", "priceUnit", "unitPrice"], "סכום": ["amount"], "מס׳ מסמך ספק": ["supplierDocNo"], "עכבון": ["retentionPct", "retentionAmt", "netPayable"], "מצטבר": ["cumulativePrev", "cumulativeNow"], "תאריכים": ["date", "dateReceived"], "סטטוס": ["status"], "אושר על ידי": ["approvedBy"] };
+
+/**
+ * One card for one record: the members' fixes are written together (a section move and the fields or the
+ * line), one data correction per field written — each attributed to the member whose fix named it — and the
+ * decision and audit recorded for the card and for every member, so the report, the heartbeat and the
+ * individual checks all see them decided. Refer hands the whole record to whoever keys the ERP; accept
+ * closes every member as checked.
+ */
+function decideComposite(state: V2State, f: HFinding, choiceId: string | null, freeTextHe?: string): V2State {
+  const members = f.members ?? [];
+  const reason = freeTextHe ? ` (${freeTextHe})` : "";
+  const text = freeTextHe ?? "";
+  const operator = pkg.people.find((p) => p.id === state.operatorId)!;
+  const fix = f.proposedFix!;
+  const recordHe = `${f.record.type === "po" ? "הזמנה" : "חשבון"} ${f.record.id}`;
+  const wantsFix = choiceId === "apply" || (!choiceId && /לתקן|לאשר|תקן|אשר/.test(text));
+  const wantsAccept = choiceId === "accept" || (!choiceId && /תקין|בסדר|נכון/.test(text));
+  if (wantsFix && (fix.patch as { sectionId?: string }).sectionId && !operator.canWriteAllocation) {
+    state = push(state, { role: "system", kind: "text", textHe: `⟳ בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}, אינו מורשה לשינוי שיוך. מעביר לביצוע.` });
+  } else if (wantsFix) {
+    const w = writeFix(state, f, fix, `אישור ממצא ${f.id} (${members.map((m) => m.id).join(", ")})`);
+    let s = w.state;
+    for (const c of w.changed) {
+      const keys = LOG_FIELD_KEYS[c.field] ?? [];
+      const owner = members.find((m) => keys.some((k) => (m.proposedFix!.patch as Record<string, unknown>)[k] !== undefined)) ?? f;
+      const [s2, corrId] = nextId(s, "COR");
+      s = { ...s2, control: { ...s2.control, corrections: [...s2.control.corrections, { id: corrId, recordType: w.recordRef.type, recordId: w.recordRef.id, fieldHe: c.field, beforeHe: c.before, afterHe: c.after, approvedById: s2.operatorId, crossSectionHe: c.field === "סעיף תקציבי" ? w.crossSectionHe : "ללא השפעה בין סעיפים", findingId: owner.id, at: s2.clock, status: "applied" }] } };
+    }
+    const afterHe = w.changed.map((c) => `${c.field}: ${c.after}`).join(" · ");
+    s = setDecision(s, f.id, { status: "handled", routeId: "update", resolvedAt: s.clock, auditHe: `תוקן: ${fix.labelHe} · אישר: ${operator.nameHe}${reason}`, verifiedHe: w.verifiedHe });
+    for (const m of members) s = setDecision(s, m.id, { status: "handled", routeId: "update", choiceId: "apply", resolvedAt: s.clock, auditHe: `תוקן בכרטיס ${f.id}: ${m.proposedFix!.labelHe} · אישר: ${operator.nameHe}${reason}`, verifiedHe: w.verifiedHe });
+    s = push(s, { role: "system", kind: "steps", textHe: "מעדכן במערכת המידע", steps: [{ textHe: `בודק הרשאה — ${operator.nameHe}, ${operator.roleHe}`, done: true }, { textHe: "מעדכן במערכת המידע...", done: true }, { textHe: `בוצע. אימות: ${w.verifiedHe}`, done: true }] });
+    s = audit(s, s.operatorId, `${w.recordHe}: ${afterHe || fix.labelHe} (ממצא ${f.id})${reason}`, w.recordRef);
+    for (const m of members) s = audit(s, s.operatorId, `ממצא ${m.id} (${m.titleHe}): תוקן במסגרת ${f.id} — ${m.proposedFix!.labelHe}`, w.recordRef);
+    return nextFinding(tick(s));
+  }
+  if (wantsAccept) {
+    let s = setDecision(state, f.id, { status: "handled", resolvedAt: state.clock, auditHe: `נבדק — תקין${reason}` });
+    for (const m of members) s = setDecision(s, m.id, { status: "handled", choiceId: "accept", resolvedAt: s.clock, auditHe: `נבדק — תקין (בכרטיס ${f.id})${reason}` });
+    s = push(s, { role: "system", kind: "text", textHe: `נרשם כתקין. ${num(members.length)} הממצאים על ${recordHe} נסגרו ללא שינוי בנתונים; ההחלטה מתועדת בדוח.` });
+    for (const m of members) s = audit(s, s.operatorId, `ממצא ${m.id} (${m.titleHe}): נבדק — תקין${reason}`);
+    return nextFinding(audit(s, s.operatorId, `ממצא ${f.id} (${f.titleHe}): נבדק — תקין${reason}`));
+  }
+  const ownerId = f.referToId ?? accountantId();
+  const [s1, taskId] = nextId(state, "TASK");
+  const task: ControlTask = { id: taskId, titleHe: `תיקון במערכת המידע — ${recordHe}: ${fix.labelHe}`, sectionId: f.sectionId, ownerId, dueDate: null, openedInControl: s1.control.controlDate, status: "pending_execution", closedAt: null, findingId: f.id, impactIfIgnoredHe: f.impact.labelHe };
+  let s: V2State = { ...s1, control: { ...s1.control, tasks: [...s1.control.tasks, task] } };
+  s = setDecision(s, f.id, { status: "pending_execution", ownerId, auditHe: `הועבר ל${personName(ownerId)} לביצוע${reason}` });
+  for (const m of members) s = setDecision(s, m.id, { status: "pending_execution", choiceId: "refer", ownerId, auditHe: `הועבר ל${personName(ownerId)} לביצוע (בכרטיס ${f.id})${reason}` });
+  s = push(s, { role: "system", kind: "text", textHe: `נשלח ל${personName(ownerId)}: ״${task.titleHe}״. ${num(members.length)} הממצאים על ${recordHe} יישארו ״ממתין לביצוע״ עד שהתיקון ייראה במערכת המידע; הנתונים בתחזית ללא שינוי בינתיים.` });
+  for (const m of members) s = audit(s, s.operatorId, `ממצא ${m.id}: הועבר ל${personName(ownerId)} לביצוע (בכרטיס ${f.id})${reason}`);
   return nextFinding(audit(s, s.operatorId, `ממצא ${f.id}: הועבר ל${personName(ownerId)} לביצוע${reason}`));
 }
 

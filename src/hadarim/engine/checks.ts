@@ -29,7 +29,10 @@ export interface HDecisionOption {
 }
 
 /** Control findings (decided card by card) and data-quality findings (the record itself is inconsistent). */
-export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "document" | "review";
+export type FindingKind = "allocation" | "unit" | "price" | "coverage" | "duplicate" | "contract_overrun" | "cumulative" | "retention" | "dates" | "review_aging" | "document" | "review" | "record";
+
+/** Short Hebrew name of a finding kind, for a composite card's title. */
+export const KIND_HE: Record<FindingKind, string> = { allocation: "שיוך לסעיף", unit: "יחידות וכמויות", price: "מחיר יתרה", coverage: "כיסוי חוזי", duplicate: "כפילות", contract_overrun: "חריגה מחוזה", cumulative: "מצטבר", retention: "עכבון", dates: "תאריכים", review_aging: "חשבון בבדיקה", document: "התאמה למסמך המקור", review: "סקירת הסוכן", record: "רשומה" };
 export const DATA_QUALITY_KINDS: FindingKind[] = ["duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"];
 /** The kinds the deterministic checks raise (a `review` finding is the agent's own). */
 export const FINDING_KINDS = ["allocation", "unit", "price", "coverage", "duplicate", "contract_overrun", "cumulative", "retention", "dates", "review_aging", "document"] as const;
@@ -62,6 +65,8 @@ export interface HFinding {
   people?: InvolvedPerson[];
   /** When the right values are determined by other stored data: the fix the card offers to apply (an invoice's fields or section; an order's line or section). */
   proposedFix?: { labelHe: string; patch: InvoiceFix | OrderFixPatch };
+  /** A `record` card: the findings of one record folded into it (each with its own id, sources and fix; decided together). */
+  members?: HFinding[];
   titleHe: string;
   problemHe: string;
   sources: HSource[];
@@ -202,6 +207,11 @@ export function proposedOrderCorrection(pkg: HadarimPackage, po: HPurchaseOrder)
   return { qty: po.qty / KG_PER_TON, unit: po.unit, priceUnit: po.unit, unitPrice: po.unitPrice * KG_PER_TON, fromQuote: false };
 }
 
+/** An order's line, as a card's proposed fix (the amount follows the line). */
+export function orderLineFix(line: { qty: number; unit: string; priceUnit: string; unitPrice: number }): { labelHe: string; patch: OrderFixPatch } {
+  return { labelHe: `${num(line.qty)} ${line.unit} × ${num(line.unitPrice)} ₪ ל${line.priceUnit}`, patch: { qty: line.qty, unit: line.unit, priceUnit: line.priceUnit, unitPrice: line.unitPrice } };
+}
+
 /** A quote in the project folder for a BOQ line: by the extracted BOQ reference first, else by matching words in the title. */
 export function findQuoteFor(pkg: HadarimPackage, line: HBoqLine): HDocument | undefined {
   const byRef = pkg.documents.find((d) => d.kind === "quote" && quoteFacts(d)?.boqLineId === line.id);
@@ -253,6 +263,7 @@ export function checkAllocation(pkg: HadarimPackage, erp: ErpState, onlyInvoiceI
       sources,
       meaningHe: `${sectionShort(wrong)} יוצג בחריגה של ${nis(inv.amount)} שאינה קיימת; ${sectionShort(right)} יוצג עם יתרה גבוהה מהאמיתית. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      proposedFix: { labelHe: `סעיף תקציבי: ${sectionLabel(right)}`, patch: { sectionId: right } },
       decision: { questionHe: `האם העבודה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע`, consequenceHe: consequence.update(`את סעיף חשבון ${inv.id} ל${sectionLabel(right)}`) }, { id: "yes_refer", labelHe: `כן — להעביר ל${accountantPerson().nameHe} לתיקון`, consequenceHe: consequence.refer(accountantPerson().nameHe) }, { id: "no_stay", labelHe: `לא, נשאר ב${sectionShort(wrong)}`, consequenceHe: consequence.close(`שהחשבון נשאר ב${sectionLabel(wrong)} (בדוח כהערה, כי זה סותר את החוזה)`) }, { id: "unsure", labelHe: "לא בטוח", consequenceHe: consequence.open(`מועבר לבירור ל${accountantPerson().nameHe}`) }], freeText: true },
       sectionId: wrong,
       record: { type: "invoice", id: String(inv.id) },
@@ -316,6 +327,7 @@ export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoI
       checkHe: target.basis === "contract" ? "סעיף ההזמנה מול סעיף החוזה שהיא מחויבת לו." : target.basis === "invoices" ? "סעיף ההזמנה מול סעיף החשבונות שנרשמו כנגדה." : "סעיף ההזמנה מול הסעיף של כל הרשומות האחרות של הספק.",
       meaningHe: `התחייבות של ${nis(po.amount)} תוצג ב${sectionShort(wrong)} במקום ב${sectionShort(right)}${against.length ? `; החשבונות כנגד ההזמנה נשארים בסעיפם` : ""}. הסה״כ לפרויקט לא משתנה.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      proposedFix: { labelHe: `סעיף תקציבי: ${sectionLabel(right)}`, patch: { sectionId: right } },
       decision: { questionHe: `האם ההזמנה שייכת ל${sectionShort(right)}?`, options: [{ id: "yes_target", labelHe: `כן — לעדכן ל${sectionShort(right)} במערכת המידע`, consequenceHe: consequence.update(`את סעיף הזמנה ${po.id} ל${sectionLabel(right)}`) }, ...referOption(), { id: "no_stay", labelHe: `לא, נשארת ב${sectionShort(wrong)}`, consequenceHe: consequence.close(`שההזמנה נשארת ב${sectionLabel(wrong)} (בדוח כהערה)`) }, { id: "unsure", labelHe: "לא בטוח", consequenceHe: consequence.open(`מועבר לבירור${executionPerson() ? ` ל${executionPerson()!.nameHe}` : ""}`) }], freeText: true },
       sectionId: wrong,
       record: { type: "po", id: String(po.id) },
@@ -355,6 +367,8 @@ export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number
     const rightUnit = facts?.unit ?? po.unit;
     const rightPrice = facts?.unitPrice ?? po.unitPrice * KG_PER_TON;
     const item = po.descriptionHe.split(",")[0];
+    const correction = proposedOrderCorrection(pkg, po);
+    const proposedFix = correction.fromQuote ? orderLineFix(correction) : undefined;
     const sources: HSource[] = [
       { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · כמות: ${num(po.qty)} · יחידה: ${po.unit} · מחיר יח׳: ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 2 })} ₪${po.priceUnit && po.priceUnit !== po.unit ? ` ל${po.priceUnit}` : ""} · סכום: ${nis(po.amount)}`, fieldHe: "כמות / יחידה / מחיר יח׳", valueHe: `${num(po.qty)} ${po.unit} × ${po.unitPrice}` },
     ];
@@ -370,6 +384,7 @@ export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number
       checkHe: `הסכום ${nis(po.amount)} ${facts?.amount != null ? "נכון" : "מתקבל גם כך"}. הכמות והמחיר הוזנו ב${po.unit === "טון" ? "ק״ג" : "יחידה אחרת"} (${num(po.qty)} × ${po.unitPrice}), אך שדה היחידה אומר ${po.unit}.`,
       meaningHe: `הסכום הכספי תקין — לכן אף אחד לא שם לב. אבל כל חישוב שמסתמך על שדה הכמות — יתרה להזמנה, קצב צריכה, השוואה לכתב כמויות — רואה ${num(po.qty)} ${po.unit} במקום ${num(rightQty)}.`,
       impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      ...(proposedFix ? { proposedFix } : {}),
       decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן — לתקן ל-${num(rightQty)} ${rightUnit} במערכת המידע`, consequenceHe: consequence.update(`את שורת הזמנה ${po.id} ל-${num(rightQty)} ${rightUnit} × ${num(rightPrice)} ₪ (הסכום ${nis(po.amount)} נשאר)`) }, ...referOption(), { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק", consequenceHe: quoteDoc ? "פותח את ההצעה המצורפת לעיון; הרשומה לא משתנה עד להחלטה" : consequence.open("עד לבירור מול הספק") }], freeText: false },
       sectionId: po.sectionId,
       record: { type: "po", id: String(po.id) },
@@ -1074,17 +1089,27 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
       const docs = recordDocuments(pkg, erp, record).filter(documentHasFacts);
       if (!docs.length) continue;
       const rows: string[][] = [];
+      const keys: string[] = [];
       const sources: HSource[] = [{ kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplierNameOf(pkg, po.supplierId)} · ${nis(po.amount)}`, documentId: po.attachmentId ?? undefined }];
       let amountDelta = 0;
+      let docAmount: number | null = null;
       for (const d of docs) {
         for (const r of compareDocument(pkg, erp, record, d)) {
           if (r.check !== "document" || r.match !== false) continue;
           rows.push([r.fieldHe, r.recordHe ?? "—", r.docHe, d.titleHe]);
-          if (r.key === "amount") amountDelta = (r.raw as number) - po.amount;
+          keys.push(r.key);
+          if (r.key === "amount") {
+            amountDelta = (r.raw as number) - po.amount;
+            docAmount = r.raw as number;
+          }
           if (!sources.some((x) => x.refId === d.id)) sources.push(docSource(d, r.anchor));
         }
       }
       if (!rows.length) continue;
+      // the amount is the line's value: when the document states the line and that line values to the document's amount, the fix is the line
+      const line = proposedOrderCorrection(pkg, po);
+      const valued = line.fromQuote ? lineValue({ ...po, qty: line.qty, unit: line.unit, priceUnit: line.priceUnit, unitPrice: line.unitPrice }) : null;
+      const proposed = valued && !valued.incommensurable && keys.every((k) => k === "amount") && (docAmount == null || valued.amount === docAmount) ? orderLineFix(line) : undefined;
       out.push({
         id: `F-DOC-PO-${po.id}`,
         kind: "document",
@@ -1094,7 +1119,8 @@ export function checkDocuments(pkg: HadarimPackage, erp: ErpState, only?: { invo
         checkHe: `הושוו סכום וספק מול ${docs.length === 1 ? `המסמך ״${docs[0].titleHe}״` : `${num(docs.length)} מסמכים`}; כמויות ויחידות נבדקות בבדיקת היחידות.`,
         meaningHe: amountDelta ? `ההתחייבות שנרשמה לסעיף ${sectionLabel(po.sectionId, pkg)} ${amountDelta > 0 ? "נמוכה" : "גבוהה"} ב-${nis(Math.abs(amountDelta))} מהמסמך.` : "המסמך הוא המקור; פרטי ההזמנה במערכת המידע שגויים או שהעובדות שנקראו מהמסמך שגויות.",
         impact: amountDelta ? { kind: "amount", amount: amountDelta, labelHe: `${amountDelta > 0 ? "+" : "−"}${nis(Math.abs(amountDelta))} התחייבות` } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
-        decision: fixDecision("לתקן את ההזמנה לפי המסמך?", "לתקן בהנהלת חשבונות"),
+        decision: fixDecision("לתקן את ההזמנה לפי המסמך?", "לתקן בהנהלת חשבונות", proposed ? `לתקן לפי המסמך — ${proposed.labelHe}` : undefined, `את שורת הזמנה ${po.id} לערכי המסמך`),
+        ...(proposed ? { proposedFix: proposed } : {}),
         sectionId: po.sectionId,
         record: { type: "po", id: String(po.id) },
         detailsTable: [["שדה", "נרשם", "במסמך", "מסמך"], ...rows],
@@ -1110,8 +1136,149 @@ export function runDataQualityChecks(pkg: HadarimPackage, erp: ErpState, control
 
 export const CHECK_STEPS_HE = ["שיוך חשבונות והזמנות מול חוזים והיסטוריית הספק", "יחידות וכמויות בהזמנות מול הצעות ונספחי מחיר", "מחירים בתחזית מול נספחי מחיר בתוקף", "כיסוי חוזי מול כתב כמויות", "איכות נתונים: כפילויות, סכומי חוזה, מצטברים, עכבונות, תאריכים, חשבונות בבדיקה, התאמה למסמכי המקור"];
 
-/** All checks. `today` bounds the date check (the control date when the run is not "live"). */
+/** All checks; the findings of one record fold into one card (`groupByRecord`). `today` bounds the date check (the control date when the run is not "live"). */
 export function runChecks(pkg: HadarimPackage, erp: ErpState, draft: HForecastVersion, controlDate: string, today: string = controlDate): CheckResult {
-  const findings = withPeople(pkg, erp, [...checkAllocation(pkg, erp), ...checkOrderAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)]);
+  const findings = groupByRecord(pkg, erp, withPeople(pkg, erp, [...checkAllocation(pkg, erp), ...checkOrderAllocation(pkg, erp), ...checkUnits(pkg, erp), ...checkPrices(pkg, erp, draft, controlDate), ...checkCoverage(pkg, draft), ...runDataQualityChecks(pkg, erp, controlDate, today)]));
   return { findings, positives: positives(pkg, draft), checkedHe: CHECK_STEPS_HE };
+}
+
+// ---------------------------------------------------------------------------
+// One card per record: the findings of one invoice or order, when every one of them names its fix and the fixes agree
+// ---------------------------------------------------------------------------
+
+/** The id of the card that folds a record's findings; a record's individual findings keep their own ids. */
+export function compositeId(record: HFinding["record"]): string {
+  return `F-REC-${record.type === "po" ? "PO-" : ""}${record.id}`;
+}
+
+const recordKey = (r: HFinding["record"]) => `${r.type}:${r.id}`;
+
+/** The union of the members' patches, or null when two of them disagree on a field. */
+export function unionPatch(patches: (InvoiceFix | OrderFixPatch)[]): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const patch of patches) {
+    for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      if (k in out && out[k] !== v) return null;
+      out[k] = v;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+const FIX_FIELD_HE: Record<string, string> = { sectionId: "סעיף תקציבי", qty: "כמות", unit: "יחידה", priceUnit: "יחידת מחיר", unitPrice: "מחיר יח׳", amount: "סכום", supplierDocNo: "מס׳ מסמך ספק", retentionPct: "שיעור עכבון", retentionAmt: "סכום עכבון", netPayable: "לתשלום", cumulativePrev: "מצטבר קודם", cumulativeNow: "מצטבר נוכחי", date: "תאריך", dateReceived: "תאריך קבלה", status: "סטטוס", approvedBy: "אושר על ידי" };
+
+function fixValueHe(pkg: HadarimPackage, key: string, v: unknown): string {
+  if (v == null) return "—";
+  if (key === "sectionId") return sectionLabel(String(v) as SectionId, pkg);
+  if (key === "retentionPct") return `${v}%`;
+  if (key === "date" || key === "dateReceived") return dateHe(String(v));
+  if (key === "approvedBy") return pkg.people.find((p) => p.id === v)?.nameHe ?? String(v);
+  if (typeof v === "number") return ["amount", "retentionAmt", "netPayable", "cumulativePrev", "cumulativeNow", "unitPrice"].includes(key) ? nis(v) : num(v);
+  return String(v);
+}
+
+/**
+ * Fold the findings that share one invoice or order into one card, when every one of them carries a
+ * data-determined fix and the fixes agree field by field: one problem line per member, the union of
+ * their sources, one proposed fix (the union patch), one question. A finding without a fix, or a record
+ * whose fixes conflict, keeps its own card. Ungrouped findings keep their ids and their order.
+ */
+export function groupByRecord(pkg: HadarimPackage, erp: ErpState, findings: HFinding[]): HFinding[] {
+  const byRecord = new Map<string, HFinding[]>();
+  for (const f of findings) {
+    if (f.record.type !== "invoice" && f.record.type !== "po") continue;
+    const key = recordKey(f.record);
+    byRecord.set(key, [...(byRecord.get(key) ?? []), f]);
+  }
+  const composites = new Map<string, HFinding>();
+  for (const [key, members] of byRecord) {
+    if (members.length < 2 || !members.every((f) => f.proposedFix)) continue;
+    const patch = unionPatch(members.map((f) => f.proposedFix!.patch));
+    if (!patch) continue;
+    composites.set(key, compositeFinding(pkg, erp, members, patch));
+  }
+  if (!composites.size) return findings;
+  const placed = new Set<string>();
+  const out: HFinding[] = [];
+  for (const f of findings) {
+    const key = f.record.type === "invoice" || f.record.type === "po" ? recordKey(f.record) : "";
+    const composite = composites.get(key);
+    if (!composite) {
+      out.push(f);
+      continue;
+    }
+    if (!placed.has(key)) {
+      placed.add(key);
+      out.push(composite);
+    }
+  }
+  return out;
+}
+
+function compositeFinding(pkg: HadarimPackage, erp: ErpState, members: HFinding[], patch: Record<string, unknown>): HFinding {
+  const record = members[0].record;
+  const isOrder = record.type === "po";
+  const recordHe = `${isOrder ? "הזמנה" : "חשבון"} ${record.id}`;
+  const current = ((isOrder ? erp.purchaseOrders.find((p) => String(p.id) === record.id) : erp.invoices.find((i) => String(i.id) === record.id)) ?? {}) as unknown as Record<string, unknown>;
+  const keys = Object.keys(patch);
+  const fieldsHe = keys.map((k) => FIX_FIELD_HE[k] ?? k).join(", ");
+  const seen = new Set<string>();
+  const sources = members.flatMap((m) => m.sources).filter((x) => {
+    const key = `${x.kind}:${x.refId}:${x.labelHe}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const amounts = members.filter((m) => m.impact.kind === "amount");
+  const amount = amounts.reduce((a, m) => a + m.impact.amount, 0);
+  const impact: HFinding["impact"] = amounts.length ? { kind: "amount", amount, labelHe: amounts.map((m) => m.impact.labelHe).join(" · ") } : members.some((m) => m.impact.kind === "unknown") ? { kind: "unknown", amount: 0, labelHe: "טרם הוערך" } : { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" };
+  const keyer = isOrder ? (executionPerson() ?? accountantPerson()) : accountantPerson();
+  const fixLabelHe = members.map((m) => m.proposedFix!.labelHe).join(" · ");
+  const notesHe = [...new Set(members.flatMap((m) => m.notesHe ?? []))];
+  return {
+    id: compositeId(record),
+    kind: "record",
+    origin: "check",
+    referToId: keyer.id,
+    people: peopleInvolved(pkg, erp, record),
+    proposedFix: { labelHe: fixLabelHe, patch: patch as InvoiceFix | OrderFixPatch },
+    members,
+    titleHe: `${recordHe} — ${num(members.length)} ממצאים ברשומה אחת: ${members.map((m) => KIND_HE[m.kind]).join(", ")}`,
+    problemHe: members.map((m) => m.problemHe).join("\n"),
+    sources,
+    checkHe: members.map((m) => m.checkHe).filter(Boolean).join(" ") || undefined,
+    meaningHe: members.map((m) => m.meaningHe).join("\n"),
+    impact,
+    decision: {
+      questionHe: `לתקן את ${recordHe} לפי ${num(members.length)} הממצאים — ${fieldsHe}?`,
+      options: [
+        { id: "apply", labelHe: `כן — לתקן ${fieldsHe} במערכת המידע`, consequenceHe: consequence.update(`את ${recordHe} — ${fieldsHe}`) },
+        { id: "refer", labelHe: `להעביר ל${keyer.nameHe} לתיקון`, consequenceHe: consequence.refer(keyer.nameHe) },
+        { id: "accept", labelHe: "תקין — לא נדרש תיקון", consequenceHe: consequence.close("שהרשומה תקינה, לכל הממצאים") },
+      ],
+      freeText: true,
+    },
+    sectionId: members[0].sectionId,
+    record,
+    detailsTable: [["שדה", "נרשם", "התיקון המוצע"], ...keys.map((k) => [FIX_FIELD_HE[k] ?? k, fixValueHe(pkg, k, current[k]), fixValueHe(pkg, k, patch[k])])],
+    ...(notesHe.length ? { notesHe } : {}),
+  };
+}
+
+/** The ids a list of findings stands for: each one's own id and, for a composite card, its members'. */
+export function findingIds(findings: Iterable<HFinding>): Set<string> {
+  const out = new Set<string>();
+  for (const f of findings) {
+    out.add(f.id);
+    for (const m of f.members ?? []) out.add(m.id);
+  }
+  return out;
+}
+
+/** Whether a finding was already presented: its own id, every member of a composite, or — for an individual — the composite card of its record. */
+export function findingReported(f: HFinding, ids: ReadonlySet<string>): boolean {
+  if (ids.has(f.id)) return true;
+  if (f.members?.length) return f.members.every((m) => ids.has(m.id));
+  return (f.record.type === "invoice" || f.record.type === "po") && ids.has(compositeId(f.record));
 }

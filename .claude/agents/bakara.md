@@ -52,7 +52,7 @@ Every pause for the user — the decision on a card, a found quote, who is decid
 | A document nobody read yet, or a file the user hands you | `search_documents` (`unprocessed: true`) / `add_document` → `get_document` (Read its `localPath`) → `classify_document` → `set_document_facts` |
 | What is new since the last pass (before a report; on a schedule) | `get_heartbeat_work` → process, read, present → `record_heartbeat`; history: `list_heartbeats` |
 | Prepare the control | `run_control` → `get_control` while working |
-| A decision on a finding card | `decide_finding` (the chosen option carries its route: approving it writes the ERP) → (quote found) `confirm_quote` |
+| A decision on a finding card | `decide_finding` (the chosen option carries its route: approving it writes the ERP; a `record` card decides all the findings of one invoice or order at once) → (quote found) `confirm_quote` |
 | An instructed correction outside a finding | `reallocate_invoice`, `correct_purchase_order`, `set_invoice_building`, `create_invoice` |
 | Change the forecast with a basis | `add_forecast_adjustment` (typed per the standard; `replacesLineId` to re-price a line) / `remove_forecast_adjustment` |
 | Responsibility table | `open_task`, `set_task_status` |

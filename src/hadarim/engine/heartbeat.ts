@@ -1,5 +1,5 @@
 import type { HChangeLogEntry, HDocument, HadarimPackage, PersonId } from "../data/types";
-import { runChecks, type HFinding } from "./checks";
+import { findingIds, findingReported, runChecks, type HFinding } from "./checks";
 import type { V2State } from "./model";
 
 /**
@@ -73,9 +73,10 @@ export function heartbeatWork(pkg: HadarimPackage, state: V2State, sinceChangeLo
   const c = state.control;
   const draft = pkg.forecasts.find((f) => f.controlDate === c.controlDate && f.sections);
   const fresh = draft ? runChecks(pkg, state.erp, draft, c.controlDate, today).findings : [];
-  const known = new Set(c.findings.map((f) => f.id));
+  // a composite card counts as known or reported through its members too, and a member through its record's card
+  const known = findingIds(c.findings);
   const reported = new Set(previouslyReported);
-  const findings = fresh.filter((f) => changed.has(`${f.record.type}:${f.record.id}`) || (!known.has(f.id) && !reported.has(f.id)));
+  const findings = fresh.filter((f) => changed.has(`${f.record.type}:${f.record.id}`) || (!findingReported(f, known) && !findingReported(f, reported)));
   const sessionOpenFindings = c.findings.filter((f) => {
     const d = c.decisions[f.id];
     return !d || d.status === "open" || !!d.pending;
