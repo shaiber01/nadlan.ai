@@ -29,12 +29,12 @@ Derived checks the generator must satisfy:
 - Development: after correction recorded 2,280,000 (partials 1–7, partial 7 = invoice 1147, 180,000, 31.8, entered 2.9 by שרית on 07); committed 3,200,000; remaining commitment 920,000; uncovered estimate 120,000 (drainage quote י. כהן 20.8, 80 m × 1,500, valid 30 days → 19.9); EAC 3,320,000. Before correction (scene 1 variant A) 02 shows 8,580,000 and 07 shows 2,100,000; totals unchanged.
 - Still-estimate items (scene 9 reserve answer): packages 12, 13, 15, 16 = 6,700,000 + steel 1,382,400 + drainage 120,000 ≈ 8,202,400. The script's 637,600 "finishes phase B" line is dropped.
 - Status ratios for the report: physical ~38%, expense 42% (20.07 / 48.36), commitment ~78%.
-- Trend, with the demo scenario injected: 47.90 → 47.95 → 48.00 → 48.00 → 48.36. On the bare seed the 1.8 and 1.9 versions both stand at 48.24 and a first control moves nothing.
+- Trend, with the demo scenario injected: 47.90 → 47.95 → 48.00 → 48.00 → 48.36. The seed's own 1.8 and 1.9 versions both stand at 48.24.
 - Open issues carried from 1.8: three; closed 18.8 (change #2 shell contract) and 25.8 (aluminium contract); open since 07/2026: municipal sewer connection approval (highlighted as open two controls). New after the demo: PO 2291 fix (רועי, awaiting execution) and drainage order (אייל, by 19.9).
 - Contingency 1,500,000 unused; the executive summary must include the decision "fund the 360,000 from contingency or show as overrun".
 - Indexation: one explicit sentence in appendix ב׳ (the standard asks for it).
 
-The seed itself is clean — a first control on it raises nothing and leaves no document unread; the errors below are the demo scenario, injected on top of it by `tests/fixtures/scenario.ts`.
+The cases below are the demo scenario, which `tests/fixtures/scenario.ts` injects on top of the seed; none of them is seeded.
 
 Must fire (4), scenario injected: invoice 1147 on 02 (a live ERP edit, not injected — allocation vs contract scope, supplier history, change log) · PO 2291 qty 12,000 / unit ton / price 4.80 vs quote 12 t × 4,800 · steel remaining priced 4,000 vs appendix A-2 4,800 from 15.7.2026 · BOQ 57.03.040 recorded as covered by 07-01 after the revised BOQ page drops it, with no estimate.
 Must not fire (5): PO 2240 at the old price · crane invoice in 01 whose text says "שלד" · elevators excluded from shell but covered by 14-01 · a steel invoice in kg with unit kg · earth/piling closed under budget (variance, not an error).

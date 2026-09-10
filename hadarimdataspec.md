@@ -149,7 +149,7 @@ Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01
 
 ## 9\. Realism traps the engine is tested against — `SPEC.md §Tests`
 
-The seed is clean: a first control on it raises **no** findings and leaves no document unread. The errors below are the demo scenario, injected on top of the seed by `tests/fixtures/scenario.ts`.
+The cases below are the demo scenario, which `tests/fixtures/scenario.ts` injects on top of the seed; none of them is seeded.
 
 Must fire (4), with the scenario injected: invoice 1147 on 02 (a live ERP edit, not injected) · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 still recorded as covered by 07-01 once `boq_v5_ch57.pdf` is processed and shows the line removed, with no estimate. (Before that document is processed, only 3 of the 4 fire — the coverage gap is document-driven, not pre-seeded.)
 
