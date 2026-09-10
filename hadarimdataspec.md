@@ -149,11 +149,23 @@ Also ERP-screen records (not PDFs): PO 2291, invoice 1147 header, contract 07-01
 
 ## 9\. Realism traps the engine is tested against — `SPEC.md §Tests`
 
-The cases below are the demo scenario, which `tests/fixtures/scenario.ts` injects on top of the seed; none of them is seeded.
+Two sets of data conditions the checks are exercised against. What each one produces is not written here: the checks derive it from the data, and `tests/hadarim.data.test.ts` is what pins it.
 
-Must fire (4), with the scenario injected: invoice 1147 on 02 (a live ERP edit, not injected) · PO 2291 unit mismatch · steel remaining at 4,000 vs appendix A-2 · BOQ 57.03.040 still recorded as covered by 07-01 once `boq_v5_ch57.pdf` is processed and shows the line removed, with no estimate. (Before that document is processed, only 3 of the 4 fire — the coverage gap is document-driven, not pre-seeded.)
+Injected by the demo scenario (`tests/fixtures/scenario.ts`) — none of these is seeded:
 
-Must NOT fire (5): PO 2240 old price (pre-dates appendix) · crane invoice "שלד" text in 01 · elevators excluded from shell but covered by 14-01 · steel invoice in kg/kg · earth/piling closed under budget (variance, not an error).
+- PO 2291 keyed in kilograms against a ton unit (qty 12,000, price 4.80, amount right), with an attached quote that states 12 t × 4,800;
+- the steel remainder in the forecast priced by appendix א׳ (4,000) while א׳-2 (4,800) has been in force since 15.7.2026;
+- `boq_v5_ch57.pdf` in the folder, unprocessed, dropping line 57.03.040 while the BOQ record still shows it covered by 07-01. Nothing surfaces from a document until someone reads it.
+
+Invoice 1147 on section 02 is not injected either — the script moves it there as a live ERP edit.
+
+Seeded conditions that look wrong at a glance, each with its reason in the data:
+
+- PO 2240 at 4,000, issued 1.7.2026 before the appendix took force, and delivered in full;
+- the crane invoice in section 01 whose description says "שלד";
+- chapter 17 excluded from the shell contract and covered by 14-01;
+- a steel invoice with both the quantity and the unit in kilograms — internally consistent;
+- earth and piling closed under budget.
 
 ---
 

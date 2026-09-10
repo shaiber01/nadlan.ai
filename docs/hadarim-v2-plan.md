@@ -34,10 +34,10 @@ Derived checks the generator must satisfy:
 - Contingency 1,500,000 unused; the executive summary must include the decision "fund the 360,000 from contingency or show as overrun".
 - Indexation: one explicit sentence in appendix ב׳ (the standard asks for it).
 
-The cases below are the demo scenario, which `tests/fixtures/scenario.ts` injects on top of the seed; none of them is seeded.
+Data conditions the checks are exercised against (data spec §9 lists them in full). What each produces is not written down: the checks derive it, and `tests/hadarim.data.test.ts` pins it.
 
-Must fire (4), scenario injected: invoice 1147 on 02 (a live ERP edit, not injected — allocation vs contract scope, supplier history, change log) · PO 2291 qty 12,000 / unit ton / price 4.80 vs quote 12 t × 4,800 · steel remaining priced 4,000 vs appendix A-2 4,800 from 15.7.2026 · BOQ 57.03.040 recorded as covered by 07-01 after the revised BOQ page drops it, with no estimate.
-Must not fire (5): PO 2240 at the old price · crane invoice in 01 whose text says "שלד" · elevators excluded from shell but covered by 14-01 · a steel invoice in kg with unit kg · earth/piling closed under budget (variance, not an error).
+Injected by `tests/fixtures/scenario.ts`, not seeded: PO 2291 qty 12,000 / unit ton / price 4.80 against a quote stating 12 t × 4,800 · the steel remainder priced 4,000 while appendix A-2 has said 4,800 since 15.7.2026 · BOQ 57.03.040 recorded as covered by 07-01 with the revised BOQ page, unread, dropping it. Invoice 1147 on 02 is a live ERP edit in the script, not injected.
+Seeded and legitimate despite appearances: PO 2240 at the old price (pre-dates the appendix, delivered in full) · crane invoice in 01 whose text says "שלד" · elevators excluded from shell and covered by 14-01 · a steel invoice in kg with unit kg · earth/piling closed under budget.
 
 ## 3. Product surface
 
