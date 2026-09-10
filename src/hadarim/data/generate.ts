@@ -33,7 +33,7 @@ export const CURRENT_CONTROL = "2026-09-01";
 export const DEMO_DAY = "2026-09-03";
 
 /** Seed documents left unprocessed (no facts/factsSource) — pending in the project folder for the agent to read, exactly like a live upload. */
-const UNPROCESSED_DOCUMENT_IDS = new Set(["boq_v5_ch57"]);
+const UNPROCESSED_DOCUMENT_IDS = new Set<string>();
 export const EARLIER_CONTROL_TOTALS: Record<string, number> = { "2026-05-01": 47_900_000, "2026-06-01": 47_950_000, "2026-07-01": 48_000_000 };
 
 const MONTHS = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"];
@@ -483,8 +483,8 @@ export function buildPurchaseOrders(invoices: HInvoice[]): HPurchaseOrder[] {
   });
   // PO 2240: closed, old price, legitimately issued before appendix A-2
   orders.push({ id: 2240, date: "2026-07-01", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 10–16 מ״מ — 60 טון", qty: 60, unit: "טון", priceUnit: "טון", unitPrice: 4000, amount: 240_000, deliveredQty: 60, invoicedAmount: 240_000, status: "סגורה", attachmentId: null, kind: "one_off" });
-  // PO 2291: the unit error
-  orders.push({ id: 2291, date: "2026-08-22", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 8–16 מ״מ", qty: 12000, unit: "טון", priceUnit: "טון", unitPrice: 4.8, amount: 57_600, deliveredQty: 0, invoicedAmount: 0, status: "פתוחה", attachmentId: "quote_pladot_12t", kind: "one_off" });
+  // PO 2291: the open steel order, as its quote states it (12 t at the appendix A-2 price)
+  orders.push({ id: 2291, date: "2026-08-22", supplierId: "SUP-PLADOT", sectionId: "03", contractId: "03-F", descriptionHe: "ברזל זיון מצולע, קטרים 8–16 מ״מ", qty: 12, unit: "טון", priceUnit: "טון", unitPrice: 4800, amount: 57_600, deliveredQty: 0, invoicedAmount: 0, status: "פתוחה", attachmentId: "quote_pladot_12t", kind: "one_off" });
   return orders.sort((a, b) => a.id - b.id);
 }
 
@@ -611,9 +611,9 @@ export function buildForecast(controlDate: string, invoices: HInvoice[], purchas
         remainingCommitment = committed;
         for (const p of openPo) lines.push({ id: `${controlDate}-03-po${p.id}`, sectionId: "03", descriptionHe: `הזמנה ${p.id} — ${p.qty} טון במחיר ${p.unitPrice.toLocaleString("he-IL")} ₪/טון`, qty: p.qty, unit: "טון", unitPrice: p.unitPrice, amount: p.amount, basis: "po", sourceRef: `הזמנת רכש ${p.id}`, kind: "remaining_commitment" });
         const remainingTons = 750 - deliveredTons - poTons;
-        const appendix = framework.priceAppendices!.find((a) => a.id === "A")!;
+        const appendix = priceAppendixAt(framework, controlDate)!;
         uncovered = remainingTons * appendix.pricePerTon;
-        lines.push({ id: `${controlDate}-03-rem`, sectionId: "03", descriptionHe: `יתרת ברזל זיון לפי כתב הכמויות — ${remainingTons} טון`, qty: remainingTons, unit: "טון", unitPrice: appendix.pricePerTon, amount: uncovered, basis: "appendix", sourceRef: `נספח א׳ (11/2025) — ${appendix.pricePerTon.toLocaleString("he-IL")} ₪/טון`, kind: "uncovered" });
+        lines.push({ id: `${controlDate}-03-rem`, sectionId: "03", descriptionHe: `יתרת ברזל זיון לפי כתב הכמויות — ${remainingTons} טון`, qty: remainingTons, unit: "טון", unitPrice: appendix.pricePerTon, amount: uncovered, basis: "appendix", sourceRef: `${appendix.titleHe.split(" — ")[0]} (${appendix.validFrom.slice(5, 7)}/${appendix.validFrom.slice(0, 4)}) — ${appendix.pricePerTon.toLocaleString("he-IL")} ₪/טון`, kind: "uncovered" });
         break;
       }
       case "17": {
@@ -666,7 +666,7 @@ export const changeLog: HChangeLogEntry[] = [
   { id: "CL-1", recordType: "contract", recordId: "02-01", field: "נספחים", before: "נספח שינוי מס׳ 1", after: "נספח שינוי מס׳ 2 (ללא שינוי בסכום)", at: "2026-08-18T11:20", byId: "ROI", noteHe: "סגירת נושא מהבקרה הקודמת" },
   { id: "CL-2", recordType: "contract", recordId: "11-01", field: "סטטוס", before: "במו״מ", after: "נחתם 25.8.2026", at: "2026-08-25T16:05", byId: "EYAL", noteHe: "חוזה אלומיניום גלעד" },
   { id: "CL-3", recordType: "po", recordId: "2240", field: "סטטוס", before: "פתוחה", after: "סגורה — סופק במלואו", at: "2026-08-28T14:40", byId: "SARIT", noteHe: "אספקה אחרונה 28.8" },
-  { id: "CL-4", recordType: "po", recordId: "2291", field: "יצירה", before: "—", after: "הזמנה נוצרה: 12,000 טון × 4.80 ₪ = 57,600 ₪", at: "2026-08-22T10:12", byId: "EYAL", noteHe: "לפי הצעת פלדות הצפון 8834" },
+  { id: "CL-4", recordType: "po", recordId: "2291", field: "יצירה", before: "—", after: "הזמנה נוצרה: 12 טון × 4,800 ₪ = 57,600 ₪", at: "2026-08-22T10:12", byId: "EYAL", noteHe: "לפי הצעת פלדות הצפון 8834" },
   { id: "CL-5", recordType: "invoice", recordId: "1147", field: "קליטה", before: "—", after: "חשבון חלקי 7 נקלט · סעיף תקציבי 07 — פיתוח", at: "2026-09-02T09:41", byId: "SARIT", noteHe: "קליטת חשבון עסקה 2026-087" },
 ];
 

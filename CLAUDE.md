@@ -29,7 +29,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 - `scripts/` — `bakara.ts` (CLI: demo commands, `heartbeat`, plus `tool <name> [json]` passthrough), `heartbeat.sh` (the agent's heartbeat headless), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
 - `supabase/migrations/` — schema, triggers (change log), seed snapshot/reset functions, the Storage bucket `documents` and the `heartbeats` table, grants and permissive RLS policies (prototype: open access through the publishable key).
 - `index.html` — redirects to `hadarim.html`, so the site root opens the ERP. `src/` holds only `src/hadarim/`.
-- Specs: `hadarimdataspec.md` (data, numbers win), `hadarimdemoscript.md` (demo flow and copy), `budgetcontrolreportstandard.md` (report standard). Status and decisions: `docs/hadarim-v2-plan.md`.
+- Specs: `hadarimdataspec.md` (data, numbers win), `budgetcontrolreportstandard.md` (report standard). Status and decisions: `docs/hadarim-v2-plan.md`.
 
 ## Conventions
 

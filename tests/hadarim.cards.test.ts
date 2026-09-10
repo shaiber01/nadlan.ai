@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { FINDING_KINDS, checkAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkOrderAllocation, checkPrices, checkRetention, checkReviewAging, checkUnits, compositeId, quoteFacts, runChecks, type HFinding, type OrderFixPatch } from "../src/hadarim/engine/checks";
-import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, setPackage, startControl, updateInvoiceSection, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { createInvoice, decide, initialState, pkg, reviewFindings, revealAllSteps, startControl, updateInvoiceSection, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { installScenario } from "./fixtures/scenario";
 import { changeLogId, heartbeatWork } from "../src/hadarim/engine/heartbeat";
 import type { V2State } from "../src/hadarim/engine/model";
 import { raiseFinding } from "../src/hadarim/engine/operations";
 import { buildReport } from "../src/hadarim/engine/report";
 
-// the revised BOQ page (boq_v5_ch57) processed, as the agent would before a control runs
-setPackage({ ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) });
+// the seed is clean: the cards below need the demo's errors, with the revised BOQ page already read, as the agent would before a control runs
+installScenario({ processedBoqRevision: true });
 
 /**
  * The finding cards as the agent presents them: every option says what choosing it does, so the question's

@@ -1,6 +1,6 @@
 # nadlan.ai — how the system works
 
-This is the one document to read first. It describes the Hadarim budget-control prototype as it is built today: the simulated ERP, the shared database, the documents, the budget, the Claude agent that acts as the budget controller, its tools and skills, the heartbeat, and the report. Status history and decisions are in `hadarim-v2-plan.md`; day-to-day developer conventions are in `CLAUDE.md`; the product specs are `hadarimdataspec.md` (data), `hadarimdemoscript.md` (demo flow), `budgetcontrolreportstandard.md` (report standard).
+This is the one document to read first. It describes the Hadarim budget-control prototype as it is built today: the simulated ERP, the shared database, the documents, the budget, the Claude agent that acts as the budget controller, its tools and skills, the heartbeat, and the report. Status history and decisions are in `hadarim-v2-plan.md`; day-to-day developer conventions are in `CLAUDE.md`; the product specs are `hadarimdataspec.md` (data) and `budgetcontrolreportstandard.md` (report standard).
 
 ## 1. What is in this repository
 
@@ -76,7 +76,7 @@ Schema changes are migrations in `supabase/migrations/`, applied to the project 
 | יומן שינויים | Read the trigger-written change log; click through to the record | — |
 | תיקיית מסמכים | See every document with its processing status (including הוחלף for a replaced one); upload a real file (PDF, image, text) with kind, title, date, supplier, the record it belongs to, uploader. From a record's card (invoice, order, contract): download a document (a stored file, or a seed page as text), upload a file for that record, replace one of its documents — the replaced document stays in the folder marked, and the record, the checks and the agent's pending list use the new one (`documents.superseded_by`) — or delete one (file and row, after an inline confirmation naming who deletes; the change log gets a `document` entry, and a document it had replaced gets its place back) | — (the document row records the uploader) |
 
-The presenter strip on top: database status, an "offline" switch (`?offline=1` or the `hadarim-offline` flag keeps the browser on the generator data, used by the e2e suites), the scene-1 variant (A: invoice 1147 exists and is re-allocated live; B: it is keyed in live) and a two-step "reset to seed". The store (`src/hadarim/app/store.ts`) loads the whole session from the database, persists only ERP rows through the attributed writers, and follows Realtime. A record can be addressed by URL (`hadarim.html?screen=invoices&invoice=1147`), which is how the report's source links open ERP records.
+The presenter strip on top: database status, an "offline" switch (`?offline=1` or the `hadarim-offline` flag keeps the browser on the generator data, used by the e2e suites), the ERP variant (A: invoice 1147 exists and can be re-allocated live; B: it is keyed in live) and a two-step "reset to seed". The store (`src/hadarim/app/store.ts`) loads the whole session from the database, persists only ERP rows through the attributed writers, and follows Realtime. A record can be addressed by URL (`hadarim.html?screen=invoices&invoice=1147`), which is how the report's source links open ERP records.
 
 What the ERP never does: run a control, take a decision, process a document, change the forecast, or link to the report.
 

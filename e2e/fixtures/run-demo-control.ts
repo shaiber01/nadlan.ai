@@ -1,7 +1,7 @@
 import { callTool } from "../../src/hadarim/tools";
 
 /**
- * Scenes 2–8 of hadarimdemoscript.md through the agent's tools — the same registry the MCP server
+ * A full control through the agent's tools — the same registry the MCP server
  * exposes — against the live database. Used by the opt-in browser test to give the report viewer a
  * finished control to show:  npx vite-node e2e/fixtures/run-demo-control.ts
  * Assumes scene 1 happened (invoice 1147 moved to 02) and the control is idle.

@@ -5,12 +5,17 @@ import { initialState, pkg, startControl, updateInvoiceSection, createInvoice, r
 import { reportBlockers } from "../src/hadarim/engine/heartbeat";
 import { changeLogId, groupChanges, heartbeatSummaryHe, heartbeatWork, isUnprocessed } from "../src/hadarim/engine/heartbeat";
 import { tools } from "../src/hadarim/tools";
+import { installScenario } from "./fixtures/scenario";
 
 /**
  * Real documents and the heartbeat: what is new since the last pass is measured on the change log; pending
  * documents are the ones nobody recorded facts for; the checks' findings are reported once unless their
  * record changes again; text is extracted from real files by the Node tools.
+ *
+ * The seed itself is clean and fully read, so there would be nothing for a heartbeat to report; the scenario
+ * gives this file what it is about — open findings, and a document nobody has read.
  */
+installScenario();
 
 const firstInvoice = () => pkg.invoices.find((i) => i.status === "אושר" && i.contractId)!;
 const otherSection = (s: string) => pkg.sections.find((x) => x.id !== s && x.kind === "works")!.id;
@@ -141,7 +146,7 @@ describe("text extraction from real files", () => {
 describe("reportBlockers — a saved version or a final control must rest on data that was read", () => {
   const other = (id: string) => pkg.sections.find((s) => s.id !== id)!.id;
   const lastLogId = (s: ReturnType<typeof initialState>) => Math.max(0, ...s.erp.changeLog.map((c) => Number(c.id.replace(/\D/g, ""))));
-  // the seed's own pending document (boq_v5_ch57) processed, so these cases can reason about an otherwise-clean folder
+  // the scenario's pending document processed, so these cases can reason about an otherwise-clean folder
   const processedPkg = { ...pkg, documents: pkg.documents.map((d) => (isUnprocessed(d) ? { ...d, facts: {}, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) };
 
   it("nothing blocks a project whose heartbeat covers the change log and whose folder has no pending document", () => {

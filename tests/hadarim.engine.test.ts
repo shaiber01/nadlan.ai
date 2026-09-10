@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, saveConfig, sendReport, setPackage, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
 import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
+import { installScenario } from "./fixtures/scenario";
 import { changeLogId, isUnprocessed } from "../src/hadarim/engine/heartbeat";
 import { recordReviewPass } from "../src/hadarim/engine/operations";
 import { buildReport, reportReadiness } from "../src/hadarim/engine/report";
 
-// the revised BOQ page (boq_v5_ch57) processed, as the agent would before this control runs — the scripted
-// flow below picks up right after that step, same as the rest of this suite assumes the seed's facts are known
-setPackage({ ...pkg, documents: pkg.documents.map((d) => (d.id === "boq_v5_ch57" ? { ...d, facts: { removedLineIds: ["57.03.040"] }, factsSource: { method: "agent" as const, byId: "EYAL" as const } } : d)) });
+// the seed is clean: the flow below needs the three errors a control acts on, with the revised BOQ page
+// already read, the way the agent would before this control runs
+installScenario({ processedBoqRevision: true });
 
 const lastSystem = (s: V2State) => [...s.control.messages].reverse().find((m) => m.role === "system")!;
 const findingByKind = (s: V2State, kind: string) => s.control.findings.find((f) => f.kind === kind)!;
