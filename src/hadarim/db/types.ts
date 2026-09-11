@@ -64,6 +64,7 @@ export type Database = {
           qty: number
           section_id: string
           unit: string
+          unit_price: number | null
         }
         Insert: {
           chapter: string
@@ -79,6 +80,7 @@ export type Database = {
           qty: number
           section_id: string
           unit: string
+          unit_price?: number | null
         }
         Update: {
           chapter?: string
@@ -94,6 +96,7 @@ export type Database = {
           qty?: number
           section_id?: string
           unit?: string
+          unit_price?: number | null
         }
         Relationships: [
           {

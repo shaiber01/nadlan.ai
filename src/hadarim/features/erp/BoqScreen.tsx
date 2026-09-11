@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { store, useUi } from "../../app/store";
 import type { Coverage, HBoqLine } from "../../data/types";
+import { boqLineAmount, boqTotal } from "../../engine/boq";
 import { boqPageFor } from "../../engine/checks";
 import { pkg } from "../../engine/commands";
 import { dateHe, num, sectionShort } from "./format";
@@ -9,7 +10,8 @@ import { dateHe, num, sectionShort } from "./format";
  * The ERP's bill of quantities: the contractor's design quantity list by Blue Book chapter (not a tender BOQ),
  * read-only. Every line shows the budget section it lands in and its contract coverage — the contract that
  * covers it, or the exclusion clause that leaves it open — so a "coverage gap" finding can be read against the
- * line itself. A line can be addressed by URL (`?screen=boq&line=57.03.040`); a section deep link pre-filters.
+ * line itself. Priced lines show the unit price and the line's value; a chapter's value is the sum of its priced
+ * lines. A line can be addressed by URL (`?screen=boq&line=57.03.040`); a section deep link pre-filters.
  */
 export function BoqScreen() {
   const ui = useUi();
@@ -49,7 +51,7 @@ export function BoqScreen() {
         <h2>כתב כמויות — {pkg.project.nameHe}</h2>
         <div className="erp-actions">
           <span className="erp-count" data-testid="erp-boq-version">
-            גרסה {pkg.project.boqVersion.number} ({dateHe(pkg.project.boqVersion.date)}) · {num(all.length)} שורות · {num(chapters.length)} פרקים
+            גרסה {pkg.project.boqVersion.number} ({dateHe(pkg.project.boqVersion.date)}) · {num(all.length)} שורות · {num(chapters.length)} פרקים · {num(boqTotal(all).amount)} ₪
           </span>
         </div>
       </div>
@@ -84,7 +86,7 @@ export function BoqScreen() {
           </select>
         </label>
         <span className="erp-count" data-testid="erp-boq-count">
-          {num(rows.length)} שורות
+          {num(rows.length)} שורות · {num(boqTotal(rows).amount)} ₪
         </span>
       </div>
       <div className="erp-table-wrap">
@@ -95,6 +97,8 @@ export function BoqScreen() {
               <th>תיאור</th>
               <th className="num">כמות</th>
               <th>יח׳</th>
+              <th className="num">מחיר יח׳</th>
+              <th className="num">סה״כ</th>
               <th>סעיף תקציבי</th>
               <th>אסמכתה</th>
               <th>הערה</th>
@@ -104,7 +108,7 @@ export function BoqScreen() {
           <tbody>
             {groups.length === 0 && (
               <tr>
-                <td colSpan={8} className="erp-muted">
+                <td colSpan={10} className="erp-muted">
                   אין שורות התואמות לסינון.
                 </td>
               </tr>
@@ -122,13 +126,15 @@ export function BoqScreen() {
 function GroupRows({ code, lines, target, count, openContract }: { code: string; lines: HBoqLine[]; target: string | null; count: (lines: HBoqLine[], c: Coverage) => number; openContract: (id: string) => void }) {
   const excluded = count(lines, "excluded");
   const open = count(lines, "not_contracted");
+  const total = boqTotal(lines);
   return (
     <>
       <tr className="erp-group-row" data-testid={`erp-boq-chapter-${code}`}>
-        <td colSpan={8}>
+        <td colSpan={10}>
           פרק {code} — {lines[0].chapterNameHe} · {num(lines.length)} שורות · מכוסה {num(count(lines, "covered"))}
           {excluded ? ` · מוחרג ${num(excluded)}` : ""}
           {open ? ` · טרם נחתם חוזה ${num(open)}` : ""}
+          {total.pricedLines ? ` · סה״כ ${num(total.amount)} ₪${total.unpricedLines ? ` (${num(total.unpricedLines)} שורות ללא מחיר)` : ""}` : ""}
         </td>
       </tr>
       {lines.map((l) => {
@@ -139,6 +145,8 @@ function GroupRows({ code, lines, target, count, openContract }: { code: string;
             <td className="erp-desc">{l.descriptionHe}</td>
             <td className="num">{num(l.qty)}</td>
             <td>{l.unit}</td>
+            <td className="num">{l.unitPrice == null ? "—" : num(l.unitPrice)}</td>
+            <td className="num">{boqLineAmount(l) == null ? "—" : num(boqLineAmount(l)!)}</td>
             <td>{sectionShort(l.sectionId)}</td>
             <td className="erp-desc">
               {l.coveredByContractId ? (

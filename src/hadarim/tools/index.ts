@@ -10,6 +10,7 @@ import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed, reportBlockers } from "../engine/heartbeat";
 import { DATA_QUALITY_KINDS, FINDING_KINDS, groupByRecord, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
+import { boqLineAmount, boqTotal } from "../engine/boq";
 import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { budgetChangesBySection, uncoveredByBasis, workingForecast } from "../engine/forecast";
@@ -235,11 +236,15 @@ function chapterInfo(s: HSection) {
   return (s.chapters ?? []).map((code, i) => ({ code, nameHe: chapterNameHe(code), primary: i === 0 }));
 }
 
-/** BOQ lines rolled up by their Blue Book chapter. */
+/** BOQ lines rolled up by their Blue Book chapter, with the chapter's priced value. */
 function boqByChapter(lines: HBoqLine[]) {
   const map = new Map<string, HBoqLine[]>();
   for (const l of lines) map.set(l.chapter, [...(map.get(l.chapter) ?? []), l]);
-  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([chapter, rows]) => ({ chapter, nameHe: rows[0]?.chapterNameHe ?? chapterNameHe(chapter), lines: rows.length, covered: rows.filter((l) => l.coverage === "covered").length, excluded: rows.filter((l) => l.coverage === "excluded").length, notContracted: rows.filter((l) => l.coverage === "not_contracted").length, sectionIds: [...new Set(rows.map((l) => l.sectionId))] }));
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([chapter, rows]) => ({ chapter, nameHe: rows[0]?.chapterNameHe ?? chapterNameHe(chapter), lines: rows.length, covered: rows.filter((l) => l.coverage === "covered").length, excluded: rows.filter((l) => l.coverage === "excluded").length, notContracted: rows.filter((l) => l.coverage === "not_contracted").length, sectionIds: [...new Set(rows.map((l) => l.sectionId))], ...boqTotal(rows) }));
+}
+
+function boqLineView(l: HBoqLine) {
+  return { ...l, amount: boqLineAmount(l), sectionHe: sectionLabel(l.sectionId) };
 }
 
 function budgetChangeView(c: HBudgetChangeLike) {
@@ -414,8 +419,9 @@ define({
       contracts: pkg.contracts.filter((c) => c.sectionId === section.id).map((c) => ({ ...c, supplierHe: supplierName(c.supplierId) })),
       invoices: { count: invoices.length, recordedBeforeCutoff: approved.reduce((s, i) => s + i.amount, 0), inReview: invoices.filter((i) => i.status === "בבדיקה").length, rows: invoices.map(invoiceView) },
       purchaseOrders: state.erp.purchaseOrders.filter((p) => p.sectionId === section.id).map(poView),
-      boq: pkg.boq.filter((l) => l.sectionId === section.id),
+      boq: pkg.boq.filter((l) => l.sectionId === section.id).map(boqLineView),
       boqByChapter: boqByChapter(pkg.boq.filter((l) => l.sectionId === section.id)),
+      boqTotal: boqTotal(pkg.boq.filter((l) => l.sectionId === section.id)),
       adjustments: state.control.adjustments.filter((x) => x.sectionId === section.id),
       corrections: state.control.corrections.filter((x) => x.crossSectionHe.includes(`${section.id}-`) || x.afterHe.startsWith(section.id) || x.beforeHe.startsWith(section.id)),
       tasks: state.control.tasks.filter((t) => t.sectionId === section.id),
@@ -495,7 +501,8 @@ define({
       remaining: c.amount != null ? c.amount - recorded : null,
       invoices: invoices.map(invoiceView),
       purchaseOrders: state.erp.purchaseOrders.filter((p) => p.contractId === c.id).map(poView),
-      boq: pkg.boq.filter((l) => l.sectionId === c.sectionId).map((l) => ({ ...l, coveredByThis: l.coveredByContractId === c.id })),
+      boq: pkg.boq.filter((l) => l.sectionId === c.sectionId).map((l) => ({ ...boqLineView(l), coveredByThis: l.coveredByContractId === c.id })),
+      boqCoveredTotal: boqTotal(pkg.boq.filter((l) => l.coveredByContractId === c.id)),
       appendixInForce: current,
     };
   },
@@ -504,13 +511,13 @@ define({
 define({
   name: "query_boq",
   title: "Bill of quantities",
-  description: "BOQ lines with coverage (covered / excluded / not_contracted), the covering contract or exclusion clause, quantities and units; filter by section, Blue Book chapter (the Interministerial Specification chapter the line belongs to), coverage or a text fragment. byChapter rolls the lines up per chapter.",
+  description: "BOQ lines with coverage (covered / excluded / not_contracted), the covering contract or exclusion clause, quantities, units, unit prices (₪ before VAT; null = unpriced) and each line's amount; filter by section, Blue Book chapter (the Interministerial Specification chapter the line belongs to), coverage or a text fragment. byChapter rolls the lines up per chapter with the chapter's priced value; totalAmount is the priced value of the selection. The priced BOQ of a lump-sum contract is that contract's breakdown — compare it with the contract amount, not with the forecast.",
   kind: "read",
   input: { projectId, sectionId: sectionId.optional(), chapter: z.string().optional().describe("Blue Book chapter code, e.g. '57'"), coverage: z.enum(["covered", "excluded", "not_contracted"]).optional(), query: z.string().optional().describe("text fragment of the description") },
   run: async (a) => {
     await loadState(a.projectId);
     const rows = pkg.boq.filter((l) => (!a.sectionId || l.sectionId === a.sectionId) && (!a.chapter || l.chapter === a.chapter) && (!a.coverage || l.coverage === a.coverage) && (!a.query || l.descriptionHe.includes(a.query)));
-    return { boqVersion: pkg.project.boqVersion, total: rows.length, byChapter: boqByChapter(rows), lines: rows.map((l) => ({ ...l, sectionHe: sectionLabel(l.sectionId) })) };
+    return { boqVersion: pkg.project.boqVersion, total: rows.length, ...boqTotal(rows), byChapter: boqByChapter(rows), lines: rows.map(boqLineView) };
   },
 });
 

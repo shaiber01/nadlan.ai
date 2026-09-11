@@ -225,6 +225,8 @@ export interface HBoqLine {
   descriptionHe: string;
   qty: number;
   unit: string;
+  /** ₪ per `unit` before VAT; null when the line is not priced (a quantity-only list). */
+  unitPrice: number | null;
   sectionId: SectionId;
   coverage: Coverage;
   coverageRef: string | null;

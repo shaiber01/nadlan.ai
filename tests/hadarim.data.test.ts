@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateHadarimPackage, recordedBySection, CURRENT_CONTROL } from "../src/hadarim/data/generate";
 import { runChecks } from "../src/hadarim/engine/checks";
 import { lineAmount } from "../src/hadarim/engine/units";
+import { boqLineAmount, boqTotal } from "../src/hadarim/engine/boq";
 import type { SectionId } from "../src/hadarim/data/types";
 import { scenarioPackage } from "./fixtures/scenario";
 import reportVersions from "../src/hadarim/data/report-versions.json";
@@ -73,6 +74,20 @@ describe("Hadarim v2 data package", () => {
     expect(pkg.boq.filter((l) => l.chapter === "17").every((l) => l.coverage === "covered" && l.coveredByContractId === "14-01")).toBe(true);
     expect(pkg.boq.filter((l) => l.chapter === "05").every((l) => l.coverage === "covered" && l.coveredByContractId === "05-01")).toBe(true);
     expect(pkg.boq.filter((l) => l.sectionId === "12" || l.sectionId === "13" || l.sectionId === "15" || l.sectionId === "16").every((l) => l.coverage === "not_contracted")).toBe(true);
+  });
+
+  it("BOQ v4 is priced: every line has a whole-shekel unit price, a lump-sum contract's lines sum to the contract, steel is priced at the budget's 4,000", () => {
+    expect(pkg.boq.every((l) => l.unitPrice != null && Number.isInteger(l.unitPrice) && l.unitPrice > 0)).toBe(true);
+    const drainage = pkg.boq.find((l) => l.id === "57.03.040")!;
+    expect(boqLineAmount(drainage)).toBe(120_000);
+    expect(pkg.boq.find((l) => l.descriptionHe.includes("מוטות פלדה"))!.unitPrice).toBe(4000);
+    for (const c of pkg.contracts.filter((c) => c.amount != null)) {
+      expect(boqTotal(pkg.boq.filter((l) => l.coveredByContractId === c.id)).amount, `contract ${c.id}`).toBe(c.amount);
+    }
+    for (const s of pkg.sections.filter((s) => s.contractIds.length === 0 && s.kind === "works")) {
+      const total = boqTotal(pkg.boq.filter((l) => l.sectionId === s.id)).amount;
+      if (total) expect(Math.abs(total - s.budget) / s.budget, `section ${s.id}`).toBeLessThan(0.005);
+    }
   });
 
   it("forecast 1.8 prices the steel remainder by the appendix in force and carries the development coverage note", () => {

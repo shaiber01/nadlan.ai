@@ -23,6 +23,7 @@ Every figure is quoted from a tool result and named for what it is: נרשם (ח
 | The budget itself: original, approved changes, updated | `list_budget_changes`, `get_forecast` (`originalBudget`, `budgetChanges`, `budget` per section) |
 | Documents nobody processed yet; what was new lately | `search_documents` (`unprocessed: true`), `list_heartbeats` |
 | The bill of quantities by Blue Book chapter | `query_boq` (`chapter`, `byChapter`), `get_section.boqByChapter` |
+| Unit prices — what a cubic metre of concrete, a square metre of plaster, an electrical point costs in this project | `query_boq` (`unitPrice`, `amount` per line; `totalAmount`, `byChapter[].amount`), `get_contract.boqCoveredTotal` against the contract amount. The priced BOQ is the contract's breakdown, not the forecast: never read it as what will be spent |
 
 If the control has not been run yet (`get_project.control.status = idle`), say the figures reflect the previous final control plus the live ERP data, and offer `/bakara-control`.
 

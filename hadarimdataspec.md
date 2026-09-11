@@ -114,6 +114,8 @@ Key line: `57.03.040 — צינור ניקוז PVC קשיח SN8 קוטר 400 מ�
 
 Steel appears in chapter 02 as ״מוטות פלדה מצולעים לזיון — 750 טון״ (quantities total → ties to the 3.0M budget at 4,000).
 
+Every line carries a unit price (₪ before VAT, whole shekels). The priced lines a lump-sum contract covers sum exactly to the contract amount (02-01 12,600,000 · 04-01 2,850,000 · 05-01 900,000 · 06-01 2,400,000 · 07-01 3,200,000 · 08-01 2,300,000 · 09-01 2,600,000 · 10-01 1,500,000 · 11-01 2,000,000 · 14-01 1,300,000); where no contract is signed (12, 13, 15, 16) they land within 0.2 % of the budget, which reads as the rounded estimate. Steel is priced at the budget's 4,000 ₪/t (bars and welded mesh), so the 38 t of mesh put chapter 02's steel at 3,152,000 against the 3,000,000 budget — the budget was set on the 750 t of bars alone. Line 57.03.040 is priced 1,500 ₪/m = 120,000, the figure the quote in the folder repeats.
+
 Each BOQ chapter maps to a section and to a contract coverage flag: covered / excluded (§ref) / not yet contracted. Chapter 05 fully covered → positive finding. Chapter 17 excluded from shell but covered by 14-01 → trap, not a gap. Line 57.03.040 stays `covered` in the record even after the gap is found — the check reads it from `boq_v5_ch57.pdf`'s recorded facts (`removedLineIds`), not from the line's own `coverage` field. No seeded BOQ line is `excluded`.
 
 ---
