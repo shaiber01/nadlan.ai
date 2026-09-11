@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HDocument, HadarimPackage } from "../src/hadarim/data/types";
-import { DATA_QUALITY_KINDS, checkDocuments, compareDocument, documentRecord, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
+import { DATA_QUALITY_KINDS, boqPageFor, checkDocuments, compareDocument, documentRecord, findQuoteFor, recordDocuments, runChecks, type InvoiceFixPatch } from "../src/hadarim/engine/checks";
 import { initialState, pkg, updateInvoiceFields } from "../src/hadarim/engine/commands";
 import { isUnprocessed } from "../src/hadarim/engine/heartbeat";
 import { documentAsText, documentDownload } from "../src/hadarim/documents/download";
@@ -58,6 +58,24 @@ describe("compareDocument — the record against its document, the way the cards
     const [f] = checkDocuments(read, state.erp, { poId: po.id });
     expect(f.sources.some((s) => s.kind === "document" && s.refId === "upload_9")).toBe(true);
     expect(f.sources.some((s) => s.kind === "document" && s.refId === old.id)).toBe(false);
+  });
+
+  it("a replaced BOQ page or quote (from the folder, no record) is history too: the line's page and quote are the current documents", () => {
+    const page = pkg.documents.find((d) => d.kind === "boq_page" && d.facts?.boqLineId)!;
+    const lineId = String(page.facts!.boqLineId);
+    const line = pkg.boq.find((l) => l.id === lineId)!;
+    const quote = findQuoteFor(pkg, line)!;
+    expect(boqPageFor(pkg, lineId)?.id).toBe(page.id);
+    const newPage: HDocument = { ...page, id: "upload_10", fileName: "boq_v5.pdf", filePath: "HADARIM/upload_10/boq_v5.pdf", blocks: [], facts: undefined, factsSource: undefined };
+    const newQuote: HDocument = { ...quote, id: "upload_11", fileName: "quote_v2.pdf", filePath: "HADARIM/upload_11/quote_v2.pdf", blocks: [], facts: undefined, factsSource: undefined };
+    const p: HadarimPackage = { ...pkg, documents: [...pkg.documents.filter((d) => d.id !== page.id && d.id !== quote.id), { ...page, supersededBy: "upload_10" }, { ...quote, supersededBy: "upload_11" }, newPage, newQuote] };
+    // unread replacements: the old pages no longer answer, and the new ones carry no facts yet
+    expect(boqPageFor(p, lineId)).toBeUndefined();
+    expect(findQuoteFor(p, line)?.id).not.toBe(quote.id);
+    // once read, the replacements are the sources
+    const read: HadarimPackage = { ...p, documents: p.documents.map((d) => (d.id === "upload_10" ? { ...d, facts: { boqLineId: lineId }, factsSource: { method: "agent" as const } } : d.id === "upload_11" ? { ...d, facts: { ...quote.facts }, factsSource: { method: "agent" as const } } : d)) };
+    expect(boqPageFor(read, lineId)?.id).toBe("upload_10");
+    expect(findQuoteFor(read, line)?.id).toBe("upload_11");
   });
 
   it("every compared fact of the seed invoice matches, with Hebrew labels; the rows the document check reads are exactly its mismatches", () => {

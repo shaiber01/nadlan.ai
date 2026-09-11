@@ -172,14 +172,19 @@ export function documentById(pkg: HadarimPackage, id: string | null | undefined)
   return id ? pkg.documents.find((d) => d.id === id) : undefined;
 }
 
+/** The documents still in force: a document replaced by a newer upload is history, never a source. */
+function currentDocuments(pkg: HadarimPackage): HDocument[] {
+  return pkg.documents.filter((d) => !d.supersededBy);
+}
+
 /** The BOQ page document that shows a given BOQ line, if any. */
 export function boqPageFor(pkg: HadarimPackage, boqLineId: string): HDocument | undefined {
-  return pkg.documents.find((d) => d.kind === "boq_page" && (asStr(d.facts?.boqLineId) === boqLineId || JSON.stringify(d.blocks).includes(boqLineId)));
+  return currentDocuments(pkg).find((d) => d.kind === "boq_page" && (asStr(d.facts?.boqLineId) === boqLineId || JSON.stringify(d.blocks).includes(boqLineId)));
 }
 
 /** A processed, newer BOQ page whose recorded facts say a given line was removed from scope. */
 export function revisionRemovalDocFor(pkg: HadarimPackage, boqLineId: string): HDocument | undefined {
-  return pkg.documents.find((d) => d.kind === "boq_page" && d.facts && Array.isArray(d.facts.removedLineIds) && (d.facts.removedLineIds as unknown[]).includes(boqLineId));
+  return currentDocuments(pkg).find((d) => d.kind === "boq_page" && d.facts && Array.isArray(d.facts.removedLineIds) && (d.facts.removedLineIds as unknown[]).includes(boqLineId));
 }
 
 export function appendixUnit(a: HPriceAppendix): string {
@@ -214,10 +219,11 @@ export function orderLineFix(line: { qty: number; unit: string; priceUnit: strin
 
 /** A quote in the project folder for a BOQ line: by the extracted BOQ reference first, else by matching words in the title. */
 export function findQuoteFor(pkg: HadarimPackage, line: HBoqLine): HDocument | undefined {
-  const byRef = pkg.documents.find((d) => d.kind === "quote" && quoteFacts(d)?.boqLineId === line.id);
+  const docs = currentDocuments(pkg);
+  const byRef = docs.find((d) => d.kind === "quote" && quoteFacts(d)?.boqLineId === line.id);
   if (byRef) return byRef;
   const keywords = line.descriptionHe.split(/[\s,()״"]+/).filter((w) => w.length >= 4);
-  return pkg.documents.find((d) => d.kind === "quote" && keywords.filter((w) => d.titleHe.includes(w)).length >= Math.min(2, keywords.length));
+  return docs.find((d) => d.kind === "quote" && keywords.filter((w) => d.titleHe.includes(w)).length >= Math.min(2, keywords.length));
 }
 
 /** Issues carried into a control from the last final forecast before it (open and recently closed). */

@@ -8,7 +8,8 @@ import { defaultActor } from "./format";
 const RECORD_HE = { invoice: "חשבון", po: "הזמנה", contract: "חוזה" } as const;
 
 export interface UploadPreset {
-  recordRef: { type: "invoice" | "po" | "contract"; id: string };
+  /** The record the upload belongs to; absent for a replace from the folder screen, where it is the replaced document's record (if any). */
+  recordRef?: { type: "invoice" | "po" | "contract"; id: string };
   kind?: DocumentKind;
   supplierId?: string | null;
   /** The document the upload replaces: it stays in the folder marked as replaced; the record, the checks and the agent use the new one. */
@@ -16,9 +17,10 @@ export interface UploadPreset {
 }
 
 /**
- * Upload a real file to the project folder — from the folder screen (any record, or none) or from a record's
- * card (record preset, optionally replacing one of its documents). The browser stores the file and its row
- * only; reading it, describing it and recording its facts is the agent's.
+ * Upload a real file to the project folder — from the folder screen (any record, or none, or replacing one of
+ * the folder's documents, a seed page included) or from a record's card (record preset, optionally replacing
+ * one of its documents). The browser stores the file and its row only; reading it, describing it and recording
+ * its facts is the agent's.
  */
 export function UploadDocumentForm({ online, defaultDate, onDone, onError, onCancel, preset }: { online: boolean; defaultDate: string; onDone: (doc: HDocument) => void; onError: (textHe: string) => void; onCancel?: () => void; preset?: UploadPreset }) {
   const [file, setFile] = useState<File | null>(null);
@@ -26,8 +28,9 @@ export function UploadDocumentForm({ online, defaultDate, onDone, onError, onCan
   const [titleHe, setTitleHe] = useState("");
   const [date, setDate] = useState(defaultDate);
   const [supplierId, setSupplierId] = useState(preset?.replaces?.supplierId ?? preset?.supplierId ?? "");
-  const [recordType, setRecordType] = useState<"" | "invoice" | "po" | "contract">(preset?.recordRef.type ?? "");
-  const [recordId, setRecordId] = useState(preset?.recordRef.id ?? "");
+  const presetRecord = preset?.recordRef ?? preset?.replaces?.recordRef;
+  const [recordType, setRecordType] = useState<"" | "invoice" | "po" | "contract">(presetRecord?.type ?? "");
+  const [recordId, setRecordId] = useState(presetRecord?.id ?? "");
   const [byId, setById] = useState<PersonId>(defaultActor("חשבונות"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,10 +95,10 @@ export function UploadDocumentForm({ online, defaultDate, onDone, onError, onCan
             ))}
           </select>
         </label>
-        {preset ? (
+        {presetRecord ? (
           <label className="erp-field">
             <span>שייך לרשומה</span>
-            <input value={`${RECORD_HE[preset.recordRef.type]} ${preset.recordRef.id}`} readOnly data-testid="erp-doc-record" />
+            <input value={`${RECORD_HE[presetRecord.type]} ${presetRecord.id}`} readOnly data-testid="erp-doc-record" />
           </label>
         ) : (
           <label className="erp-field">
