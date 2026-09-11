@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
 import { store, useV2State } from "../../app/store";
-import type { HChangeLogEntry } from "../../data/types";
+import { RECORD_TYPE_HE, type HChangeLogEntry } from "../../data/types";
 import { dateTimeHe, num, personName } from "./format";
-
-const RECORD_HE: Record<HChangeLogEntry["recordType"], string> = { invoice: "חשבון", po: "הזמנה", contract: "חוזה", budget: "תקציב", document: "מסמך" };
 
 export function ChangeLogScreen() {
   const state = useV2State();
@@ -20,6 +18,7 @@ export function ChangeLogScreen() {
     else if (c.recordType === "po") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "purchase_orders", poId: Number(c.recordId), editing: false } }));
     else if (c.recordType === "budget") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "budget" } }));
     else if (c.recordType === "document") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "documents" } }));
+    else if (c.recordType === "boq_line") store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "boq", boqLineId: c.recordId } }));
     else store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "contracts", contractId: c.recordId } }));
   };
   return (
@@ -52,7 +51,7 @@ export function ChangeLogScreen() {
               <tr key={c.id} className="clickable" onClick={() => open(c)} data-testid="erp-changelog-row">
                 <td>{dateTimeHe(c.at)}</td>
                 <td className="mono">
-                  {RECORD_HE[c.recordType]} {c.recordId}
+                  {RECORD_TYPE_HE[c.recordType]} {c.recordId}
                 </td>
                 <td>{c.field}</td>
                 <td>{c.before}</td>

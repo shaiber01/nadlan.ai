@@ -152,6 +152,10 @@ export async function loadErp(projectId = DEFAULT_PROJECT_ID, supabase: Db = db(
 }
 
 /** The whole project as the engine's package: reference data, ERP records, forecasts, issues, documents. */
+function rowToBoqLine(l: Tables<"boq_lines">): HBoqLine {
+  return { id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, unitPrice: l.unit_price, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) };
+}
+
 export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HadarimPackage> {
   const [projects, people, suppliers, sections, documents, contracts, boq, versions, fSections, fLines, issues, erp, budgetChanges] = await Promise.all([
     all(supabase.from("projects").select("*").eq("id", projectId), "projects"),
@@ -231,7 +235,7 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
   const peopleOut: HPerson[] = people.map((x) => ({ id: x.id as PersonId, nameHe: x.name_he, roleHe: x.role_he, canWriteAllocation: x.can_write_allocation, ...(x.channel ? { channel: x.channel as HPerson["channel"] } : {}) }));
   const suppliersOut: HSupplier[] = suppliers.map((s) => ({ id: s.id, nameHe: s.name_he, kind: s.kind as HSupplier["kind"] }));
   const documentsOut: HDocument[] = documents.map(rowToDocument);
-  const boqOut: HBoqLine[] = boq.map((l) => ({ id: l.id, chapter: l.chapter, chapterNameHe: l.chapter_name_he, descriptionHe: l.description_he, qty: Number(l.qty), unit: l.unit, unitPrice: l.unit_price, sectionId: l.section_id as SectionId, coverage: l.coverage as HBoqLine["coverage"], coverageRef: l.coverage_ref, coveredByContractId: l.covered_by_contract_id, ...(l.note_he ? { noteHe: l.note_he } : {}) }));
+  const boqOut: HBoqLine[] = boq.map(rowToBoqLine);
   const issuesOut = issues.map(rowToOpenIssue);
   const forecasts: HForecastVersion[] = versions.map((v) => ({
     controlDate: v.control_date,
@@ -309,6 +313,13 @@ export async function saveInvoice(invoice: HInvoice, meta: WriteMeta, isNew: boo
   const { data, error } = await query;
   if (error) throw new Error(`invoice ${invoice.id}: ${error.message}`);
   return rowToInvoice(data);
+}
+
+/** The ERP's edit of a BOQ line's unit price, attributed; the trigger writes the change log (record type boq_line). */
+export async function saveBoqUnitPrice(lineId: string, unitPrice: number, meta: WriteMeta, projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HBoqLine> {
+  const { data, error } = await supabase.from("boq_lines").update({ unit_price: unitPrice, updated_by: meta.byId, update_note_he: meta.noteHe ?? null }).eq("project_id", projectId).eq("id", lineId).select("*").single();
+  if (error) throw new Error(`boq line ${lineId}: ${error.message}`);
+  return rowToBoqLine(data);
 }
 
 export async function savePurchaseOrder(po: HPurchaseOrder, meta: WriteMeta, projectId = DEFAULT_PROJECT_ID, supabase: Db = db()): Promise<HPurchaseOrder> {

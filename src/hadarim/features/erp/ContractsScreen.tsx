@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Button } from "../../components/primitives";
 import { AttachedDocuments } from "./AttachedDocuments";
 import { store, useUi, useV2State } from "../../app/store";
+import type { HBoqLine, HContract, PersonId } from "../../data/types";
+import { boqLineAmount, boqTotal, unitPriceHe } from "../../engine/boq";
 import { pkg } from "../../engine/commands";
 import { Fieldv, RecordSection } from "./InvoicesScreen";
-import { dateHe, nis, num, sectionFull, sectionShort, supplierName } from "./format";
+import { dateHe, defaultActor, nis, num, personName, sectionFull, sectionShort, supplierName } from "./format";
 
 export function ContractsScreen() {
   const ui = useUi();
@@ -149,6 +152,7 @@ function ContractView({ contractId }: { contractId: string }) {
             </table>
           )}
         </section>
+        <PriceSchedule contract={c} />
         {c.priceAppendices && c.priceAppendices.length > 0 && (
           <section className="erp-record-section">
             <h3>נספחי מחיר</h3>
@@ -214,5 +218,176 @@ function ContractView({ contractId }: { contractId: string }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * The contract's price schedule: the BOQ lines it covers with their unit prices — for a lump-sum contract the
+ * breakdown of the contract sum, which the total is read against. A unit price is edited in place, attributed
+ * and logged; the line itself stays the bill of quantities' (open it from the line id).
+ */
+function PriceSchedule({ contract: c }: { contract: HContract }) {
+  useV2State(); // re-render after a save (the package is re-read with the session)
+  const lines = pkg.boq.filter((l) => l.coveredByContractId === c.id).sort((a, b) => a.id.localeCompare(b.id));
+  const [editing, setEditing] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  if (lines.length === 0) return null;
+  const total = boqTotal(lines);
+  const gap = c.amount != null && total.unpricedLines === 0 ? total.amount - c.amount : null;
+  const openLine = (id: string) => store.setUi((u) => ({ ...u, erp: { ...u.erp, screen: "boq", boqLineId: id, sectionId: c.sectionId } }));
+  return (
+    <section className="erp-record-section" data-testid="erp-contract-price-schedule">
+      <h3>נספח תמחור — כתב כמויות חוזי ({num(lines.length)} שורות)</h3>
+      <p className="erp-muted">{c.amount != null ? "הפירוק של סכום החוזה לפי שורות כתב הכמויות שהחוזה מכסה; סכום השורות אמור להתכנס לסכום החוזה." : "השורות שהסכם המסגרת מכסה, במחיר לפי הנספח בתוקף."}</p>
+      <table className="erp-table compact" data-testid="erp-contract-boq">
+        <thead>
+          <tr>
+            <th>שורה</th>
+            <th>תיאור</th>
+            <th className="num">כמות</th>
+            <th>יח׳</th>
+            <th className="num">מחיר יח׳</th>
+            <th className="num">סה״כ</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) =>
+            editing === l.id ? (
+              <PriceEditRow
+                key={l.id}
+                line={l}
+                onDone={(note) => {
+                  setEditing(null);
+                  setMessage(note);
+                }}
+                onCancel={() => setEditing(null)}
+              />
+            ) : (
+              <tr key={l.id} data-testid={`erp-contract-boq-row-${l.id}`}>
+                <td>
+                  <button type="button" className="erp-link mono" onClick={() => openLine(l.id)}>
+                    {l.id}
+                  </button>
+                </td>
+                <td className="erp-desc">{l.descriptionHe}</td>
+                <td className="num">{num(l.qty)}</td>
+                <td>{l.unit}</td>
+                <td className="num">{l.unitPrice == null ? "—" : num(l.unitPrice)}</td>
+                <td className="num">{boqLineAmount(l) == null ? "—" : nis(boqLineAmount(l)!)}</td>
+                <td>
+                  <button type="button" className="erp-link" onClick={() => setEditing(l.id)} data-testid={`erp-contract-boq-edit-${l.id}`}>
+                    ערוך מחיר
+                  </button>
+                </td>
+              </tr>
+            ),
+          )}
+        </tbody>
+        <tfoot>
+          <tr className="erp-group-row">
+            <td colSpan={5}>סה״כ נספח התמחור{total.unpricedLines ? ` (${num(total.unpricedLines)} שורות ללא מחיר)` : ""}</td>
+            <td className="num" data-testid="erp-contract-boq-total">
+              {nis(total.amount)}
+            </td>
+            <td></td>
+          </tr>
+          {c.amount != null && (
+            <tr className="erp-group-row">
+              <td colSpan={5}>סכום החוזה</td>
+              <td className="num">{nis(c.amount)}</td>
+              <td></td>
+            </tr>
+          )}
+          {gap != null && gap !== 0 && (
+            <tr>
+              <td colSpan={5} className="erp-warn-text">
+                פער בין נספח התמחור לסכום החוזה
+              </td>
+              <td className="num erp-warn-text" data-testid="erp-contract-boq-gap">
+                {gap > 0 ? "+" : "−"}
+                {nis(Math.abs(gap))}
+              </td>
+              <td></td>
+            </tr>
+          )}
+        </tfoot>
+      </table>
+      {message && (
+        <div className="erp-saved" role="status" data-testid="erp-contract-boq-saved">
+          {message}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PriceEditRow({ line, onDone, onCancel }: { line: HBoqLine; onDone: (note: string) => void; onCancel: () => void }) {
+  const [price, setPrice] = useState(line.unitPrice == null ? "" : String(line.unitPrice));
+  const [noteHe, setNoteHe] = useState("");
+  const [byId, setById] = useState<PersonId>(defaultActor("פרויקט"));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const p = Number(price.replace(/[^\d]/g, ""));
+  const preview = Number.isInteger(p) && p > 0 ? p * line.qty : null;
+  const save = async () => {
+    setSaving(true);
+    try {
+      await store.setBoqUnitPrice(line.id, p, byId, noteHe.trim() || undefined);
+      onDone(`נשמר. שורה ${line.id}: ${unitPriceHe(line)} ← ${unitPriceHe({ unit: line.unit, unitPrice: p })} (${personName(byId)}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <tr className="erp-row-target" data-testid={`erp-contract-boq-editing-${line.id}`}>
+        <td className="mono">{line.id}</td>
+        <td className="erp-desc">{line.descriptionHe}</td>
+        <td className="num">{num(line.qty)}</td>
+        <td>{line.unit}</td>
+        <td className="num">
+          <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} data-testid="erp-contract-boq-price-input" autoFocus style={{ width: "6em" }} />
+        </td>
+        <td className="num">{preview == null ? "—" : nis(preview)}</td>
+        <td className="erp-muted">{unitPriceHe(line)} ←</td>
+      </tr>
+      <tr className="erp-row-target">
+        <td colSpan={7}>
+          <div className="erp-form" data-testid="erp-contract-boq-edit-form">
+            <div className="erp-form-grid">
+              <label className="erp-field">
+                <span>מבצע השינוי</span>
+                <select value={byId} onChange={(e) => setById(e.target.value as PersonId)} data-testid="erp-contract-boq-by">
+                  {pkg.people.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.nameHe} — {person.roleHe}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="erp-field erp-field-wide">
+                <span>הבסיס לשינוי</span>
+                <input value={noteHe} onChange={(e) => setNoteHe(e.target.value)} placeholder="נספח, סיכום עם הקבלן, הצעת מחיר" data-testid="erp-contract-boq-note" />
+              </label>
+            </div>
+            {error && (
+              <p className="erp-error" role="alert" data-testid="erp-contract-boq-error">
+                {error}
+              </p>
+            )}
+            <div className="erp-form-actions">
+              <Button size="sm" variant="primary" onClick={save} disabled={saving || preview == null} data-testid="erp-contract-boq-save">
+                שמור
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
+                ביטול
+              </Button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </>
   );
 }

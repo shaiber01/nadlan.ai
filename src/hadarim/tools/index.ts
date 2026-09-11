@@ -3,15 +3,15 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { DOCUMENT_KIND_HE, type DocumentKind, type HDocument, type HInvoice, type HPurchaseOrder } from "../data/types";
-import { addBudgetChange, addDocument, db, deleteInvoice, documentFilePath, documentFileUrl, downloadDocumentFile, latestChangeLogId, listHeartbeats, listProjects, nextDocumentId, recordHeartbeat, resetProject, updateDocument, updateDocumentFacts, updateProject, uploadDocumentFile } from "../db/client";
+import { addBudgetChange, addDocument, db, deleteInvoice, documentFilePath, documentFileUrl, downloadDocumentFile, latestChangeLogId, listHeartbeats, listProjects, nextDocumentId, recordHeartbeat, resetProject, saveBoqUnitPrice, updateDocument, updateDocumentFacts, updateProject, uploadDocumentFile } from "../db/client";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState, nowStamp, saveReportVersion, saveState } from "../db/session";
 import { extractText, isImage, mimeTypeFor } from "../documents/extract";
 import { changeLogId, heartbeatSummaryHe, heartbeatWork, isUnprocessed, reportBlockers } from "../engine/heartbeat";
 import { DATA_QUALITY_KINDS, FINDING_KINDS, groupByRecord, checkAllocation, checkOrderAllocation, checkContractOverrun, checkCoverage, checkCumulative, checkDates, checkDocuments, checkDuplicates, checkPrices, checkRetention, checkReviewAging, checkUnits, positives, quoteFacts, sectionLabel, sectionShort, withPeople, type HFinding } from "../engine/checks";
 import { chapterNameHe } from "../data/bluebook";
-import { boqLineAmount, boqTotal } from "../engine/boq";
-import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type SectionId } from "../data/types";
+import { boqLineAmount, boqTotal, repriceBoqLine, unitPriceHe } from "../engine/boq";
+import { BUDGET_CHANGE_KIND_HE, type HBoqLine, type HSection, type PersonId, type SectionId } from "../data/types";
 import { SCRIPT_INVOICE_ID, confirmQuote, createInvoice, decide, finalizeControl, orderLineHe, pkg, revealAllSteps, reviewFindings, route, saveConfig, setReportConfig, startControl, updateInvoiceBuilding } from "../engine/commands";
 import { budgetChangesBySection, uncoveredByBasis, workingForecast } from "../engine/forecast";
 import { CHANGE_TYPE_HE, type V2State } from "../engine/model";
@@ -63,6 +63,7 @@ const CHANGE_TYPES = Object.keys(CHANGE_TYPE_HE) as [keyof typeof CHANGE_TYPE_HE
 const BASES = ["contract", "po", "quote", "appendix", "estimate"] as const;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
+const num = (v: number) => v.toLocaleString("he-IL");
 const signed = (v: number) => (v === 0 ? "0 ₪" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
 
 function headline(state: V2State) {
@@ -561,7 +562,7 @@ define({
   title: "Change log",
   description: "Who changed what in the ERP and when (written by database triggers): filter by date, record type, record id or person. Use it to see what changed since the last control or today.",
   kind: "read",
-  input: { projectId, since: z.string().optional().describe("yyyy-mm-dd or yyyy-mm-ddTHH:MM (Israel time)"), recordType: z.enum(["invoice", "po", "contract", "budget"]).optional(), recordId: z.string().optional(), byId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) },
+  input: { projectId, since: z.string().optional().describe("yyyy-mm-dd or yyyy-mm-ddTHH:MM (Israel time)"), recordType: z.enum(["invoice", "po", "contract", "budget", "document", "boq_line"]).optional(), recordId: z.string().optional(), byId: z.string().optional(), limit: z.number().int().min(1).max(500).default(100) },
   run: async (a) => {
     const state = await loadState(a.projectId);
     const rows = state.erp.changeLog.filter((c) => (!a.since || c.at >= a.since) && (!a.recordType || c.recordType === a.recordType) && (!a.recordId || c.recordId === a.recordId) && (!a.byId || c.byId === a.byId));
@@ -1162,6 +1163,35 @@ define({
     const controlDate = fresh.control.controlDate;
     const countsInControl = created.date <= controlDate;
     return { ok: true, change: budgetChangeView(created), sectionsAfter: after, countsInControl, ...(countsInControl ? {} : { noteHe: `השינוי מתוארך ${created.date.split("-").reverse().join(".")} — אחרי מועד הבקרה ${controlDate.split("-").reverse().join(".")} — ולכן אינו נכלל בתקציב המעודכן של בקרה זו (ייכלל בבקרה הבאה). אם אושר לפני מועד הבקרה, רשום אותו עם date מתאים.` }), verifiedHe: `נקרא מחדש: ${created.id} · ${BUDGET_CHANGE_KIND_HE[created.kind]} · ${created.amount.toLocaleString("he-IL")} ₪ · אישר ${personName(created.approvedById)}${logged ? ` · נרשם ביומן השינויים (${logged.after})` : ""}`, headline: headline(fresh) };
+  },
+});
+
+define({
+  name: "set_boq_unit_price",
+  title: "Set a BOQ line's unit price",
+  description: "Change the unit price of one BOQ line on the user's instruction — the price schedule of the contract that covers the line (a lump-sum contract's breakdown) or of the framework agreement. Whole shekels before VAT. Attributed to byId and trigger-logged as record type boq_line; the line's quantity, unit and coverage do not change. Returns the line re-read from the database and the covering contract's schedule total against the contract amount. Not a forecast change: use add_forecast_adjustment for what will be spent.",
+  kind: "write",
+  input: { projectId, lineId: z.string().describe("BOQ line id, e.g. 57.03.040"), unitPrice: z.number().int().positive().describe("₪ per the line's unit, before VAT"), byId: personId, noteHe: z.string().optional().describe("the basis for the change (an appendix, an agreement with the contractor)") },
+  run: async (a) => {
+    await loadState(a.projectId);
+    const line = pkg.boq.find((l) => l.id === a.lineId);
+    if (!line) throw new Error(`שורה ${a.lineId} לא קיימת בכתב הכמויות`);
+    if (!pkg.people.some((p) => p.id === a.byId)) throw new Error(`${a.byId} אינו מוגדר בפרויקט`);
+    repriceBoqLine(line, a.unitPrice);
+    const before = unitPriceHe(line);
+    await saveBoqUnitPrice(a.lineId, a.unitPrice, { byId: a.byId as PersonId, noteHe: a.noteHe }, a.projectId);
+    const fresh = await loadState(a.projectId);
+    const after = pkg.boq.find((l) => l.id === a.lineId)!;
+    const contract = after.coveredByContractId ? pkg.contracts.find((c) => c.id === after.coveredByContractId) : null;
+    const scheduleTotal = contract ? boqTotal(pkg.boq.filter((l) => l.coveredByContractId === contract.id)) : null;
+    const logged = fresh.erp.changeLog.find((e) => e.recordType === "boq_line" && e.recordId === a.lineId && e.after === unitPriceHe(after));
+    return {
+      ok: true,
+      line: boqLineView(after),
+      verifiedHe: `שורה ${after.id} נקראה מחדש ממסד הנתונים — ${before} ← ${unitPriceHe(after)} · ${num(after.qty)} ${after.unit} = ${nis(boqLineAmount(after)!)}`,
+      contract: contract && scheduleTotal ? { id: contract.id, amount: contract.amount, scheduleTotal: scheduleTotal.amount, gap: contract.amount == null ? null : scheduleTotal.amount - contract.amount } : null,
+      changeLog: logged ?? null,
+    };
   },
 });
 

@@ -286,7 +286,7 @@ export interface HForecastVersion {
 export interface HChangeLogEntry {
   id: string;
   /** "document": a deletion in the project folder (the row is gone; the entry says who removed which file). */
-  recordType: "invoice" | "po" | "contract" | "budget" | "document";
+  recordType: "invoice" | "po" | "contract" | "budget" | "document" | "boq_line";
   recordId: string;
   field: string;
   before: string;
@@ -295,6 +295,8 @@ export interface HChangeLogEntry {
   byId: PersonId;
   noteHe: string;
 }
+
+export const RECORD_TYPE_HE: Record<HChangeLogEntry["recordType"], string> = { invoice: "חשבון", po: "הזמנה", contract: "חוזה", budget: "תקציב", document: "מסמך", boq_line: "שורת כתב כמויות" };
 
 export interface HDocumentBlock {
   kind: "heading" | "paragraph" | "table" | "highlight" | "signature" | "stamp";

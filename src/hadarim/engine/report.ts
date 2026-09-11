@@ -1,6 +1,6 @@
 import { priceAppendixAt } from "../data/generate";
 import { chapterLabelHe } from "../data/bluebook";
-import type { BuildingTag, HForecastLine, HadarimPackage, SectionId } from "../data/types";
+import { RECORD_TYPE_HE, type BuildingTag, type HForecastLine, type HadarimPackage, type SectionId } from "../data/types";
 import { boqPageFor, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
@@ -889,7 +889,7 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
       sourcesHe: [`מערכת המידע — ${state.erp.invoices.length} חשבונות, ${state.erp.purchaseOrders.length} הזמנות, ${pkg.contracts.length} חוזים`, `כתב כמויות גרסה ${pkg.project.boqVersion.number}`, `תחזית ${dateHe(previous.controlDate)} (${previous.status === "final" ? "סופית" : "טיוטה"})`, `תיקיית הפרויקט: ${pkg.documents.map((d) => d.titleHe.split(" — ")[0]).join(", ")}`],
       correctionLog: corrections,
       inReview: wf.invoicesInReview,
-      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= controlDate).map((c) => `${dateHe(c.at)} — ${c.recordType === "invoice" ? "חשבון" : c.recordType === "po" ? "הזמנה" : "חוזה"} ${c.recordId}: ${c.before === "—" ? `${c.field}: ${c.after}` : `${c.field} ${c.before} ← ${c.after}`} (${personName(pkg, c.byId)})`),
+      afterCutoffHe: state.erp.changeLog.filter((c) => c.at >= controlDate).map((c) => `${dateHe(c.at)} — ${RECORD_TYPE_HE[c.recordType]} ${c.recordId}: ${c.before === "—" ? `${c.field}: ${c.after}` : `${c.field} ${c.before} ← ${c.after}`} (${personName(pkg, c.byId)})`),
       uncovered: uncoveredRows,
       uncoveredTotal: uncovered.total,
       allocations: allocationRows,

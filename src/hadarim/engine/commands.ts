@@ -1,9 +1,10 @@
 import { DEMO_DAY, SCRIPT_INVOICE_ID, priceAppendixAt } from "../data/generate";
-import type { BuildingTag, HInvoice, PersonId, SectionId } from "../data/types";
+import type { BuildingTag, HBoqLine, HInvoice, PersonId, SectionId } from "../data/types";
 import { pkg, setPackage } from "./package";
 import { CHECK_STEPS_HE, accountantPerson, executionPerson, sectionShort, appendixUnit, carriedIssues, contractWithAppendices, documentById, findQuoteFor, orderTargetSection, proposedOrderCorrection, quoteFacts, runChecks, sectionLabel, type HFinding, type InvoiceFix, type InvoiceFixPatch, type OrderFixPatch } from "./checks";
 import { workingForecast } from "./forecast";
 import { lineValue, pricePerUnitHe } from "./units";
+import { unitPriceHe } from "./boq";
 import { emptySession, type ChatMessage, type ChatOption, type ControlTask, type DataCorrection, type FindingDecision, type ForecastAdjustment, type RouteId, type Scene1Variant, type V2State } from "./model";
 
 /**
@@ -204,6 +205,13 @@ export function updatePurchaseOrder(state: V2State, poId: number, patch: { qty?:
   const [s1, logId] = nextId(state, "CL");
   const entry = { id: logId, recordType: "po" as const, recordId: String(poId), field: "כמות / יחידה / מחיר יח׳", before: orderLineHe(po), after: orderLineHe(next), at: state.clock, byId, noteHe };
   return tick({ ...s1, erp: { ...s1.erp, purchaseOrders: s1.erp.purchaseOrders.map((p) => (p.id === poId ? next : p)), changeLog: [...s1.erp.changeLog, entry] } });
+}
+
+/** The ERP's edit of a BOQ line's unit price: the line lives in the package (`setPackage`), this writes its change-log entry. */
+export function logBoqUnitPrice(state: V2State, before: Pick<HBoqLine, "id" | "unit" | "unitPrice">, unitPrice: number, byId: PersonId, noteHe = "עדכון מחיר יחידה במערכת המידע"): V2State {
+  const [s1, logId] = nextId(state, "CL");
+  const entry = { id: logId, recordType: "boq_line" as const, recordId: before.id, field: "מחיר יח׳", before: unitPriceHe(before), after: unitPriceHe({ unit: before.unit, unitPrice }), at: state.clock, byId, noteHe };
+  return tick({ ...s1, erp: { ...s1.erp, changeLog: [...s1.erp.changeLog, entry] } });
 }
 
 /**

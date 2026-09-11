@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { allIssues, confirmQuote, createInvoice, decide, initialState, pkg, resetDemo, reviewFindings, revealAllSteps, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { allIssues, confirmQuote, createInvoice, decide, initialState, logBoqUnitPrice, pkg, resetDemo, reviewFindings, revealAllSteps, saveConfig, sendReport, setReportConfig, startControl, updateInvoiceBuilding, updateInvoiceSection, updatePurchaseOrder, updatePurchaseOrderSection } from "../src/hadarim/engine/commands";
+import { boqLineAmount, boqTotal, repriceBoqLine } from "../src/hadarim/engine/boq";
 import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
@@ -75,6 +76,20 @@ describe("Hadarim v2 engine — ERP edits", () => {
 
   it("still rejects units that do not convert into one another", () => {
     expect(() => updatePurchaseOrder(initialState(), 2291, { unit: "מ׳", priceUnit: "טון" }, "EYAL")).toThrow(/אינן ניתנות להמרה/);
+  });
+
+  it("a BOQ line's unit price is repriced in whole shekels and logged as a boq_line change; the covering contract's schedule moves by qty × delta", () => {
+    const line = pkg.boq.find((l) => l.id === "57.03.040")!;
+    const repriced = repriceBoqLine(line, 1_650);
+    expect(repriced).toMatchObject({ id: line.id, qty: 80, unit: "מ׳", unitPrice: 1_650, coveredByContractId: line.coveredByContractId });
+    expect(boqLineAmount(repriced)).toBe(132_000);
+    expect(() => repriceBoqLine(line, 1_650.5)).toThrow(/שלם/);
+    expect(() => repriceBoqLine(line, 0)).toThrow(/חיובי/);
+    const contract = pkg.contracts.find((c) => c.id === line.coveredByContractId)!;
+    const schedule = pkg.boq.filter((l) => l.coveredByContractId === contract.id).map((l) => (l.id === line.id ? repriced : l));
+    expect(boqTotal(schedule).amount - contract.amount!).toBe(80 * 150);
+    const s = logBoqUnitPrice(initialState(), line, 1_650, "EYAL", "סיכום עם הקבלן");
+    expect(s.erp.changeLog.at(-1)).toMatchObject({ recordType: "boq_line", recordId: "57.03.040", field: "מחיר יח׳", before: "1,500 ₪/מ׳", after: "1,650 ₪/מ׳", byId: "EYAL", noteHe: "סיכום עם הקבלן" });
   });
 
   it("the ERP can move an order to another budget section; the invoices against it keep theirs, and the change is logged", () => {

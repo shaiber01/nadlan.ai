@@ -1,5 +1,7 @@
 import type { HBoqLine } from "../data/types";
 
+const num = (v: number) => v.toLocaleString("he-IL");
+
 /** The line's value in whole shekels (quantity × unit price), or null when the line is not priced. */
 export function boqLineAmount(line: HBoqLine): number | null {
   return line.unitPrice == null ? null : Math.round(line.qty * line.unitPrice);
@@ -16,4 +18,15 @@ export function boqTotal(lines: HBoqLine[]): { amount: number; pricedLines: numb
     pricedLines += 1;
   }
   return { amount, pricedLines, unpricedLines: lines.length - pricedLines };
+}
+
+/** "1,500 ₪/מ׳", or "—" for an unpriced line — the change log's wording for a unit price. */
+export function unitPriceHe(line: Pick<HBoqLine, "unitPrice" | "unit">): string {
+  return line.unitPrice == null ? "—" : `${num(line.unitPrice)} ₪/${line.unit}`;
+}
+
+/** A BOQ line with a new unit price; whole shekels above zero, or an error in the ERP's words. */
+export function repriceBoqLine(line: HBoqLine, unitPrice: number): HBoqLine {
+  if (!Number.isInteger(unitPrice) || unitPrice <= 0) throw new Error("מחיר היחידה חייב להיות מספר שלם וחיובי בשקלים");
+  return { ...line, unitPrice };
 }

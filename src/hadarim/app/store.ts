@@ -1,11 +1,14 @@
 import { useSyncExternalStore } from "react";
-import type { HInvoice, HPurchaseOrder } from "../data/types";
-import { addBudgetChange, addDocument, deleteDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
+import type { HInvoice, HPurchaseOrder, PersonId } from "../data/types";
+import { addBudgetChange, addDocument, deleteDocument, deleteInvoice, documentFilePath, getReportVersion, listReportVersions, loadErp, nextDocumentId, resetProject, saveBoqUnitPrice, saveInvoice, savePurchaseOrder, subscribeProject, uploadDocumentFile, type ReportVersionSummary } from "../db/client";
 import { mimeTypeFor } from "../documents/mime";
 import type { HBudgetChange, HDocument } from "../data/types";
 import { DEFAULT_PROJECT_ID } from "../db/config";
 import { loadState } from "../db/session";
-import { SCRIPT_INVOICE_ID, initialState } from "../engine/commands";
+import { SCRIPT_INVOICE_ID, initialState, logBoqUnitPrice } from "../engine/commands";
+import { repriceBoqLine } from "../engine/boq";
+import { pkg, setPackage } from "../engine/package";
+import { generateHadarimPackage } from "../data/generate";
 import type { Scene1Variant, V2State } from "../engine/model";
 
 /**
@@ -31,6 +34,8 @@ export interface UiState {
 }
 
 const STATE_KEY = "hadarim-v2";
+/** Offline edits of the package (BOQ unit prices by line id): the generator rebuilds the package on load, so they are re-applied. */
+const BOQ_PRICES_KEY = "hadarim-v2-boq-prices";
 const UI_KEY = "hadarim-v2-ui";
 const OFFLINE_KEY = "hadarim-offline";
 
@@ -123,6 +128,8 @@ class HadarimStore {
 
   constructor() {
     this.state = load(STATE_KEY, initialState, isState);
+    const prices = load<Record<string, number>>(BOQ_PRICES_KEY, () => ({}), (v) => !!v && typeof v === "object");
+    if (Object.keys(prices).length) setPackage({ ...pkg, boq: pkg.boq.map((l) => (prices[l.id] != null ? { ...l, unitPrice: prices[l.id] } : l)) });
     const ui = load(UI_KEY, () => defaultUi, (v) => !!v && typeof v === "object" && "app" in (v as object)) as Partial<UiState>;
     this.ui = { ...defaultUi, ...ui, erp: { ...defaultUi.erp, ...(ui.erp ?? {}), ...(requestedErp() ?? {}) }, viewer: { ...defaultUi.viewer, ...(ui.viewer ?? {}) }, report: { ...defaultUi.report, ...(ui.report ?? {}) }, presenter: { ...defaultUi.presenter, ...(ui.presenter ?? {}) }, db: { ...defaultUi.db } };
   }
@@ -241,6 +248,34 @@ class HadarimStore {
     }
   };
 
+  /**
+   * Change a BOQ line's unit price from the ERP (the covering contract's price schedule). Online the row is
+   * written attributed and the database trigger logs it; offline the package is repriced and the engine logs it.
+   */
+  setBoqUnitPrice = async (lineId: string, unitPrice: number, byId: PersonId, noteHe?: string): Promise<void> => {
+    const line = pkg.boq.find((l) => l.id === lineId);
+    if (!line) throw new Error(`שורה ${lineId} לא נמצאה בכתב הכמויות`);
+    const next = repriceBoqLine(line, unitPrice);
+    if (this.ui.db.status !== "online") {
+      setPackage({ ...pkg, boq: pkg.boq.map((l) => (l.id === lineId ? next : l)) });
+      save(BOQ_PRICES_KEY, { ...load<Record<string, number>>(BOQ_PRICES_KEY, () => ({}), (v) => !!v && typeof v === "object"), [lineId]: unitPrice });
+      this.dispatch((s) => logBoqUnitPrice(s, line, unitPrice, byId, noteHe));
+      return;
+    }
+    this.writesInFlight += 1;
+    this.setDb({ syncing: true });
+    try {
+      await saveBoqUnitPrice(lineId, unitPrice, { byId, noteHe }, this.projectId);
+      this.setDb({ syncing: false, lastSync: new Date().toISOString(), error: null });
+      await this.loadFromDb();
+    } catch (e) {
+      this.setDb({ syncing: false });
+      throw e;
+    } finally {
+      this.writesInFlight -= 1;
+    }
+  };
+
   /** A saved report version with its model, or null for the live report. */
   loadVersion = (id: number): Promise<Awaited<ReturnType<typeof getReportVersion>>> => getReportVersion(id, this.projectId);
 
@@ -344,6 +379,8 @@ class HadarimStore {
       }
     } else {
       this.state = initialState(variant);
+      localStorage.removeItem(BOQ_PRICES_KEY);
+      setPackage(generateHadarimPackage());
     }
     save(STATE_KEY, this.state);
     this.emit();

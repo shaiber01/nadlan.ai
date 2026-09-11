@@ -65,6 +65,9 @@ export type Database = {
           section_id: string
           unit: string
           unit_price: number | null
+          update_note_he: string | null
+          updated_at: string
+          updated_by: string | null
         }
         Insert: {
           chapter: string
@@ -81,6 +84,9 @@ export type Database = {
           section_id: string
           unit: string
           unit_price?: number | null
+          update_note_he?: string | null
+          updated_at?: string
+          updated_by?: string | null
         }
         Update: {
           chapter?: string
@@ -97,6 +103,9 @@ export type Database = {
           section_id?: string
           unit?: string
           unit_price?: number | null
+          update_note_he?: string | null
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: [
           {
