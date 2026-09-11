@@ -68,6 +68,7 @@ export function DocumentsScreen() {
           <thead>
             <tr>
               <th>מזהה</th>
+              <th>פעולות</th>
               <th>כותרת</th>
               <th>סוג</th>
               <th>תאריך</th>
@@ -84,6 +85,16 @@ export function DocumentsScreen() {
               return (
                 <tr key={d.id} className="clickable" onClick={() => store.openDocument(d.id)} data-testid={`erp-doc-row-${d.id}`} data-status={status.tone}>
                   <td className="mono">{d.id}</td>
+                  <td className="erp-doc-actions">
+                    <button type="button" className="erp-link" title="הורדה" onClick={(e) => { e.stopPropagation(); void downloadDocument(d); }} data-testid={`erp-doc-download-${d.id}`}>
+                      הורדה
+                    </button>
+                    {!d.supersededBy ? (
+                      <button type="button" className="erp-link" title="החלפה בקובץ חדש" disabled={!online} onClick={(e) => { e.stopPropagation(); setMessage(null); setForm({ replaces: d }); }} data-testid={`erp-doc-replace-${d.id}`}>
+                        החלפה
+                      </button>
+                    ) : null}
+                  </td>
                   <td>
                     {d.titleHe}
                     {d.summaryHe ? <div className="erp-muted">{d.summaryHe}</div> : null}
@@ -94,15 +105,7 @@ export function DocumentsScreen() {
                   <td className="mono">{d.recordRef ? `${RECORD_HE[d.recordRef.type]} ${d.recordRef.id}` : "—"}</td>
                   <td className="mono">
                     {d.filePath ? "📎 " : ""}
-                    {d.fileName}{" "}
-                    <button type="button" className="erp-link" title="הורדה" onClick={(e) => { e.stopPropagation(); void downloadDocument(d); }} data-testid={`erp-doc-download-${d.id}`}>
-                      ⤓
-                    </button>
-                    {!d.supersededBy ? (
-                      <button type="button" className="erp-link" title="החלפה בקובץ חדש" disabled={!online} onClick={(e) => { e.stopPropagation(); setMessage(null); setForm({ replaces: d }); }} data-testid={`erp-doc-replace-${d.id}`}>
-                        החלפה
-                      </button>
-                    ) : null}
+                    {d.fileName}
                   </td>
                   <td className="erp-muted">{d.uploadedById ? `${personName(d.uploadedById as PersonId)} · ${dateTimeHe(d.uploadedAt ? d.uploadedAt.slice(0, 16) : d.date)}` : "—"}</td>
                   <td>
