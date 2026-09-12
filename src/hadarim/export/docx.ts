@@ -1,4 +1,5 @@
 import { AlignmentType, Document, Footer, HeadingLevel, PageNumber, PageOrientation, Packer, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { RANGE_STATUS_HE, type MaterialIndexRow } from "../engine/kpis";
 import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, SectionRow } from "../engine/report";
 
 /**
@@ -14,6 +15,9 @@ const LANDSCAPE_TEXT_WIDTH = A4.height - 2 * MARGIN;
 
 const nis = (v: number) => `${v.toLocaleString("he-IL")} ₪`;
 const signed = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${nis(Math.abs(v))}`);
+const num = (v: number) => v.toLocaleString("he-IL");
+const signedNum = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${num(Math.abs(v))}`);
+const fixed = (v: number | null, digits: number) => (v == null ? "—" : v.toLocaleString("he-IL", { minimumFractionDigits: digits, maximumFractionDigits: digits }));
 const signedPct = (v: number) => (v === 0 ? "—" : `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`);
 
 function run(text: string, opts: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}): TextRun {
@@ -111,6 +115,52 @@ function sectionsTable(report: ReportModel): Table {
   });
 }
 
+/** Standard §2א: the cost-per-m² table by group, the material indices, the per-m² trend line. */
+function kpiBlocks(report: ReportModel): Block[] {
+  const k = report.kpis;
+  if (!k) return [];
+  const t = k.total;
+  const tot = report.sections.totals;
+  const basisHe = (b: number, f: number, c: number, e: number) => `${b}% (${f}/${c}/${e})`;
+  return [
+    h("2א. מדדי עלות וכמות", 1),
+    p(`המכנה: ${k.denominatorHe}. כל המדדים לפני מע״מ.`),
+    h("א. עלות למ״ר לפי קבוצת עלות", 2),
+    table(
+      ["קבוצה", "סעיפים", "תקציב ₪/מ״ר", "תחזית ₪/מ״ר", "פער", "נרשם ₪/מ״ר", "% מהתחזית", "בסיס (עובדה/התחייבות/אומדן)", "תחזית ₪/יח״ד"],
+      [...k.groups.map((g) => [g.labelHe, g.sectionsHe, num(g.budgetPerSqm), num(g.eacPerSqm), signedNum(g.deltaPerSqm), num(g.recordedPerSqm), `${g.sharePct}%`, g.id === "contingency" ? "רזרבה" : basisHe(g.basisPct, g.factPct, g.commitmentPct, g.estimatePct), num(g.eacPerUnit)]), ["סה״כ הפרויקט", "", num(t.budgetPerSqm), num(t.eacPerSqm), signedNum(t.eacPerSqm - t.budgetPerSqm), num(t.recordedPerSqm), "100%", basisHe(tot.basisPct, tot.factPct, tot.commitmentPct, tot.estimatePct), num(t.eacPerUnit)]],
+      { widths: [2.2, 1.6, 1, 1, 0.8, 1, 0.9, 1.8, 1.1], size: 16, boldLast: true },
+    ),
+    p(`${k.notesHe[1]}${t.range ? ` טווח ייחוס לפרויקט: ${num(t.range.min)}–${num(t.range.max)} ₪/מ״ר — ${RANGE_STATUS_HE[t.rangeStatus]}.` : ""}`, { size: 16, color: "5B6478" }),
+    h("ב. מדדי כמות — חומרים עיקריים מול השטח הבנוי", 2),
+    table(
+      ["מדד", "כמות בכתב הכמויות", "ליחידת שטח", "טווח ייחוס", "בוצע עד החתך", "מחיר יח׳ — תקציב", "מחיר יח׳ — עדכני", "עלות ₪/מ״ר"],
+      [
+        ...k.materials.map((m) => [`${m.labelHe} (פרק ${m.chapter}, ${m.unit})`, `${num(m.boqQty)} ${m.unit}`, m.perSqm == null ? "—" : `${fixed(m.perSqm, m.digits)} ${m.perSqmUnitHe}`, m.range ? `${fixed(m.range.min, m.digits)}–${fixed(m.range.max, m.digits)} — ${RANGE_STATUS_HE[m.rangeStatus]}` : "ללא טווח", m.deliveredQty != null ? `${num(Math.round(m.deliveredQty))} ${m.unit}${m.deliveredPct != null ? ` (${m.deliveredPct}%)` : ""}` : m.deliveredNoteHe, m.budgetUnitPrice != null ? `${num(m.budgetUnitPrice)} ₪/${m.unit}` : "—", m.currentUnitPrice != null ? `${num(m.currentUnitPrice)} ₪/${m.unit} — ${m.currentPriceBasisHe}` : "—", m.costPerSqm != null ? `${num(m.costPerSqm)} (${m.costBasisHe})` : "—"]),
+        ...k.derived.map((d) => [d.labelHe, "—", d.value == null ? "—" : `${fixed(d.value, d.digits)} ${d.unitHe}`, d.range ? `${fixed(d.range.min, d.digits)}–${fixed(d.range.max, d.digits)} — ${RANGE_STATUS_HE[d.rangeStatus]}` : "ללא טווח", "—", "—", "—", "—"]),
+      ],
+      { widths: [1.8, 1.2, 1.1, 1.5, 1.6, 1.1, 1.8, 1.4], size: 15 },
+    ),
+    ...[k.notesHe[2], k.notesHe[3]].map((n) => p(n, { size: 16, color: "5B6478" })),
+    label("עלות למ״ר לאורך הבקרות", `${k.eacPerSqmSeries.map((x) => `${x.labelHe}: ${num(x.value)}`).join(" · ")} (תקציב ${num(t.budgetPerSqm)} ₪/מ״ר)`),
+  ];
+}
+
+/** §5 material card of a section measured in quantities. */
+function materialCardBlocks(m: MaterialIndexRow, report: ReportModel): Block[] {
+  const rows: string[][] = [
+    ["כמות בכתב הכמויות", `${num(m.boqQty)} ${m.unit}${m.perSqm != null ? ` · ${fixed(m.perSqm, m.digits)} ${m.perSqmUnitHe}` : ""}${m.range ? ` (${RANGE_STATUS_HE[m.rangeStatus]})` : ""}`],
+    ["בוצע עד החתך", m.deliveredQty != null ? `${num(Math.round(m.deliveredQty))} ${m.unit}${m.deliveredPct != null ? ` (${m.deliveredPct}%)` : ""} — ${m.deliveredNoteHe}` : m.deliveredNoteHe],
+    ...(m.id === "concrete" && report.kpis?.structureProgress ? [["קומות יצוקות", `${report.kpis.structureProgress.labelHe} (${report.kpis.structureProgress.pct}%)`]] : []),
+    ["מחיר יח׳ — תקציב (כתב כמויות)", m.budgetUnitPrice != null ? `${num(m.budgetUnitPrice)} ₪/${m.unit}` : "—"],
+    ["מחיר יח׳ — שולם בפועל (ממוצע)", m.paidUnitPrice != null ? `${num(m.paidUnitPrice)} ₪/${m.unit}` : "אין כמות בחשבונות"],
+    [`מחיר יח׳ — עדכני (${m.currentPriceBasisHe})`, m.currentUnitPrice != null ? `${num(m.currentUnitPrice)} ₪/${m.unit}${m.budgetUnitPrice ? (m.currentUnitPrice === m.budgetUnitPrice ? " · כמו התקציב" : ` · ${signedNum(Math.round(((m.currentUnitPrice - m.budgetUnitPrice) / m.budgetUnitPrice) * 100))}% מהתקציב`) : ""}` : "—"],
+    ["עלות למ״ר ברוטו", m.costPerSqm != null ? `${num(m.costPerSqm)} ₪/מ״ר (${m.costBasisHe})` : "—"],
+    ...(m.sensitivityHe ? [["רגישות", m.sensitivityHe]] : []),
+  ];
+  return [h(`כרטיס חומר — ${m.labelHe}`, 3), table(["רכיב", "נתון"], rows, { widths: [2, 3] })];
+}
+
 function footer(): Footer {
   return new Footer({
     children: [
@@ -163,6 +213,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     label("לו״ז", s.scheduleHe),
     h("אירועים מהותיים בתקופה", 3),
     ...bullets(s.eventsHe),
+    ...kpiBlocks(report),
   ];
 
   const part2: Block[] = [h("3. טבלת הסעיפים — ליבת הדוח", 1), sectionsTable(report), p(`${report.sections.materialityHe}. שורות מודגשות: שינוי מבקרה קודמת או סטייה מעל הסף — ההסבר בסעיף 4.`, { size: 16, color: "5B6478", before: 120 })];
@@ -187,7 +238,7 @@ function fullReportSections(report: ReportModel): { properties: typeof portrait 
     h("4ב. תיקוני נתונים ללא השפעה על התחזית הכוללת", 2),
     correctionsTable(report.changes.corrections),
     h("5. ניתוח סעיפים מהותיים", 1),
-    ...(report.material.length ? report.material.flatMap((m) => [h(m.titleHe, 2), p(`נכלל כי: ${m.reasonHe}`, { size: 16, color: "5B6478" }), ...m.paragraphsHe.map((x) => p(x)), ...(m.table.length > 1 ? [table(m.table[0], m.table.slice(1), { widths: [2, 1.5] })] : []), label("המלצה", m.recommendationHe), p(`מקורות: ${m.sources.map((s) => s.labelHe).join(" · ")}`, { size: 16, color: "5B6478" })]) : [p("אין סעיפים שחצו את סף המהותיות בבקרה זו.")]),
+    ...(report.material.length ? report.material.flatMap((m) => [h(m.titleHe, 2), p(`נכלל כי: ${m.reasonHe}`, { size: 16, color: "5B6478" }), ...m.paragraphsHe.map((x) => p(x)), ...(m.table.length > 1 ? [table(m.table[0], m.table.slice(1), { widths: [2, 1.5] })] : []), ...(m.materialIds ?? []).flatMap((id) => { const row = report.kpis?.materials.find((x) => x.id === id); return row ? materialCardBlocks(row, report) : []; }), label("המלצה", m.recommendationHe), p(`מקורות: ${m.sources.map((s) => s.labelHe).join(" · ")}`, { size: 16, color: "5B6478" })]) : [p("אין סעיפים שחצו את סף המהותיות בבקרה זו.")]),
     h("6. בלתי צפוי, שינויים ותביעות", 1),
     table(["בלתי צפוי", "₪"], [["מקור (תקציב מאושר)", nis(c.original)], ["שימושים שאושרו בתקופה", nis(c.used)], ["יתרה", nis(c.remaining)]], { widths: [3, 2] }),
     label("פקודות שינוי", c.pendingChangeOrdersHe),
@@ -251,6 +302,7 @@ function ceoSections(report: ReportModel): { properties: typeof portrait; childr
         ...headerBlocks(report, true),
         p(c.paragraphHe),
         keyTable(c.keyTable),
+        ...(report.kpis && report.kpis.grossSqm > 0 ? [p(`עלות למ״ר ברוטו: ${num(report.kpis.total.eacPerSqm)} ₪/מ״ר (תקציב ${num(report.kpis.total.budgetPerSqm)})${report.kpis.units > 0 ? ` · ליח״ד: ${nis(report.kpis.total.eacPerUnit)}` : ""} · בסיס התחזית ${report.sections.totals.basisPct}% (עובדה ${report.sections.totals.factPct}% · התחייבות ${report.sections.totals.commitmentPct}% · אומדן ${report.sections.totals.estimatePct}%)`, { size: 18, before: 80 })] : []),
         h("השפעות על התחזית לגמר", 2),
         changesTable(c.changes, report.changes.forecastTotal),
         h("נושאים פתוחים ברמת הנהלה", 2),

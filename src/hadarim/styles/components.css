@@ -194,6 +194,8 @@ table.table th {
 }
 table.table td.num,
 table.table th.num {
+  /* the .num utility is inline-block for prose; a cell must stay a cell */
+  display: table-cell;
   text-align: left;
   direction: ltr;
   font-variant-numeric: tabular-nums;

@@ -59,6 +59,7 @@ Every pause for the user — the decision on a card, a found quote, who is decid
 | Responsibility table | `open_task`, `set_task_status` |
 | Risks, events, decisions needed, assumptions for the report | `add_control_note` (kind: risk / event / decision / assumption / note) |
 | Physical progress and schedule from the site report | `set_project_status` |
+| Cost per m² / per unit, ברזל ק״ג/מ״ר, בטון מ״ק/מ״ר, the cost groups, the reference ranges (report §2א) | `build_report` (`summary.kpis`); the ranges: `get_project.kpiPolicy`, changed with `set_project_status` `kpiRanges` on instruction |
 | Report structure, the report itself, closing | `set_report_config`, `report_readiness`, `build_report` (one build; a docx build returns the summary too), `finalize_control` |
 | Anything the tools do not return | Supabase `execute_sql`, SELECT only, always `where project_id = …`; cite the table |
 

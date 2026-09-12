@@ -2,8 +2,13 @@ import { useState, type ReactNode } from "react";
 import { Badge, Notice } from "../../components/primitives";
 import { erpRecordUrl, store } from "../../app/store";
 import { updateInvoiceBuilding } from "../../engine/commands";
-import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, SectionRow, UncoveredRow } from "../../engine/report";
+import type { ChangeRow, CorrectionRow, IssueRow, ReportModel, ReportSource, UncoveredRow } from "../../engine/report";
 import { mil, nis, num, pct, signedNis, signedPct } from "./format";
+import { BasisLegend, KpiStrip, MaterialCard } from "./kpis";
+import { SectionsTable } from "./sections-table";
+import { DataTable, Section } from "./table";
+
+export { DataTable, Section, scrollToSection } from "./table";
 
 /**
  * The report sections, numbered and ordered per `budgetcontrolreportstandard.md` §3:
@@ -16,6 +21,7 @@ export const SECTION_TITLES: { n: string; titleHe: string }[] = [
   { n: "0", titleHe: "כותרת ומסגרת" },
   { n: "1", titleHe: "סיכום מנהלים" },
   { n: "2", titleHe: "תמונת מצב הפרויקט" },
+  { n: "2א", titleHe: "מדדי עלות וכמות" },
   { n: "3", titleHe: "טבלת הסעיפים" },
   { n: "4", titleHe: "הסבר לשינויים מהבקרה הקודמת" },
   { n: "5", titleHe: "ניתוח סעיפים מהותיים" },
@@ -46,75 +52,6 @@ export function SourceLink({ source }: { source: ReportSource }) {
 
 function UncoveredTable({ rows, total, testId, emptyHe }: { rows: UncoveredRow[]; total: number; testId: string; emptyHe: string }) {
   return <DataTable head={["פריט", "סעיף", "בסיס", "₪", "מקור"]} numeric={[3]} testId={testId} rows={rows.map((u) => [u.descriptionHe, u.sectionHe, u.basisHe, nis(u.amount), u.source ? <SourceLink key="s" source={u.source} /> : "—"])} foot={["סה״כ", "", "", nis(total), ""]} emptyHe={emptyHe} />;
-}
-
-export function scrollToSection(n: string): void {
-  document.getElementById(`report-section-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-export function Section({ n, titleHe, children, className, breakBefore }: { n: string; titleHe: string; children: ReactNode; className?: string; breakBefore?: boolean }) {
-  return (
-    <section className={["h2-report-section", breakBefore ? "h2-report-break" : "", className ?? ""].filter(Boolean).join(" ")} id={`report-section-${n}`} data-testid={`report-section-${n}`}>
-      <h2 className="h2-report-h2">
-        <span className="h2-report-num">{n}</span>
-        {titleHe}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function SectionLink({ n, children }: { n: string; children: ReactNode }) {
-  return (
-    <button type="button" className="h2-report-link no-print" onClick={() => scrollToSection(n)}>
-      {children}
-    </button>
-  );
-}
-
-export function DataTable({ head, rows, numeric = [], testId, className, rowClass, rowTestId, foot, emptyHe }: { head: string[]; rows: ReactNode[][]; numeric?: number[]; testId?: string; className?: string; rowClass?: (i: number) => string | undefined; rowTestId?: (i: number) => string | undefined; foot?: ReactNode[]; emptyHe?: string }) {
-  return (
-    <div className="table-wrap h2-report-table-wrap">
-      <table className={["table", "compact", "h2-report-table", className ?? ""].filter(Boolean).join(" ")} data-testid={testId}>
-        <thead>
-          <tr>
-            {head.map((h, j) => (
-              <th key={j} className={numeric.includes(j) ? "num" : undefined}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && emptyHe ? (
-            <tr>
-              <td colSpan={head.length} className="muted">
-                {emptyHe}
-              </td>
-            </tr>
-          ) : null}
-          {rows.map((r, i) => (
-            <tr key={i} className={rowClass?.(i)} data-testid={rowTestId?.(i)}>
-              {r.map((c, j) => (
-                <td key={j} className={numeric.includes(j) ? "num" : undefined}>
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ))}
-          {foot ? (
-            <tr className="total">
-              {foot.map((c, j) => (
-                <td key={j} className={numeric.includes(j) ? "num" : undefined}>
-                  {c}
-                </td>
-              ))}
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +106,8 @@ export function HeaderSection({ report }: { report: ReportModel }) {
         </div>
       </dl>
       <p className="h2-report-sources">{h.sourcesHe}</p>
+      <KpiStrip report={report} />
+      <BasisLegend />
     </Section>
   );
 }
@@ -277,74 +216,13 @@ export function StatusSection({ report }: { report: ReportModel }) {
 // 3. Sections table
 // ---------------------------------------------------------------------------
 
-function sectionCells(r: SectionRow, isTotal = false): ReactNode[] {
-  return [
-    isTotal ? "" : r.sectionId,
-    isTotal ? "סה״כ" : r.isContingency ? `${r.nameHe} — שורה נפרדת` : r.nameHe,
-    nis(r.budget),
-    r.changes === 0 ? "—" : signedNis(r.changes),
-    nis(r.updatedBudget),
-    nis(r.recorded),
-    nis(r.committed),
-    nis(r.remainingCommitment),
-    nis(r.uncovered),
-    nis(r.eac),
-    signedNis(r.variance),
-    signedPct(r.variancePct),
-    nis(r.previousEac),
-    signedNis(r.change),
-    <span key="basis" className={r.basisPct < 70 && !r.isContingency ? "h2-report-soft" : undefined}>
-      {`${num(r.basisPct)}%`}
-    </span>,
-  ];
-}
-
-const SECTION_HEAD = ["#", "סעיף", "תקציב מאושר", "שינויים", "תקציב מעודכן", "נרשם", "התחייבויות", "יתרת התחייבות", "יתרה לא מכוסה", "תחזית לגמר", "סטייה ₪", "סטייה %", "תחזית קודמת", "שינוי", "בסיס"];
-const SECTION_NUMERIC = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-
 export function SectionsTableSection({ report }: { report: ReportModel }) {
   const sec = report.sections;
   return (
     <Section n="3" titleHe="טבלת הסעיפים — ליבת הדוח" breakBefore className="h2-report-wide">
-      <div className="table-wrap h2-report-table-wrap">
-        <table className="table compact h2-report-table h2-report-sections" data-testid="report-sections-table">
-          <thead>
-            <tr>
-              {SECTION_HEAD.map((h, j) => (
-                <th key={j} className={SECTION_NUMERIC.includes(j) ? "num" : undefined}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sec.rows.map((r) => (
-              <tr key={r.sectionId} className={[r.highlighted ? "is-highlighted" : "", r.isContingency ? "is-contingency" : ""].filter(Boolean).join(" ") || undefined} data-testid={`report-row-${r.sectionId}`}>
-                {sectionCells(r).map((c, j) => (
-                  <td key={j} className={SECTION_NUMERIC.includes(j) ? "num" : undefined}>
-                    {j === 1 && r.highlighted ? (
-                      <>
-                        {c} <SectionLink n="4">→ סעיף 4</SectionLink>
-                      </>
-                    ) : (
-                      c
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            <tr className="total" data-testid="report-row-total">
-              {sectionCells(sec.totals, true).map((c, j) => (
-                <td key={j} className={SECTION_NUMERIC.includes(j) ? "num" : undefined}>
-                  {c}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <SectionsTable report={report} />
       <p className="muted small">
-        {sec.materialityHe}. שורות מודגשות: שינוי מבקרה קודמת או סטייה מעל הסף — ההסבר בסעיף 4. בסיס = אחוז מהתחזית שמכוסה בהתחייבות; מתחת ל-70% מסומן כתחזית רכה.
+        {sec.materialityHe}. שורות מודגשות: שינוי מבקרה קודמת או סטייה מעל הסף — ההסבר בסעיף 4. בסיס = אחוז מהתחזית שמכוסה בהתחייבות (הפס: עובדה / התחייבות / אומדן); מתחת ל-{sec.softBasisPct ?? 70}% מסומן כתחזית רכה. לחיצה על שורה פותחת את שורות התחזית שלה; לחיצה על כותרת ממיינת.
       </p>
       {sec.byChapter ? (
         <div className="h2-report-subsection" data-testid="report-by-chapter">
@@ -455,7 +333,15 @@ export function MaterialSection({ report }: { report: ReportModel }) {
           {m.paragraphsHe.map((p, i) => (
             <p key={i}>{p}</p>
           ))}
-          {m.table.length > 1 ? <DataTable head={m.table[0]} rows={m.table.slice(1)} numeric={[1]} className="h2-report-material-table" /> : null}
+          {m.table.length > 1 ? <DataTable head={m.table[0]} rows={m.table.slice(1)} numeric={[1]} className="h2-report-material-table" sortable={false} /> : null}
+          {report.kpis && m.materialIds?.length ? (
+            <div className="h2-material-cards">
+              {m.materialIds.map((id) => {
+                const row = report.kpis!.materials.find((x) => x.id === id);
+                return row ? <MaterialCard key={id} row={row} kpis={report.kpis!} /> : null;
+              })}
+            </div>
+          ) : null}
           <p className="h2-report-recommendation">
             <strong>המלצה:</strong> {m.recommendationHe}
           </p>
@@ -782,6 +668,7 @@ export function CeoPage({ report }: { report: ReportModel }) {
         </div>
         <Badge tone={report.finalized ? "green" : "amber"}>{h.controlLabelHe}</Badge>
       </div>
+      <KpiStrip report={report} />
       <p className="h2-report-lead" data-testid="report-ceo-paragraph">
         {c.paragraphHe}
       </p>

@@ -1,6 +1,6 @@
 ---
 name: bakara-report
-description: Build, enrich, adapt and deliver the budget-control report per the report standard — executive summary, sections table, forecast changes vs data corrections, material sections, risks, issues, trends, CEO page, Word and Excel exports — and finalize the control. Use when the control is done or the user asks for the report, its structure, or to add risks/events/assumptions.
+description: Build, enrich, adapt and deliver the budget-control report per the report standard — executive summary, cost and quantity indices (₪ per m², steel and concrete per m²), sections table, forecast changes vs data corrections, material sections, risks, issues, trends, CEO page, Word and Excel exports — and finalize the control. Use when the control is done or the user asks for the report, its structure, its KPIs, or to add risks/events/assumptions.
 ---
 
 # The living report
@@ -19,6 +19,7 @@ Saving a version (`saveVersion` / `label`) and `finalize_control` are refused, w
    - the header line (`summary.header.controlLabelHe`, cutoff, previous control);
    - `summary.executive.paragraphHe` verbatim and the key table (`keyTable`: תקציב, תחזית לגמר, סטייה, שינוי מבקרה קודמת, נרשם, ביצוע פיזי, בלתי צפוי, יתרה לא מכוסה);
    - 4א and 4ב in two sentences — `forecastChanges` (typed changes with basis, total `forecastChangesTotal`) and `corrections` (data fixes with no effect on the total). Keep them apart;
+   - `summary.kpis` (§2א) when the user asks how the project compares or what it costs per m²: `total.eacPerSqm` against `total.budgetPerSqm` and the project's reference range (`rangeStatus`), the cost groups (`groups`: שלד / מעטפת וגמר / מערכות / פיתוח / תקורה, ₪ per m² with the basis composition), and the material indices (`materials`: ברזל ק״ג/מ״ר, בטון מ״ק/מ״ר, טפסות, עפר, בנייה, איטום, טיח, ריצוף — `perSqm` with `perSqmUnitHe`, `rangeStatus` against the project's KPI policy, `deliveredQty` only when invoices carry a quantity — otherwise `deliveredNoteHe` says what it rests on — and the three unit prices: `budgetUnitPrice`, `paidUnitPrice`, `currentUnitPrice` with `currentPriceBasisHe`). An index outside its range is a question to check, not a finding; say so. `derived` holds יחס ברזל לבטון (ק״ג/מ״ק);
    - `executive.decisionsHe` — the decision management must take;
    - `materialSections` (why each is analysed: threshold, share of budget, weak basis) and `risks`, `openIssues` on request.
 2. The full text, only if the user wants it: `build_report` with `format: "markdown"` (read `markdown`; write it with `path` if the user wants a file).
@@ -28,7 +29,7 @@ If the user disputes a figure, point to the report section and its source and pu
 ## Enrich before delivering
 What the data cannot know, the controller records — each note lands in the right section of the report:
 - `add_control_note` kind `risk` (§7: `textHe`, `sectionId`, `exposureHe`, `likelihoodHe`, `triggerHe`, `ownerId`), `event` (§2 material events of the period), `decision` (§1 decisions needed), `assumption` (§11), `note` (an executive-summary bullet), `change_order` and `claim` (§6 — the ERP holds neither, so §6 says "none recorded" until you record them; ask the user).
-- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend); also the project's materiality thresholds (§5) and risk assumptions (§7: quote-expiry exposure %, price step), which `get_project` shows and the report states — change them only on the user's instruction, and say that the material sections or risk exposures were re-derived.
+- `set_project_status` — measured physical progress and schedule from the site report (never derived from spend); also the project's materiality thresholds (§5), risk assumptions (§7: quote-expiry exposure %, price step) and the KPI reference ranges (§2א, `kpiRanges` keyed by index id: `cost_per_sqm`, `steel`, `concrete`, `steel_per_concrete`, or another material index; `null` removes one), which `get_project` shows and the report states — change them only on the user's instruction, and say that the material sections, risk exposures or range verdicts were re-derived.
 - `open_task` / `set_task_status` — the responsibility table (§8): owner, due date, impact if ignored; close what was done.
 Risks the data itself implies (quote expiry, appendix-priced remainders, stale issues) are already derived; do not duplicate them.
 

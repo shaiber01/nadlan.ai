@@ -1,5 +1,5 @@
 import { documentFacts, hadarimDocuments } from "./documents";
-import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
+import { STANDARD_CHECK_POLICY, STANDARD_KPI_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY } from "./types";
 import { addMonths, createRng, forceSum, lastDayOfMonth, monthKey } from "./rng";
 import type {
   BuildingTag,
@@ -50,6 +50,7 @@ export const project: HProject = {
   buckets: { shared: { id: "משותף", labelHe: "משותף" }, parking: { id: "חניון", labelHe: "חניון" } },
   materiality: { ...STANDARD_MATERIALITY },
   riskPolicy: { ...STANDARD_RISK_POLICY },
+  kpiPolicy: { ranges: { ...STANDARD_KPI_POLICY.ranges } },
   checkPolicy: { ...STANDARD_CHECK_POLICY },
   units: 48,
   grossSqm: 8700,

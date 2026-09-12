@@ -6,6 +6,7 @@ import { buildReport, type ReportModel } from "../../engine/report";
 import { exportReportDocx } from "../../export/docx";
 import { reportToXlsxBlob } from "../../export/xlsx";
 import { dateHe, timeHe } from "./fmt";
+import { KpisSection } from "./kpis";
 import { AppendicesSection, CeoPage, ChangesSection, ContingencySection, ExecutiveSection, HeaderSection, IssuesSection, MaterialSection, OpenFindingsSection, ReportFooter, RisksSection, SECTION_TITLES, SectionsTableSection, StatusSection, TrendsSection, VerifiedSection, scrollToSection } from "./sections";
 import "./report.css";
 
@@ -169,7 +170,7 @@ export function ReportView() {
           </span>
           {tab === "full" ? (
             <nav className="h2-report-nav" aria-label="ניווט בדוח">
-              {SECTION_TITLES.filter((s) => s.n !== "10" || report.trends.comparison).map((s) => (
+              {SECTION_TITLES.filter((s) => (s.n !== "10" || report.trends.comparison) && (s.n !== "2א" || report.kpis)).map((s) => (
                 <button key={s.n} type="button" onClick={() => scrollToSection(s.n)}>
                   {s.n}
                 </button>
@@ -203,6 +204,7 @@ export function ReportView() {
           <HeaderSection report={report} />
           <ExecutiveSection report={report} />
           <StatusSection report={report} />
+          <KpisSection report={report} />
           <SectionsTableSection report={report} />
           <ChangesSection report={report} />
           <MaterialSection report={report} />

@@ -92,7 +92,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("erp-boq-contract-57.03.040")).toContainText("07-01");
     // filters narrow the list; the count follows
     await page.getByTestId("erp-boq-chapter").selectOption("57");
-    await expect(page.getByTestId("erp-boq-count")).toHaveText("6 שורות");
+    await expect(page.getByTestId("erp-boq-count")).toContainText("6 שורות");
     await page.getByTestId("erp-boq-chapter").selectOption("");
     await page.getByTestId("erp-boq-section").selectOption("03");
     await expect(page.locator("[data-testid^='erp-boq-row-']").first()).toContainText("ברזל");
@@ -165,6 +165,34 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("record-modal")).toBeVisible();
     await expect(page.getByTestId("record-modal")).toHaveAttribute("data-record-type", "contract");
     await page.keyboard.press("Escape");
+
+    // §2א and the KPI strip: cost per m² from the project's gross area; the material indices from the bill of quantities
+    await expect(page.getByTestId("report-kpi-strip")).toBeVisible();
+    await expect(page.getByTestId("report-kpi-per-sqm")).toContainText("₪/מ״ר");
+    await expect(page.getByTestId("report-section-2א")).toBeVisible();
+    await expect(page.getByTestId("report-kpi-material-steel")).toContainText("ק״ג/מ״ר");
+    await expect(page.getByTestId("report-kpi-material-concrete")).toContainText("מ״ק/מ״ר");
+    await page.getByTestId("report-kpi-view-unit").click();
+    await expect(page.getByTestId("report-kpi-groups")).toContainText("₪/יח״ד");
+
+    // the sections table is a working surface: sort by a column, filter to the soft forecasts, restate per m², open a row
+    const sections = page.getByTestId("report-sections-table");
+    await sections.locator("th").nth(9).click(); // תחזית לגמר, descending
+    await expect(sections).toHaveAttribute("data-sort", "9:desc");
+    await expect(sections.locator("tbody tr").first()).toHaveAttribute("data-testid", "report-row-02");
+    await page.getByTestId("report-sections-filter-soft").click();
+    await expect(page.getByTestId("report-row-02")).toHaveCount(0);
+    await expect(page.getByTestId("report-row-12")).toBeVisible();
+    await page.getByTestId("report-sections-filter-all").click();
+    await page.getByTestId("report-sections-view-sqm").click();
+    await expect(sections).toHaveAttribute("data-view", "sqm");
+    await expect(page.getByTestId("report-row-total")).not.toContainText("48,240,000");
+    await page.getByTestId("report-sections-view-nis").click();
+    await page.getByTestId("report-row-03").click();
+    await expect(page.getByTestId("report-row-03-lines")).toContainText("לא מכוסה");
+    await page.getByTestId("report-sections-columns").click();
+    await expect(sections).toHaveAttribute("data-cols", "all");
+    await expect(sections.locator("th.h2-col-extra").first()).toBeVisible();
 
     // persistence across reload, then reset restores the seed
     await page.reload();

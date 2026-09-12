@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { STANDARD_CHECK_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY, type BuildingTag, type ForecastBasis, type HBoqLine, type HBudgetChange, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HRiskPolicy, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
+import { STANDARD_CHECK_POLICY, STANDARD_KPI_POLICY, STANDARD_MATERIALITY, STANDARD_RISK_POLICY, type BuildingTag, type ForecastBasis, type HBoqLine, type HBudgetChange, type HChangeLogEntry, type HContract, type HDocument, type HForecastVersion, type HInvoice, type HKpiPolicy, type HKpiRange, type HMateriality, type HOpenIssue, type HPerson, type HProject, type HPurchaseOrder, type HRiskPolicy, type HSection, type HSupplier, type HadarimPackage, type PersonId, type SectionId } from "../data/types";
 import type { ErpState } from "../engine/model";
 import { DEFAULT_PROJECT_ID, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import type { Database, Json, Tables, TablesInsert } from "./types";
@@ -197,6 +197,12 @@ export async function loadPackage(projectId = DEFAULT_PROJECT_ID, supabase: Db =
     checkPolicy: (() => {
       const c = (p.check_policy ?? {}) as Partial<Record<"review_aging_days", number>>;
       return { reviewAgingDays: c.review_aging_days ?? STANDARD_CHECK_POLICY.reviewAgingDays };
+    })(),
+    kpiPolicy: (() => {
+      const k = (p.kpi_policy ?? {}) as { ranges?: Record<string, { min?: number; max?: number }> };
+      const ranges: HKpiPolicy["ranges"] = { ...STANDARD_KPI_POLICY.ranges };
+      for (const [id, r] of Object.entries(k.ranges ?? {})) if (r && typeof r.min === "number" && typeof r.max === "number") ranges[id] = { min: r.min, max: r.max };
+      return { ranges };
     })(),
     units: p.units ?? 0,
     grossSqm: p.gross_sqm ?? 0,
@@ -601,6 +607,8 @@ export interface ProjectStatusPatch {
   materiality?: Partial<HMateriality>;
   /** Assumptions behind derived risks (§7); merged with the current ones. */
   riskPolicy?: Partial<HRiskPolicy>;
+  /** Reference ranges of the report's indices (§2א), keyed by index id; merged with the current ones, null removes a range. */
+  kpiRanges?: Record<string, HKpiRange | null>;
 }
 
 /** Updates the project's status fields (stage text, measured physical progress, schedule); the schedule is merged. */
@@ -628,6 +636,17 @@ export async function updateProject(projectId: string, patch: ProjectStatusPatch
     const current = ((data?.risk_policy as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
     const r = patch.riskPolicy;
     row.risk_policy = { ...current, ...(r.quoteExpiryExposurePct !== undefined ? { quote_expiry_exposure_pct: r.quoteExpiryExposurePct } : {}), ...(r.priceStep !== undefined ? { price_step: r.priceStep } : {}) } as Json;
+  }
+  if (patch.kpiRanges) {
+    const { data, error } = await supabase.from("projects").select("kpi_policy").eq("id", projectId).single();
+    if (error) throw new Error(`projects: ${error.message}`);
+    const current = ((data?.kpi_policy as { ranges?: Record<string, unknown> } | null) ?? {}).ranges ?? {};
+    const ranges: Record<string, unknown> = { ...current };
+    for (const [id, r] of Object.entries(patch.kpiRanges)) {
+      if (r) ranges[id] = { min: r.min, max: r.max };
+      else delete ranges[id];
+    }
+    row.kpi_policy = { ranges } as Json;
   }
   if (!Object.keys(row).length) return;
   const { error } = await supabase.from("projects").update(row).eq("id", projectId);

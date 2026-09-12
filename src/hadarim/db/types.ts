@@ -1129,6 +1129,7 @@ export type Database = {
           current_control_date: string | null
           gross_sqm: number | null
           id: string
+          kpi_policy: Json
           materiality: Json
           name_he: string
           physical_progress_pct: number | null
@@ -1150,6 +1151,7 @@ export type Database = {
           current_control_date?: string | null
           gross_sqm?: number | null
           id: string
+          kpi_policy?: Json
           materiality?: Json
           name_he: string
           physical_progress_pct?: number | null
@@ -1171,6 +1173,7 @@ export type Database = {
           current_control_date?: string | null
           gross_sqm?: number | null
           id?: string
+          kpi_policy?: Json
           materiality?: Json
           name_he?: string
           physical_progress_pct?: number | null

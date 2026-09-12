@@ -1,10 +1,11 @@
 import { priceAppendixAt } from "../data/generate";
-import { chapterLabelHe } from "../data/bluebook";
+import { MATERIAL_INDICES, chapterLabelHe } from "../data/bluebook";
 import { RECORD_TYPE_HE, type BuildingTag, type HForecastLine, type HadarimPackage, type SectionId } from "../data/types";
 import { boqPageFor, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { isUnprocessed, reportBlockers } from "./heartbeat";
+import { buildKpis, type ReportKpis } from "./kpis";
 import { CHANGE_TYPE_HE, type ControlNote, type V2State } from "./model";
 import { CHANNEL_HE } from "./operations";
 
@@ -95,6 +96,10 @@ export interface SectionRow {
   previousEac: number;
   change: number;
   basisPct: number;
+  /** Composition of the forecast: recorded (fact), remaining commitment, uncovered (estimate) — shares of EAC. */
+  factPct: number;
+  commitmentPct: number;
+  estimatePct: number;
   highlighted: boolean;
   isContingency: boolean;
 }
@@ -164,6 +169,8 @@ export interface MaterialSection {
   table: string[][];
   recommendationHe: string;
   sources: ReportSource[];
+  /** Material indices (§2א) whose bill-of-quantities lines belong to this section — rendered as material cards. */
+  materialIds: string[];
 }
 
 export interface UncoveredRow {
@@ -178,7 +185,9 @@ export interface ReportModel {
   header: ReportHeader;
   executive: { paragraphHe: string; keyTable: KeyRow[]; bulletsHe: string[]; decisionsHe: string[] };
   status: { stageHe: string; physicalPct: number | null; expensePct: number; commitmentPct: number; scheduleHe: string; eventsHe: string[] };
-  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; byChapter: ChapterRow[] | null; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
+  /** Cost and quantity indices (standard §2א); absent on report versions saved before they existed. */
+  kpis?: ReportKpis;
+  sections: { rows: SectionRow[]; totals: SectionRow; materialityHe: string; /** Below this share of commitments a forecast is marked soft (project materiality policy). */ softBasisPct: number; byChapter: ChapterRow[] | null; byBuilding: BuildingRow[] | null; byBuildingNoteHe: string | null; byBuildingChangeable: { invoiceId: number; labelHe: string; building: BuildingTag | null }[]; byBuildingOptions: { id: string; labelHe: string; kind: "building" | "shared" }[] };
   changes: { forecast: ChangeRow[]; forecastTotal: number; corrections: CorrectionRow[] };
   material: MaterialSection[];
   contingency: { original: number; used: number; remaining: number; pendingChangeOrdersHe: string; claimsHe: string; decisionHe: string };
@@ -393,15 +402,15 @@ function materialSections(pkg: HadarimPackage, wf: WorkingForecast, state: V2Sta
     const frameworkContract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.priceAppendices?.length);
     const excludedLines = pkg.boq.filter((l) => l.sectionId === s.sectionId && (l.coverage === "excluded" || revisionRemovalDocFor(pkg, l.id)));
     const coverageAdjustments = state.control.adjustments.filter((a) => a.sectionId === s.sectionId && a.changeType === "coverage_gap");
-    if (frameworkContract) out.push(frameworkPriceSection(pkg, wf, state, s, reasonHe, frameworkContract));
-    else if (excludedLines.length || coverageAdjustments.length) out.push(coverageSection(pkg, state, s, reasonHe));
-    else out.push(genericSection(pkg, wf, state, s, reasonHe));
+    const materialIds = MATERIAL_INDICES.filter((d) => pkg.boq.some((l) => l.sectionId === s.sectionId && l.chapter === d.chapter && l.unit === d.unit)).map((d) => d.id);
+    const built = frameworkContract ? frameworkPriceSection(pkg, wf, state, s, reasonHe, frameworkContract) : excludedLines.length || coverageAdjustments.length ? coverageSection(pkg, state, s, reasonHe) : genericSection(pkg, wf, state, s, reasonHe);
+    out.push({ ...built, materialIds });
   }
   return out;
 }
 
 /** A section supplied under a framework agreement with price appendices (quantity × unit price). */
-function frameworkPriceSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string, contract: NonNullable<ReturnType<typeof pkg.contracts.find>>): MaterialSection {
+function frameworkPriceSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string, contract: NonNullable<ReturnType<typeof pkg.contracts.find>>): Omit<MaterialSection, "materialIds"> {
   const supplier = pkg.suppliers.find((x) => x.id === contract.supplierId);
   const appendices = [...(contract.priceAppendices ?? [])].sort((a, b) => a.validFrom.localeCompare(b.validFrom));
   const current = priceAppendixAt(contract, state.control.controlDate) ?? appendices[appendices.length - 1];
@@ -451,7 +460,7 @@ function frameworkPriceSection(pkg: HadarimPackage, wf: WorkingForecast, state: 
 }
 
 /** A section with contract exclusions or coverage-gap adjustments: the "three documents" story. */
-function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection, reasonHe: string): MaterialSection {
+function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection, reasonHe: string): Omit<MaterialSection, "materialIds"> {
   const contract = pkg.contracts.find((c) => c.sectionId === s.sectionId && c.amount != null);
   const supplier = contract ? pkg.suppliers.find((x) => x.id === contract.supplierId) : undefined;
   const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && (!contract || i.contractId === contract.id));
@@ -498,7 +507,7 @@ function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection,
   };
 }
 
-function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string): MaterialSection {
+function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string): Omit<MaterialSection, "materialIds"> {
   const supplierHe = (id: string) => pkg.suppliers.find((x) => x.id === id)?.nameHe ?? id;
   const section = pkg.sections.find((x) => x.id === s.sectionId)!;
   const contracts = pkg.contracts.filter((c) => c.sectionId === s.sectionId);
@@ -726,10 +735,13 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
     previousEac: s.previousEac,
     change: s.change,
     basisPct: s.basisPct,
+    factPct: s.eac > 0 ? Math.round((s.recorded / s.eac) * 100) : 0,
+    commitmentPct: s.eac > 0 ? Math.round((s.remainingCommitment / s.eac) * 100) : 0,
+    estimatePct: s.eac > 0 ? Math.round((s.uncovered / s.eac) * 100) : 0,
     highlighted: !isContingency(s.sectionId) && (isMaterial(pkg, s) || state.control.corrections.some((c) => c.crossSectionHe.includes(`${s.sectionId}-`))),
     isContingency: isContingency(s.sectionId),
   }));
-  const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalOriginalBudget, changes: wf.totalBudgetChanges, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), highlighted: false, isContingency: false };
+  const totals: SectionRow = { sectionId: "01", nameHe: "סה״כ", budget: wf.totalOriginalBudget, changes: wf.totalBudgetChanges, updatedBudget: wf.totalBudget, recorded: wf.totalRecorded, committed: wf.totalCommitted, remainingCommitment: wf.totalRemainingCommitment, uncovered: wf.totalUncovered, eac: wf.totalEac, variance, variancePct: (variance / wf.totalBudget) * 100, previousEac: wf.previousTotalEac, change, basisPct: Math.round(commitmentPct), factPct: Math.round(expensePct), commitmentPct: Math.round((wf.totalRemainingCommitment / wf.totalEac) * 100), estimatePct: Math.round((wf.totalUncovered / wf.totalEac) * 100), highlighted: false, isContingency: false };
 
   const split = config.splitByBuilding ? buildingSplit(pkg, wf, state) : null;
   const byChapter = config.byChapter ? chapterSplit(pkg, wf) : null;
@@ -850,8 +862,9 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
       sourcesHe: `מקורות: מערכת המידע (משיכה ${dateHe(state.clock)} ${state.clock.slice(11, 16)}) · תיקיית הפרויקט (${num(pkg.documents.length)} מסמכים) · ${physicalPct != null ? "דוח התקדמות מהאתר (מדידת ביצוע פיזי)" : "ללא דוח התקדמות מהאתר"} · ${notes.some((n) => n.kind === "review_pass") ? "סקירת הסוכן בוצעה" : "סקירת הסוכן טרם בוצעה"}`,
     },
     executive: { paragraphHe, keyTable, bulletsHe, decisionsHe },
+    kpis: buildKpis(pkg, state.erp, wf, eacSeries),
     status: { stageHe: pkg.project.statusHe, physicalPct, expensePct, commitmentPct, scheduleHe, eventsHe: events },
-    sections: { rows, totals, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byChapter, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
+    sections: { rows, totals, softBasisPct: pkg.project.materiality.softBasisPct, materialityHe: `סף מהותיות: ${nis(pkg.project.materiality.absolute)} וגם ${pkg.project.materiality.pctOfSection}% מהסעיף, או ${nis(pkg.project.materiality.absoluteAlways)} בכל מקרה`, byChapter, byBuilding: split?.rows ?? null, byBuildingNoteHe: split?.noteHe ?? null, byBuildingChangeable: split?.changeable ?? [], byBuildingOptions: buildingOptions(pkg) },
     changes: { forecast: forecastChanges, forecastTotal, corrections },
     material,
     contingency: {

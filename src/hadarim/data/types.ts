@@ -46,6 +46,32 @@ export interface HRiskPolicy {
 
 export const STANDARD_RISK_POLICY: HRiskPolicy = { quoteExpiryExposurePct: 25, priceStep: 100 };
 
+/** A reference range for a report KPI (§2א): the band a value is expected to fall in. */
+export interface HKpiRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * KPI policy of a project (report standard §2א): reference ranges for the cost and quantity indices, keyed by
+ * index id — `cost_per_sqm` (₪ per gross m², whole project), the material indices of `data/bluebook.ts`
+ * (`steel` in kg/m², `concrete` in m³/m², …) and `steel_per_concrete` (kg per m³). An index without a range is
+ * shown without a verdict. The defaults are typical bands for residential construction in Israel; a project
+ * sets its own with `set_project_status`.
+ */
+export interface HKpiPolicy {
+  ranges: Record<string, HKpiRange>;
+}
+
+export const STANDARD_KPI_POLICY: HKpiPolicy = {
+  ranges: {
+    cost_per_sqm: { min: 4500, max: 7500 },
+    steel: { min: 80, max: 130 },
+    concrete: { min: 0.45, max: 0.8 },
+    steel_per_concrete: { min: 100, max: 160 },
+  },
+};
+
 export interface HProject {
   id: "HADARIM";
   nameHe: string;
@@ -56,6 +82,7 @@ export interface HProject {
   materiality: HMateriality;
   riskPolicy: HRiskPolicy;
   checkPolicy: HCheckPolicy;
+  kpiPolicy: HKpiPolicy;
   units: number;
   grossSqm: number;
   startDate: string;

@@ -76,6 +76,7 @@ async function main() {
       materiality: { absolute: pkg.project.materiality.absolute, pct_of_section: pkg.project.materiality.pctOfSection, absolute_always: pkg.project.materiality.absoluteAlways, budget_share_pct: pkg.project.materiality.budgetSharePct, soft_basis_pct: pkg.project.materiality.softBasisPct },
       risk_policy: { quote_expiry_exposure_pct: pkg.project.riskPolicy.quoteExpiryExposurePct, price_step: pkg.project.riskPolicy.priceStep },
       check_policy: { review_aging_days: pkg.project.checkPolicy.reviewAgingDays },
+      kpi_policy: { ranges: pkg.project.kpiPolicy.ranges },
       physical_progress_pct: pkg.project.physicalProgressPct ?? null,
       schedule: pkg.project.schedule ?? {},
     },

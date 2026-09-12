@@ -341,7 +341,7 @@ define({
     const p = pkg.project;
     const c = state.control;
     return {
-      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, checkPolicy: p.checkPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
+      project: { id: p.id, nameHe: p.nameHe, companyHe: p.companyHe, statusHe: p.statusHe, units: p.units, buildings: p.buildings, buckets: p.buckets, materiality: p.materiality, riskPolicy: p.riskPolicy, checkPolicy: p.checkPolicy, kpiPolicy: p.kpiPolicy, budgetVersion: p.budgetVersion, boqVersion: p.boqVersion, controlDates: p.controlDates, currentControlDate: p.currentControlDate, physicalProgressPct: p.physicalProgressPct ?? null, schedule: p.schedule ?? {} },
       people: pkg.people,
       sections: pkg.sections.map((s) => ({ id: s.id, nameHe: s.nameHe, shortHe: sectionShort(s.id), budget: s.budget, kind: s.kind, split: s.split, contractIds: s.contractIds, chapters: chapterInfo(s) })),
       budgetChanges: { count: pkg.budgetChanges.length, net: pkg.budgetChanges.reduce((n, c) => n + (c.kind === "addition" ? c.amount : c.kind === "reduction" ? -c.amount : 0), 0) },
@@ -912,7 +912,7 @@ define({
 define({
   name: "set_project_status",
   title: "Update project settings",
-  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend), schedule (contract end / expected end as yyyy-mm, note) and materiality thresholds (report standard §5: materialityAbsolute ₪ AND materialityPctOfSection %, or materialityAbsoluteAlways ₪; a section is analysed anyway above materialityBudgetSharePct % of the budget or below materialitySoftBasisPct % basis). These feed report §2, §5 and the executive key table. Only on the user's instruction.",
+  description: "Update the project's stage text, measured physical progress (percent, from the site report — never derived from spend), schedule (contract end / expected end as yyyy-mm, note) materiality thresholds (report standard §5: materialityAbsolute ₪ AND materialityPctOfSection %, or materialityAbsoluteAlways ₪; a section is analysed anyway above materialityBudgetSharePct % of the budget or below materialitySoftBasisPct % basis) and the KPI reference ranges (§2א, kpiRanges). These feed report §2, §2א, §5 and the executive key table. Only on the user's instruction.",
   kind: "write",
   input: {
     projectId,
@@ -928,14 +928,15 @@ define({
     materialitySoftBasisPct: z.number().min(0).max(100).optional(),
     riskQuoteExpiryExposurePct: z.number().min(0).max(100).optional().describe("§7 assumption: exposure of an estimate resting on a quote that may expire, as % of the estimate"),
     riskPriceStep: z.number().positive().optional().describe("§7: the price step (₪ per unit) used to express appendix-price exposure"),
+    kpiRanges: z.record(z.string(), z.object({ min: z.number(), max: z.number() }).nullable()).optional().describe("§2א reference ranges keyed by index id — cost_per_sqm (₪/m² gross), steel (kg/m²), concrete (m³/m²), steel_per_concrete (kg/m³), or another material index id (formwork, earthworks, blockwork, waterproofing, plaster, flooring — in its per-m² unit); null removes a range. Merged with the current ones."),
   },
   run: async (a) => {
     const schedule = { ...(a.scheduleContractEnd ? { contractEnd: a.scheduleContractEnd } : {}), ...(a.scheduleExpectedEnd ? { expectedEnd: a.scheduleExpectedEnd } : {}), ...(a.scheduleNoteHe !== undefined ? { noteHe: a.scheduleNoteHe } : {}) };
     const materiality = { ...(a.materialityAbsolute !== undefined ? { absolute: a.materialityAbsolute } : {}), ...(a.materialityPctOfSection !== undefined ? { pctOfSection: a.materialityPctOfSection } : {}), ...(a.materialityAbsoluteAlways !== undefined ? { absoluteAlways: a.materialityAbsoluteAlways } : {}), ...(a.materialityBudgetSharePct !== undefined ? { budgetSharePct: a.materialityBudgetSharePct } : {}), ...(a.materialitySoftBasisPct !== undefined ? { softBasisPct: a.materialitySoftBasisPct } : {}) };
     const riskPolicy = { ...(a.riskQuoteExpiryExposurePct !== undefined ? { quoteExpiryExposurePct: a.riskQuoteExpiryExposurePct } : {}), ...(a.riskPriceStep !== undefined ? { priceStep: a.riskPriceStep } : {}) };
-    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}), ...(Object.keys(riskPolicy).length ? { riskPolicy } : {}) });
+    await updateProject(a.projectId, { ...(a.statusHe !== undefined ? { statusHe: a.statusHe } : {}), ...(a.physicalProgressPct !== undefined ? { physicalProgressPct: a.physicalProgressPct } : {}), ...(Object.keys(schedule).length ? { schedule } : {}), ...(Object.keys(materiality).length ? { materiality } : {}), ...(Object.keys(riskPolicy).length ? { riskPolicy } : {}), ...(a.kpiRanges ? { kpiRanges: a.kpiRanges } : {}) });
     await loadState(a.projectId);
-    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality, riskPolicy: pkg.project.riskPolicy } };
+    return { ok: true, project: { statusHe: pkg.project.statusHe, physicalProgressPct: pkg.project.physicalProgressPct ?? null, schedule: pkg.project.schedule ?? {}, materiality: pkg.project.materiality, riskPolicy: pkg.project.riskPolicy, kpiPolicy: pkg.project.kpiPolicy } };
   },
 });
 
@@ -1345,7 +1346,7 @@ define({
 define({
   name: "build_report",
   title: "Build the report",
-  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path), 'xlsx' (Excel workbook, one sheet per table, written to path). saveVersion=true (or a label) stores the version in the database — refused, with the reason, while documents are pending, no heartbeat was ever recorded, or the checks raise findings on records changed since the last heartbeat that nobody presented (run /bakara-heartbeat first; building without saving always works).",
+  description: "Build the control report from the current state per the report standard (sections 0–11, 4a/4b kept apart, §2א cost and quantity indices — ₪ per gross m² and per unit by cost group, steel kg/m², concrete m³/m² and the other material indices with their reference ranges — CEO page). format: 'summary' (header, executive summary, key table, decisions, material sections, issues — compact), 'markdown' (full text), 'json' (the whole model), 'docx' (Word file written to path), 'xlsx' (Excel workbook, one sheet per table, written to path). saveVersion=true (or a label) stores the version in the database — refused, with the reason, while documents are pending, no heartbeat was ever recorded, or the checks raise findings on records changed since the last heartbeat that nobody presented (run /bakara-heartbeat first; building without saving always works).",
   kind: "write",
   input: { projectId, controlDate, tab: z.enum(["full", "ceo"]).default("full"), format: z.enum(["summary", "markdown", "json", "docx", "xlsx"]).default("summary"), path: z.string().optional().describe("output file path for docx/xlsx/markdown (default out/…)"), label: z.string().optional(), saveVersion: z.boolean().default(false) },
   run: async (a) => {
@@ -1375,7 +1376,19 @@ define({
       header: report.header,
       executive: report.executive,
       status: report.status,
-      materialSections: report.material.map((m) => ({ sectionId: m.sectionId, titleHe: m.titleHe, reasonHe: m.reasonHe, recommendationHe: m.recommendationHe })),
+      // §2א: cost per gross m² / per unit by cost group, the material indices against the area (steel kg/m², concrete m³/m², …) with their reference ranges
+      kpis: report.kpis
+        ? {
+            denominatorHe: report.kpis.denominatorHe,
+            total: report.kpis.total,
+            groups: report.kpis.groups.map((g) => ({ id: g.id, labelHe: g.labelHe, sectionsHe: g.sectionsHe, budgetPerSqm: g.budgetPerSqm, eacPerSqm: g.eacPerSqm, deltaPerSqm: g.deltaPerSqm, recordedPerSqm: g.recordedPerSqm, eacPerUnit: g.eacPerUnit, sharePct: g.sharePct, basisPct: g.basisPct, factPct: g.factPct, commitmentPct: g.commitmentPct, estimatePct: g.estimatePct })),
+            materials: report.kpis.materials.map((m) => ({ id: m.id, labelHe: m.labelHe, chapter: m.chapter, unit: m.unit, sectionIds: m.sectionIds, boqQty: m.boqQty, perSqm: m.perSqm, perSqmUnitHe: m.perSqmUnitHe, range: m.range, rangeStatus: m.rangeStatus, deliveredQty: m.deliveredQty, deliveredPct: m.deliveredPct, deliveredNoteHe: m.deliveredNoteHe, budgetUnitPrice: m.budgetUnitPrice, paidUnitPrice: m.paidUnitPrice, currentUnitPrice: m.currentUnitPrice, currentPriceBasisHe: m.currentPriceBasisHe, costPerSqm: m.costPerSqm, costBasisHe: m.costBasisHe, sensitivityHe: m.sensitivityHe })),
+            derived: report.kpis.derived,
+            eacPerSqmSeries: report.kpis.eacPerSqmSeries,
+            structureProgress: report.kpis.structureProgress,
+          }
+        : null,
+      materialSections: report.material.map((m) => ({ sectionId: m.sectionId, titleHe: m.titleHe, reasonHe: m.reasonHe, recommendationHe: m.recommendationHe, materialIds: m.materialIds })),
       forecastChanges: report.changes.forecast,
       forecastChangesTotal: report.changes.forecastTotal,
       corrections: report.changes.corrections,
