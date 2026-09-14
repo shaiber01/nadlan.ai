@@ -43,11 +43,13 @@ Continue until `controlStatus` is `report` ("כל N הממצאים טופלו").
 ## 5. The review pass — what the checks cannot judge
 After the cards from the checks, read for what code cannot see. `get_review_material` returns, for the period: each contract's scope, inclusions and exclusions with the invoices and open purchase orders billed against it; invoices and open purchase orders without a contract; the BOQ lines not covered and the quotes that may price them; every document's text with its recorded facts. Read, and for each thing that does not fit raise a finding with `raise_finding` — the record, the sources you read, one sentence of the problem with the numbers, what it means, your reasoning, the decision and its options (`apply` when you can give a `proposedFix` that names stored data — a section move for an invoice or an order, the section its contract or description points to; the invoice's fields as the document states them; the order's line under the amount lock — never a value you inferred; `refer` with `referToId`; `accept`):
 - an invoice whose description is work the contract excludes, or work of another section (compare words and quantities, not only section ids);
-- an invoice without a contract whose description belongs to a section that has one;
+- an invoice without a contract whose description is the contracted work itself of a section that has a contract (a shell partial keyed as site costs), not a service performed on that work;
 - an open purchase order — with or without a contract — whose description belongs to a different section than the one it is recorded against;
 - a quote attached to a BOQ line that prices a different scope, quantity or unit;
 - facts recorded on a document that the document's text does not say (then also `set_document_facts` with what it does say, see `/bakara-extract`);
 - anything a person would notice reading these records side by side.
+
+A section is a work package, not a physical element. Do not raise: a site service — testing, laboratory, crane and hoisting, fuel, safety, security, transport — recorded in the site-costs section although its description names the element it served (בדיקות קורות, מנוף לשלד); a one-off order or invoice from a supplier that also holds a lump-sum contract, for materials, repairs or extras outside that contract's inclusions, recorded on the section without the contract link; a closed order at a price the appendix in force on its date allowed. The test is whether the *work* belongs to another package or the contract's scope covers it — not whether the words match another section.
 Present each raised finding as a card (step 3) and decide it (step 4). When done, `record_review_pass` with a one-line summary (what was read, how many findings, what was consistent). The report says whether this pass was done.
 
 ## 6. Hand over
