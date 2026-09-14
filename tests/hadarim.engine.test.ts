@@ -5,6 +5,7 @@ import { savePromptHe } from "../src/hadarim/engine/commands";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import type { V2State } from "../src/hadarim/engine/model";
 import { installScenario } from "./fixtures/scenario";
+import { checkUnits, proposedOrderCorrection } from "../src/hadarim/engine/checks";
 import { changeLogId, isUnprocessed } from "../src/hadarim/engine/heartbeat";
 import { recordReviewPass } from "../src/hadarim/engine/operations";
 import { buildReport, reportReadiness } from "../src/hadarim/engine/report";
@@ -383,5 +384,86 @@ describe("report readiness — what stands between the state and a deliverable r
     expect(pending).toMatchObject({ ready: false, pendingDocuments: 1, canSaveVersion: false });
     expect(pending.attentionHe).toBe("1 מסמכים בתיקייה טרם עובדו — עבד אותם לפני הדוח (/bakara-heartbeat).");
     expect(pending.blockersHe[0]).toContain("scan.pdf");
+  });
+});
+
+describe("unit check on closed orders — a wrong unit is caught wherever the order is read, not only where it feeds the forecast", () => {
+  const closedFrameworkOrder = (s: V2State) => s.erp.purchaseOrders.find((p) => p.status === "סגורה" && p.contractId && !p.attachmentId)!;
+
+  it("a closed order whose price unit was swapped to kilograms raises F-UNIT; the card says the forecast is untouched; yes restores it", () => {
+    const seed = initialState();
+    const closed = closedFrameworkOrder(seed);
+    expect(checkUnits(pkg, seed.erp, closed.id)).toEqual([]);
+    // the ERP keeps the line consistent, so swapping the price unit makes the amount a thousand times the order
+    const broken = updatePurchaseOrder(seed, closed.id, { priceUnit: "ק״ג" }, "EYAL");
+    const po = broken.erp.purchaseOrders.find((p) => p.id === closed.id)!;
+    expect(po).toMatchObject({ status: "סגורה", qty: closed.qty, unit: closed.unit, priceUnit: "ק״ג", unitPrice: closed.unitPrice, amount: closed.amount * 1000 });
+    const findings = checkUnits(pkg, broken.erp, closed.id);
+    expect(findings.map((f) => f.id)).toEqual([`F-UNIT-${closed.id}`]);
+    const [f] = findings;
+    expect(f.record).toEqual({ type: "po", id: String(closed.id) });
+    expect(f.problemHe).toContain("רשום לק״ג");
+    expect(f.problemHe).toContain("פי 1,000");
+    expect(f.problemHe).toContain(`${(closed.amount * 1000).toLocaleString("he-IL")} ₪ במקום ${closed.amount.toLocaleString("he-IL")} ₪`);
+    // no forecast effect, said plainly: a closed order is not in the committed figure
+    expect(f.impact).toEqual({ kind: "none", amount: 0, labelHe: "ללא השפעה על התחזית — הזמנה סגורה" });
+    expect(f.meaningHe).toContain("ההזמנה סגורה");
+    expect(f.meaningHe).toContain("לא את התחזית");
+    expect(f.decision.options[0].consequenceHe).toContain("ההזמנה סגורה — התחזית אינה משתנה");
+    expect(f.decision.questionHe).toBe(`המחיר בהזמנה הוא ${closed.unitPrice.toLocaleString("he-IL")} ₪ ל${closed.priceUnit} (ולא לק״ג)?`);
+    expect(f.detailsTable).toContainEqual(["יחידת מחיר", "ק״ג", closed.priceUnit]);
+    expect(f.sources[0].labelHe).toContain("סגורה");
+    // the fix is the price unit back to the appendix's; quantity and price stay
+    expect(proposedOrderCorrection(pkg, po)).toEqual({ qty: closed.qty, unit: closed.unit, priceUnit: closed.priceUnit, unitPrice: closed.unitPrice, fromQuote: false });
+    // a whole control lists it, and the approving answer restores the order without moving a forecast total
+    let s = reviewFindings(revealAllSteps(startControl(broken, "בקרה")));
+    expect(s.control.findings.map((x) => x.id)).toContain(f.id);
+    const before = total(s);
+    s = decide(s, f.id, "yes_tons");
+    expect(s.erp.purchaseOrders.find((p) => p.id === closed.id)).toMatchObject({ status: "סגורה", qty: closed.qty, unit: closed.unit, priceUnit: closed.priceUnit, unitPrice: closed.unitPrice, amount: closed.amount });
+    expect(s.control.decisions[f.id]).toMatchObject({ status: "handled", routeId: "update" });
+    expect(total(s)).toBe(before);
+    expect(checkUnits(pkg, s.erp, closed.id)).toEqual([]);
+  });
+
+  it("the price keyed per kilogram at the per-ton figure on a closed order is the same pattern (amount a thousandfold), fixed to the appendix unit", () => {
+    const seed = initialState();
+    const closed = closedFrameworkOrder(seed);
+    // the quantity restated in kilograms and the ton price recorded per kilogram: a thousand times the order
+    const broken = updatePurchaseOrder(seed, closed.id, { qty: closed.qty * 1000, unit: "ק״ג", priceUnit: "ק״ג" }, "EYAL");
+    expect(broken.erp.purchaseOrders.find((p) => p.id === closed.id)!.amount).toBe(closed.amount * 1000);
+    const [f] = checkUnits(pkg, broken.erp, closed.id);
+    expect(f?.id).toBe(`F-UNIT-${closed.id}`);
+    expect(proposedOrderCorrection(pkg, broken.erp.purchaseOrders.find((p) => p.id === closed.id)!)).toMatchObject({ qty: closed.qty * 1000, unit: "ק״ג", priceUnit: closed.priceUnit, unitPrice: closed.unitPrice });
+    const s = decide(reviewFindings(revealAllSteps(startControl(broken, "בקרה"))), f.id, "yes_tons");
+    expect(s.erp.purchaseOrders.find((p) => p.id === closed.id)).toMatchObject({ qty: closed.qty * 1000, unit: "ק״ג", priceUnit: closed.priceUnit, amount: closed.amount });
+  });
+
+  it("an order with a quote whose price unit was swapped: the amount a thousandfold off the quote is caught and fixed from the quote", () => {
+    const seed = initialState();
+    const quoted = seed.erp.purchaseOrders.find((p) => p.attachmentId && p.status === "פתוחה")!;
+    // start from the order as its quote states it (the scenario keys it in kilograms), then swap the price unit
+    const asQuoted = proposedOrderCorrection(pkg, quoted);
+    const clean = updatePurchaseOrder(seed, quoted.id, { qty: asQuoted.qty, unit: asQuoted.unit, priceUnit: asQuoted.priceUnit, unitPrice: asQuoted.unitPrice }, "EYAL");
+    expect(checkUnits(pkg, clean.erp, quoted.id)).toEqual([]);
+    const broken = updatePurchaseOrder(clean, quoted.id, { priceUnit: "ק״ג" }, "EYAL");
+    const po = broken.erp.purchaseOrders.find((p) => p.id === quoted.id)!;
+    expect(po.amount).toBe(Math.round(asQuoted.qty * asQuoted.unitPrice) * 1000);
+    const [f] = checkUnits(pkg, broken.erp, quoted.id);
+    expect(f?.id).toBe(`F-UNIT-${quoted.id}`);
+    expect(f.problemHe).toContain("גדול פי 1,000 מההצעה");
+    expect(f.checkHe).toContain("פי 1,000");
+    expect(f.impact.labelHe).toBe("ללא שינוי בסה״כ");
+    expect(f.meaningHe).not.toContain("ההזמנה סגורה");
+    expect(f.proposedFix?.patch).toEqual({ qty: asQuoted.qty, unit: asQuoted.unit, priceUnit: asQuoted.priceUnit, unitPrice: asQuoted.unitPrice });
+    // in a control the document check disagrees with the same fix, so the two fold into one card of the record; one answer applies it
+    const running = reviewFindings(revealAllSteps(startControl(broken, "בקרה")));
+    const card = running.control.findings.find((x) => x.id === f.id || x.members?.some((m) => m.id === f.id))!;
+    expect(card.kind).toBe("record");
+    expect(card.members!.map((m) => m.id)).toContain(f.id);
+    const s = decide(running, card.id, "apply");
+    expect(s.erp.purchaseOrders.find((p) => p.id === quoted.id)).toMatchObject({ qty: asQuoted.qty, unit: asQuoted.unit, priceUnit: asQuoted.priceUnit, unitPrice: asQuoted.unitPrice, amount: Math.round(asQuoted.qty * asQuoted.unitPrice) });
+    expect(s.control.decisions[f.id]).toMatchObject({ status: "handled", routeId: "update" });
+    expect(checkUnits(pkg, s.erp, quoted.id)).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { initialState, pkg } from "../src/hadarim/engine/commands";
 import { addAdjustment, addNote, addTask, correctPurchaseOrder, reallocateInvoice, removeAdjustment, setTaskStatus } from "../src/hadarim/engine/operations";
+import { checkUnits } from "../src/hadarim/engine/checks";
 import { workingForecast } from "../src/hadarim/engine/forecast";
 import { buildReport } from "../src/hadarim/engine/report";
 import { callTool, tools } from "../src/hadarim/tools";
@@ -147,6 +148,19 @@ describe("free-standing operations", () => {
     expect(s3.erp.purchaseOrders.find((p) => p.id === 2291)).toMatchObject({ qty: 12_000, unit: "ק״ג", priceUnit: "טון", unitPrice: 4800, amount: 57_600 });
     expect(c3!.afterHe).toBe("12,000 ק״ג × 4,800 ₪ לטון");
     expect(() => correctPurchaseOrder(seed, 2291, { unit: "ק״ג", priceUnit: "מ״ר" }, "EYAL")).toThrow(/אינן ניתנות להמרה/);
+  });
+
+  it("correct_purchase_order works on a closed order too: a swapped price unit is caught by the unit check and the correction clears it", () => {
+    const seed = initialState();
+    const closed = seed.erp.purchaseOrders.find((p) => p.status === "סגורה" && p.contractId)!;
+    expect(checkUnits(pkg, seed.erp, closed.id)).toEqual([]);
+    const [broken] = correctPurchaseOrder(seed, closed.id, { priceUnit: "ק״ג" }, "EYAL", "החלפת יחידת מחיר בטעות");
+    expect(broken.erp.purchaseOrders.find((p) => p.id === closed.id)).toMatchObject({ status: "סגורה", priceUnit: "ק״ג", amount: closed.amount * 1000 });
+    expect(checkUnits(pkg, broken.erp, closed.id).map((f) => f.id)).toEqual([`F-UNIT-${closed.id}`]);
+    const [fixed, correction] = correctPurchaseOrder(broken, closed.id, { priceUnit: closed.priceUnit }, "EYAL", "תיקון יחידת המחיר", true);
+    expect(fixed.erp.purchaseOrders.find((p) => p.id === closed.id)).toMatchObject({ status: "סגורה", qty: closed.qty, unit: closed.unit, priceUnit: closed.priceUnit, unitPrice: closed.unitPrice, amount: closed.amount });
+    expect(correction?.recordId).toBe(String(closed.id));
+    expect(checkUnits(pkg, fixed.erp, closed.id)).toEqual([]);
   });
 });
 

@@ -198,7 +198,10 @@ export function contractWithAppendices(pkg: HadarimPackage, sectionId: SectionId
 
 /**
  * What a purchase order should say, derived from its attached quote when there is one and otherwise from
- * the kg-keyed-as-tons reading (quantity and unit price off by a factor of 1000, amount unchanged).
+ * how its line reads against the price appendix in force at its date: the quantity and unit price keyed
+ * in kilograms under a "ton" unit (a thousandth of the price, a thousand times the quantity, the amount
+ * right), a per-unit price recorded under the wrong price unit (the amount a thousand times off), or a
+ * price keyed a thousand times off on its own.
  */
 export function proposedOrderCorrection(pkg: HadarimPackage, po: HPurchaseOrder): { qty: number; unit: string; priceUnit: string; unitPrice: number; fromQuote: boolean; documentId?: string } {
   const doc = documentById(pkg, po.attachmentId);
@@ -209,7 +212,42 @@ export function proposedOrderCorrection(pkg: HadarimPackage, po: HPurchaseOrder)
     const unit = facts.unit ?? po.unit;
     return { qty, unit, priceUnit: unit, unitPrice, fromQuote: true, documentId: doc!.id };
   }
+  const priceUnit = po.priceUnit || po.unit;
+  const reading = appendixReading(pkg, po);
+  if (reading?.off === "up") {
+    // the price is the appendix's per-unit price recorded under another unit — or, under the right unit, a thousand times too high
+    return priceUnit !== reading.unit ? { qty: po.qty, unit: po.unit, priceUnit: reading.unit, unitPrice: po.unitPrice, fromQuote: false } : { qty: po.qty, unit: po.unit, priceUnit, unitPrice: po.unitPrice / KG_PER_TON, fromQuote: false };
+  }
+  if (reading?.off === "down" && priceUnit !== po.unit) {
+    // the quantity is in its own unit; only the price was keyed a thousandth of the appendix's
+    return { qty: po.qty, unit: po.unit, priceUnit, unitPrice: po.unitPrice * KG_PER_TON, fromQuote: false };
+  }
+  // kilograms keyed as tons: a thousand times the quantity at a thousandth of the price, the amount unchanged
   return { qty: po.qty / KG_PER_TON, unit: po.unit, priceUnit: po.unit, unitPrice: po.unitPrice * KG_PER_TON, fromQuote: false };
+}
+
+/** A ratio about a thousand times too big ("up") or too small ("down"), within 10% — the signature of a unit keyed wrong. */
+export function thousandfold(ratio: number): "up" | "down" | null {
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  return Math.abs(ratio / KG_PER_TON - 1) < 0.1 ? "up" : Math.abs(ratio * KG_PER_TON - 1) < 0.1 ? "down" : null;
+}
+
+/**
+ * An order's unit price restated per the unit of the price appendix in force at the order's date, and whether
+ * it is a thousand times off the appendix: "up" — a per-ton price recorded as if per kilogram (or keyed a
+ * thousand times too high); "down" — the price keyed in kilograms under a ton unit. Null without an appendix
+ * or when the order's price unit does not convert into the appendix's.
+ */
+export function appendixReading(pkg: HadarimPackage, po: HPurchaseOrder): { appendix: HPriceAppendix; unit: string; pricePerUnit: number; off: "up" | "down" | null } | null {
+  const contract = po.contractId ? pkg.contracts.find((c) => c.id === po.contractId) : undefined;
+  const appendix = contract ? priceAppendixAt(contract, po.date) : null;
+  if (!appendix || !(po.unitPrice > 0) || !(appendix.pricePerTon > 0)) return null;
+  const unit = appendixUnit(appendix);
+  // one appendix unit, in the unit the order's price is quoted in (1 טון = 1,000 ק״ג)
+  const perPriceUnit = convertQuantity(1, unit, po.priceUnit || po.unit);
+  if (perPriceUnit == null) return null;
+  const pricePerUnit = po.unitPrice * perPriceUnit;
+  return { appendix, unit, pricePerUnit, off: thousandfold(pricePerUnit / appendix.pricePerTon) };
 }
 
 /** An order's line, as a card's proposed fix (the amount follows the line). */
@@ -348,53 +386,99 @@ export function checkOrderAllocation(pkg: HadarimPackage, erp: ErpState, onlyPoI
 
 /**
  * An order is suspicious when (a) its quantity/unit/price disagree with the attached quote while the
- * amount agrees (the classic kg-keyed-as-tons), or (b) without a quote, its unit price is implausible for
- * the unit given the price appendix in force (about 1/1000 of it).
+ * amount agrees (the classic kg-keyed-as-tons), or its amount is a thousand times off the quote's (a price
+ * unit swapped); (b) without a quote, its unit price restated per the appendix's unit is a thousand times
+ * off the price appendix in force; or (c) its amount is not its own line's arithmetic. Closed orders are
+ * checked like open ones: their amount no longer feeds the forecast's commitments, but it is read wherever
+ * the order is — the section screen, the exports, the invoices booked against it, a reopening.
  */
 export function checkUnits(pkg: HadarimPackage, erp: ErpState, onlyPoId?: number): HFinding[] {
   const out: HFinding[] = [];
   for (const po of erp.purchaseOrders) {
     if (onlyPoId != null && po.id !== onlyPoId) continue;
-    if (po.status !== "פתוחה") continue;
     const supplier = pkg.suppliers.find((s) => s.id === po.supplierId);
     const contract = po.contractId ? pkg.contracts.find((c) => c.id === po.contractId) : undefined;
     const appendix = contract ? priceAppendixAt(contract, po.date) : null;
     const quoteDoc = documentById(pkg, po.attachmentId);
     const facts = quoteFacts(quoteDoc);
+    const priceUnit = po.priceUnit || po.unit;
     const amountMatchesQuote = facts?.amount != null && Math.abs(facts.amount - po.amount) < 1;
-    const factsDisagree = !!facts && amountMatchesQuote && ((facts.qty != null && facts.qty !== po.qty) || (facts.unit && facts.unit !== po.unit) || (facts.unitPrice != null && Math.abs(facts.unitPrice - po.unitPrice) > 0.005));
-    const kgLikeTon = !facts && !!appendix && po.unit === appendixUnit(appendix) && po.unitPrice > 0 && Math.abs(po.unitPrice * KG_PER_TON - appendix.pricePerTon) / appendix.pricePerTon < 0.1;
+    const amountVsQuote = facts?.amount != null && facts.amount > 0 ? thousandfold(po.amount / facts.amount) : null;
+    const factsDisagree = !!facts && ((amountMatchesQuote && ((facts.qty != null && facts.qty !== po.qty) || (facts.unit && facts.unit !== po.unit) || (facts.unitPrice != null && Math.abs(facts.unitPrice - po.unitPrice) > 0.005))) || amountVsQuote != null);
+    const reading = facts ? null : appendixReading(pkg, po);
+    const priceOff = reading?.off ?? null;
     // the order's own arithmetic, with the quantity converted into the unit the price is quoted in
     const value = lineValue(po);
     const misvalued = value.incommensurable || value.amount !== po.amount;
-    if (!factsDisagree && !kgLikeTon && !misvalued) continue;
+    if (!factsDisagree && !priceOff && !misvalued) continue;
 
-    const rightQty = facts?.qty ?? po.qty / KG_PER_TON;
-    const rightUnit = facts?.unit ?? po.unit;
-    const rightPrice = facts?.unitPrice ?? po.unitPrice * KG_PER_TON;
-    const item = po.descriptionHe.split(",")[0];
     const correction = proposedOrderCorrection(pkg, po);
+    const right = { ...correction, amount: lineValue(correction).amount ?? Math.round(correction.qty * correction.unitPrice) };
+    const qtyChanges = right.qty !== po.qty || right.unit !== po.unit;
+    const amountChanges = right.amount !== po.amount;
+    const closed = po.status !== "פתוחה";
+    const item = po.descriptionHe.split(",")[0];
     const proposedFix = correction.fromQuote ? orderLineFix(correction) : undefined;
+    const lineHe = (l: { qty: number; unit: string; priceUnit: string; unitPrice: number }) => `${num(l.qty)} ${l.unit} × ${num(l.unitPrice)} ₪ ל${l.priceUnit}`;
     const sources: HSource[] = [
-      { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · כמות: ${num(po.qty)} · יחידה: ${po.unit} · מחיר יח׳: ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 2 })} ₪${po.priceUnit && po.priceUnit !== po.unit ? ` ל${po.priceUnit}` : ""} · סכום: ${nis(po.amount)}`, fieldHe: "כמות / יחידה / מחיר יח׳", valueHe: `${num(po.qty)} ${po.unit} × ${po.unitPrice}` },
+      { kind: "po", refId: String(po.id), labelHe: `הזמנה ${po.id} · ${supplier?.nameHe} · כמות: ${num(po.qty)} · יחידה: ${po.unit} · מחיר יח׳: ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 2 })} ₪${po.priceUnit && po.priceUnit !== po.unit ? ` ל${po.priceUnit}` : ""} · סכום: ${nis(po.amount)}${closed ? " · סגורה" : ""}`, fieldHe: "כמות / יחידה / מחיר יח׳", valueHe: `${num(po.qty)} ${po.unit} × ${po.unitPrice}` },
     ];
     if (misvalued) sources.push({ kind: "po", refId: String(po.id), labelHe: value.incommensurable ? `יחידת הכמות (${po.unit}) ויחידת המחיר (${po.priceUnit}) אינן ניתנות להמרה — הסכום אינו ניתן לגזירה` : `הכמות ביחידת המחיר: ${num(value.pricedQty!)} ${po.priceUnit} × ${num(po.unitPrice)} ₪ = ${nis(value.amount!)}, ולא ${nis(po.amount)} כרשום`, fieldHe: "סכום גזור", valueHe: value.amount != null ? nis(value.amount) : "—" });
     if (quoteDoc && facts) sources.push({ kind: "document", refId: quoteDoc.id, labelHe: `הצעת ספק מצורפת: ״${item} — ${facts.qty != null ? `${num(facts.qty)} ${facts.unit ?? ""}` : ""}${facts.unitPrice != null ? ` × ${num(facts.unitPrice)} ₪/${facts.unit ?? "יח׳"}` : ""}${facts.amount != null ? ` = ${nis(facts.amount)}` : ""}״`, documentId: quoteDoc.id, anchor: "line" });
     if (appendix) sources.push({ kind: "document", refId: appendix.documentId, labelHe: `נספח מחיר ${supplier?.nameHe}: ${num(appendix.pricePerTon)} ₪/${appendixUnit(appendix)}`, documentId: appendix.documentId, anchor: "price" });
+
+    // the words follow the pattern: the quote says otherwise · the price unit is wrong against the appendix · the price is a thousandth of the appendix (kilograms keyed as tons) · the amount is not the line's
+    const priceHe = `${num(po.unitPrice)} ₪ ל${priceUnit}`;
+    const quoteHe = `הצעת הספק המצורפת: ${num(right.qty)} ${right.unit} ב-${num(right.unitPrice)} ₪/${right.unit}${facts?.amount != null ? ` = ${nis(facts.amount)}` : ""}`;
+    const problemHe = facts
+      ? amountMatchesQuote
+        ? `בהזמנת רכש ${po.id} (${item}) הכמות היא ${num(po.qty)} והיחידה ${po.unit}, אך מחיר היחידה שנרשם הוא ${num(po.unitPrice)} ₪ — לא ייתכן ל${po.unit}. ${quoteHe}.`
+        : `בהזמנת רכש ${po.id} (${item}) רשום ${lineHe({ ...po, priceUnit })} = ${nis(po.amount)}, ואילו ${quoteHe}. הסכום ${amountVsQuote === "up" ? "גדול" : "קטן"} פי 1,000 מההצעה — יחידת המחיר הוחלפה.`
+      : priceOff === "up"
+        ? `בהזמנת רכש ${po.id} (${item}) מחיר היחידה ${priceHe} ${right.priceUnit !== priceUnit ? `רשום ל${priceUnit}, ואילו נספח המחיר קובע ${num(reading!.appendix.pricePerTon)} ₪/${reading!.unit} — פי 1,000 ל${reading!.unit}` : `הוא פי 1,000 מנספח המחיר (${num(reading!.appendix.pricePerTon)} ₪/${reading!.unit})`}. הסכום הגזור: ${nis(po.amount)} במקום ${nis(right.amount)}.`
+        : priceOff === "down"
+          ? qtyChanges
+            ? `בהזמנת רכש ${po.id} (${item}) הכמות היא ${num(po.qty)} והיחידה ${po.unit}, אך מחיר היחידה שנרשם הוא ${num(po.unitPrice)} ₪ — לא ייתכן ל${po.unit}. לפי נספח המחיר (${num(reading!.appendix.pricePerTon)} ₪/${reading!.unit}) נראה שהכמות והמחיר הוזנו בק״ג.`
+            : `בהזמנת רכש ${po.id} (${item}) מחיר היחידה ${priceHe} הוא אלפית מנספח המחיר (${num(reading!.appendix.pricePerTon)} ₪/${reading!.unit}). הסכום הגזור: ${nis(po.amount)} במקום ${nis(right.amount)}.`
+          : value.incommensurable
+            ? `בהזמנת רכש ${po.id} (${item}) יחידת הכמות (${po.unit}) ויחידת המחיר (${po.priceUnit}) אינן ניתנות להמרה זו לזו, ולכן הסכום ${nis(po.amount)} אינו נגזר מהשורה.`
+            : `בהזמנת רכש ${po.id} (${item}) הסכום הרשום ${nis(po.amount)} אינו שווה לכמות המומרת ליחידת המחיר × מחיר היחידה (${num(value.pricedQty!)} ${priceUnit} × ${num(po.unitPrice)} ₪ = ${nis(value.amount!)}).`;
+    const checkHe = facts
+      ? amountMatchesQuote
+        ? `הסכום ${nis(po.amount)} נכון. הכמות והמחיר הוזנו ב${po.unit === "טון" ? "ק״ג" : "יחידה אחרת"} (${num(po.qty)} × ${po.unitPrice}), אך שדה היחידה אומר ${po.unit}.`
+        : `הצעת הספק: ${num(right.qty)} ${right.unit} × ${num(right.unitPrice)} ₪${facts.amount != null ? ` = ${nis(facts.amount)}` : ""}; בהזמנה: ${lineHe({ ...po, priceUnit })} = ${nis(po.amount)} — פי 1,000.`
+      : reading
+        ? `נספח המחיר בתוקף ל-${dateHe(po.date)}: ${num(reading.appendix.pricePerTon)} ₪/${reading.unit}; בהזמנה: ${priceHe}${reading.unit !== priceUnit ? ` = ${num(reading.pricePerUnit)} ₪/${reading.unit}` : ""}. הסכום ${nis(po.amount)} ${amountChanges ? "נגזר מהשורה השגויה" : "מתקבל גם כך"}.`
+        : `הסכום הגזור מהשורה: ${value.amount != null ? nis(value.amount) : "—"}; הרשום: ${nis(po.amount)}.`;
+    const statusHe = closed ? " ההזמנה סגורה (סופקה במלואה) ואינה חלק מההתחייבויות שבתחזית: התיקון משנה את הרשומה במערכת המידע בלבד — מסך הסעיף, הייצוא, החשבונות שנרשמו כנגדה — לא את התחזית." : "";
+    const meaningHe = amountChanges
+      ? `הסכום הרשום שגוי — ${nis(po.amount)} במקום ${nis(right.amount)} — וכל מקום שקורא את ההזמנה (מסך הסעיף, ייצוא, השוואה לחשבונות הספק) רואה אותו.${statusHe}`
+      : `הסכום הכספי תקין — לכן אף אחד לא שם לב. אבל כל חישוב שמסתמך על שדה הכמות — ${closed ? "כמות שסופקה, השוואה לחשבונות" : "יתרה להזמנה, קצב צריכה"}, השוואה לכתב כמויות — רואה ${num(po.qty)} ${po.unit} במקום ${num(right.qty)}.${statusHe}`;
+    const detailsTable: string[][] = [["שדה", "בהזמנה", facts ? "לפי ההצעה" : reading ? "לפי הנספח" : "לפי השורה"], ["כמות", num(po.qty), num(right.qty)], ["יחידה", po.unit, right.unit]];
+    if (priceUnit !== right.priceUnit) detailsTable.push(["יחידת מחיר", priceUnit, right.priceUnit]);
+    detailsTable.push(["מחיר יח׳", `${num(po.unitPrice)} ₪`, `${num(right.unitPrice)} ₪`], ["סכום", nis(po.amount), nis(right.amount)]);
     out.push({
       id: `F-UNIT-${po.id}`,
       kind: "unit",
       titleHe: `יחידת מידה בהזמנה ${po.id} — ${item}`,
-      problemHe: `בהזמנת רכש ${po.id} (${item}) הכמות היא ${num(po.qty)} והיחידה ${po.unit}, אך מחיר היחידה שנרשם הוא ${po.unitPrice.toLocaleString("he-IL", { minimumFractionDigits: 1 })} ₪ — לא ייתכן ל${po.unit}. ${facts ? `הצעת הספק המצורפת: ${num(rightQty)} ${rightUnit} ב-${num(rightPrice)} ₪/${rightUnit}.` : `לפי נספח המחיר (${num(appendix!.pricePerTon)} ₪/${appendixUnit(appendix!)}) נראה שהכמות והמחיר הוזנו בק״ג.`}`,
+      problemHe,
       sources,
-      checkHe: `הסכום ${nis(po.amount)} ${facts?.amount != null ? "נכון" : "מתקבל גם כך"}. הכמות והמחיר הוזנו ב${po.unit === "טון" ? "ק״ג" : "יחידה אחרת"} (${num(po.qty)} × ${po.unitPrice}), אך שדה היחידה אומר ${po.unit}.`,
-      meaningHe: `הסכום הכספי תקין — לכן אף אחד לא שם לב. אבל כל חישוב שמסתמך על שדה הכמות — יתרה להזמנה, קצב צריכה, השוואה לכתב כמויות — רואה ${num(po.qty)} ${po.unit} במקום ${num(rightQty)}.`,
-      impact: { kind: "none", amount: 0, labelHe: "ללא שינוי בסה״כ" },
+      checkHe,
+      meaningHe,
+      impact: { kind: "none", amount: 0, labelHe: closed ? "ללא השפעה על התחזית — הזמנה סגורה" : "ללא שינוי בסה״כ" },
       ...(proposedFix ? { proposedFix } : {}),
-      decision: { questionHe: `ההזמנה היא ל-${num(rightQty)} ${rightUnit}?`, options: [{ id: "yes_tons", labelHe: `כן — לתקן ל-${num(rightQty)} ${rightUnit} במערכת המידע`, consequenceHe: consequence.update(`את שורת הזמנה ${po.id} ל-${num(rightQty)} ${rightUnit} × ${num(rightPrice)} ₪ (הסכום ${nis(po.amount)} נשאר)`) }, ...referOption(), { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק", consequenceHe: quoteDoc ? "פותח את ההצעה המצורפת לעיון; הרשומה לא משתנה עד להחלטה" : consequence.open("עד לבירור מול הספק") }], freeText: false },
+      decision: {
+        questionHe: qtyChanges ? `ההזמנה היא ל-${num(right.qty)} ${right.unit}?` : `המחיר בהזמנה הוא ${num(right.unitPrice)} ₪ ל${right.priceUnit}${right.priceUnit !== priceUnit ? ` (ולא ל${priceUnit})` : ""}?`,
+        options: [
+          { id: "yes_tons", labelHe: qtyChanges ? `כן — לתקן ל-${num(right.qty)} ${right.unit} במערכת המידע` : `כן — לתקן ל-${lineHe(right)} במערכת המידע`, consequenceHe: consequence.update(`את שורת הזמנה ${po.id} ל-${lineHe(right)} (${amountChanges ? `הסכום מתוקן ל-${nis(right.amount)}` : `הסכום ${nis(po.amount)} נשאר`}${closed ? "; ההזמנה סגורה — התחזית אינה משתנה" : ""})`) },
+          ...referOption(),
+          { id: "open_quote", labelHe: quoteDoc ? "לא — פתח את ההצעה" : "לא — נבדוק מול הספק", consequenceHe: quoteDoc ? "פותח את ההצעה המצורפת לעיון; הרשומה לא משתנה עד להחלטה" : consequence.open("עד לבירור מול הספק") },
+        ],
+        freeText: false,
+      },
       sectionId: po.sectionId,
       record: { type: "po", id: String(po.id) },
-      detailsTable: [["שדה", "בהזמנה", facts ? "לפי ההצעה" : "לפי הנספח"], ["כמות", num(po.qty), num(rightQty)], ["יחידה", po.unit, rightUnit], ["מחיר יח׳", `${po.unitPrice} ₪`, `${num(rightPrice)} ₪`], ["סכום", nis(po.amount), nis(Math.round(rightQty * rightPrice))]],
+      detailsTable,
     });
   }
   return out;
