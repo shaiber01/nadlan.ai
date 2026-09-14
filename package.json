@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "hadarim:dump": "vite-node scripts/dump-hadarim.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "hadarim:seed-report": "vite-node scripts/build-seed-report.ts",
     "hadarim:seed": "vite-node scripts/seed-supabase.ts",
     "hadarim:reset": "vite-node scripts/reset-supabase.ts",
     "db:types": "supabase gen types typescript --project-id aevdlzncwkdosbzkgpgy --schema public > src/hadarim/db/types.ts",

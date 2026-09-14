@@ -191,6 +191,34 @@ describe("report statements are backed by data or by the controller", () => {
     expect(r.contingency.pendingChangeOrdersHe).toBe("פקודת שינוי 7 — תוספת מעקות, 85,000 ₪, ממתינה לאישור");
     expect(r.contingency.claimsHe).toBe("דרישת קבלן השלד להתייקרות בטון");
   });
+
+  it("§4a explains what the roll-forward itself changed: a remainder re-priced by a newer appendix is a price change with the appendix as its source", () => {
+    const seed = initialState();
+    const r = buildReport(pkg, seed);
+    const previous = pkg.forecasts.find((f) => f.controlDate === wf(seed).previousControlDate)!;
+    const draft = pkg.forecasts.find((f) => f.controlDate === seed.control.controlDate && f.sections)!;
+    // every section whose rolled forecast differs from the previous final has its rows, and they add up to the change
+    for (const d of draft.sections!) {
+      const before = previous.sections!.find((p) => p.sectionId === d.sectionId)!;
+      const rows = r.changes.forecast.filter((c) => c.sectionHe.startsWith(`${d.sectionId}-`));
+      expect(rows.reduce((a, c) => a + c.amount, 0), d.sectionId).toBe(isContingency(d.sectionId) ? 0 : d.eac - before.eac);
+      const repriced = d.lines.find((l) => l.kind === "uncovered" && l.basis === "appendix" && before.lines.some((b) => b.basis === "appendix" && b.unitPrice !== l.unitPrice));
+      if (repriced) {
+        const row = rows.find((c) => c.typeHe === "שינוי מחיר")!;
+        expect(row.basisHe).toBe(repriced.sourceRef);
+        expect(row.documentId).toBeDefined();
+        expect(pkg.documents.some((doc) => doc.id === row.documentId)).toBe(true);
+      }
+    }
+    expect(r.changes.forecastTotal).toBe(wf(seed).totalEac - previous.totalEac);
+    expect(r.executive.paragraphHe).toContain("מקור השינוי");
+    // the controller's own adjustments come after, on top
+    const target = draft.sections!.find((d) => d.eac === previous.sections!.find((p) => p.sectionId === d.sectionId)!.eac)!;
+    const [s] = addAdjustment(seed, { sectionId: target.sectionId, changeType: "scope", descriptionHe: "בדיקה", basis: "estimate", basisHe: "אומדן", sourceRef: "בדיקה", amount: 10_000 });
+    const after = buildReport(pkg, s);
+    expect(after.changes.forecast).toHaveLength(r.changes.forecast.length + 1);
+    expect(after.changes.forecastTotal).toBe(r.changes.forecastTotal + 10_000);
+  });
 });
 
 describe("materiality is a project setting", () => {

@@ -1,7 +1,7 @@
 import { priceAppendixAt } from "../data/generate";
 import { MATERIAL_INDICES, chapterLabelHe } from "../data/bluebook";
-import { RECORD_TYPE_HE, type BuildingTag, type HForecastLine, type HadarimPackage, type SectionId } from "../data/types";
-import { boqPageFor, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
+import { RECORD_TYPE_HE, type BuildingTag, type HForecastLine, type HForecastVersion, type HadarimPackage, type SectionId } from "../data/types";
+import { boqPageFor, contractWithAppendices, documentById, findingIds, findingReported, isContingency, quoteFacts, revisionRemovalDocFor, runChecks, sectionShort, type HFinding } from "./checks";
 import { allIssues } from "./commands";
 import { uncoveredAt, uncoveredByBasis, workingForecast, type UncoveredBreakdown, type WorkingForecast, type WorkingSection } from "./forecast";
 import { isUnprocessed, reportBlockers } from "./heartbeat";
@@ -210,6 +210,37 @@ export interface ReportModel {
 }
 
 const BASIS_HE: Record<string, string> = { invoice: "חשבון מאושר", contract: "חוזה חתום", po: "הזמנה מאושרת", quote: "הצעת מחיר", appendix: "נספח מחיר", estimate: "אומדן פנימי", allocation: "הקצאה תקציבית פנימית" };
+
+/**
+ * Standard §4a also covers what the roll-forward itself changed before the controller touched anything — a
+ * remainder re-priced by a price appendix that took force since the previous control, an estimate revised.
+ * The draft's uncovered lines against the previous final's, paired by basis within the section: a new unit
+ * price on the same remainder is a price change (the quantity that moved from uncovered to recorded is not a
+ * forecast change); whatever else moved the section's forecast is a change of basis.
+ */
+function rolledChanges(pkg: HadarimPackage, draft: HForecastVersion | undefined, previous: HForecastVersion, controlDate: string): ChangeRow[] {
+  const out: ChangeRow[] = [];
+  for (const s of draft?.sections ?? []) {
+    const prev = previous.sections?.find((p) => p.sectionId === s.sectionId);
+    if (!prev || s.eac === prev.eac || isContingency(s.sectionId)) continue;
+    let explained = 0;
+    const before = prev.lines.filter((l) => l.kind === "uncovered");
+    for (const line of s.lines.filter((l) => l.kind === "uncovered")) {
+      const i = before.findIndex((b) => b.basis === line.basis);
+      if (i < 0) continue;
+      const [b] = before.splice(i, 1);
+      if (line.qty == null || line.unitPrice == null || b.unitPrice == null || line.unitPrice === b.unitPrice) continue;
+      const amount = line.qty * (line.unitPrice - b.unitPrice);
+      const contract = line.basis === "appendix" ? contractWithAppendices(pkg, s.sectionId) : null;
+      const appendix = contract ? priceAppendixAt(contract, controlDate) : null;
+      out.push({ sectionHe: label(s.sectionId), typeHe: CHANGE_TYPE_HE.price, descriptionHe: `${line.descriptionHe} — ${num(b.unitPrice)} → ${num(line.unitPrice)} ₪/${line.unit ?? "יח׳"}`, basisHe: line.sourceRef ?? BASIS_HE[line.basis] ?? "", amount, documentId: appendix?.documentId });
+      explained += amount;
+    }
+    const rest = s.eac - prev.eac - explained;
+    if (rest) out.push({ sectionHe: label(s.sectionId), typeHe: CHANGE_TYPE_HE.basis, descriptionHe: `גלגול התחזית: ${nis(prev.eac)} → ${nis(s.eac)}`, basisHe: s.lines.find((l) => l.kind === "uncovered")?.sourceRef ?? "תחזית מגולגלת", amount: rest });
+  }
+  return out;
+}
 
 /** Standard §5 with the project's thresholds: a change since the previous control, or a variance over the materiality threshold. */
 function isMaterial(pkg: HadarimPackage, s: WorkingSection): boolean {
@@ -510,7 +541,9 @@ function coverageSection(pkg: HadarimPackage, state: V2State, s: WorkingSection,
 function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State, s: WorkingSection, reasonHe: string): Omit<MaterialSection, "materialIds"> {
   const supplierHe = (id: string) => pkg.suppliers.find((x) => x.id === id)?.nameHe ?? id;
   const section = pkg.sections.find((x) => x.id === s.sectionId)!;
-  const contracts = pkg.contracts.filter((c) => c.sectionId === s.sectionId);
+  // a contract signed after the control date was still in negotiation at the cut-off
+  const contracts = pkg.contracts.filter((c) => c.sectionId === s.sectionId && c.signedAt < wf.controlDate);
+  const inNegotiation = pkg.contracts.filter((c) => c.sectionId === s.sectionId && c.signedAt >= wf.controlDate);
   const invoices = state.erp.invoices.filter((i) => i.sectionId === s.sectionId && i.status !== "בבדיקה" && i.dateReceived < wf.controlDate);
   const openPos = state.erp.purchaseOrders.filter((p) => p.sectionId === s.sectionId && p.status === "פתוחה");
   const boq = pkg.boq.filter((l) => l.sectionId === s.sectionId);
@@ -526,6 +559,8 @@ function genericSection(pkg: HadarimPackage, wf: WorkingForecast, state: V2State
     paragraphs.push(`${num(openPos.length)} הזמנות פתוחות (${[...new Set(openPos.map((p) => supplierHe(p.supplierId)))].slice(0, 4).join(", ")}${openPos.length > 4 ? " ועוד" : ""}) בסך ${nis(openPos.reduce((a, p) => a + p.amount, 0))}; נרשמו ${nis(s.recorded)} (${num(invoices.length)} חשבונות); יתרת התחייבות ${nis(s.remainingCommitment)}.`);
   } else if (allocationOnly) {
     paragraphs.push(`ללא חוזה או הזמנה — הסעיף מנוהל בהקצאה חודשית לפי התקציב. נרשמו ${nis(s.recorded)} (${num(invoices.length)} הקצאות).`);
+  } else if (inNegotiation.length) {
+    paragraphs.push(`חוזה ${inNegotiation.map((c) => `${c.id} — ${supplierHe(c.supplierId)}`).join(" · ")} במו״מ, טרם נחתם; נרשמו ${nis(s.recorded)}.`);
   } else {
     paragraphs.push(`טרם נחתם חוזה ולא הוצאו הזמנות; נרשמו ${nis(s.recorded)}.`);
   }
@@ -714,7 +749,10 @@ export function buildReport(pkg: HadarimPackage, state: V2State): ReportModel {
   const commitmentPct = ((wf.totalRecorded + wf.totalRemainingCommitment) / wf.totalEac) * 100;
   const notes = state.control.notes;
 
-  const forecastChanges: ChangeRow[] = state.control.adjustments.map((a) => ({ sectionHe: label(a.sectionId), typeHe: CHANGE_TYPE_HE[a.changeType], descriptionHe: a.descriptionHe, basisHe: a.basisHe, amount: a.amount, documentId: a.documentId }));
+  const forecastChanges: ChangeRow[] = [
+    ...rolledChanges(pkg, pkg.forecasts.find((f) => f.controlDate === controlDate && f.sections), previous, controlDate),
+    ...state.control.adjustments.map((a) => ({ sectionHe: label(a.sectionId), typeHe: CHANGE_TYPE_HE[a.changeType], descriptionHe: a.descriptionHe, basisHe: a.basisHe, amount: a.amount, documentId: a.documentId })),
+  ];
   const forecastTotal = forecastChanges.reduce((a, c) => a + c.amount, 0);
   const corrections: CorrectionRow[] = state.control.corrections.map((c) => ({ recordHe: `${c.recordType === "invoice" ? "חשבון" : "הזמנה"} ${c.recordId}`, whatHe: c.fieldHe, beforeHe: c.beforeHe, afterHe: c.afterHe, approvedByHe: personName(pkg, c.approvedById), crossSectionHe: c.crossSectionHe, statusHe: c.status === "applied" ? "בוצע במקור" : "ממתין לביצוע" }));
 
