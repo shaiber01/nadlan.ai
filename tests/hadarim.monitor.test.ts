@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { documentsMonitor, erpMonitor, type ProbeReads } from "../src/hadarim/messaging/probe";
+import { heartbeatAlonePromptHe, heartbeatPromptHe } from "../src/hadarim/messaging/prompts";
+import { Scheduler, dueMonitors, intervalFor, nextDelayMs, type MonitorDef, type MonitorId, type MonitorSettings, type ProbeResult } from "../src/hadarim/messaging/scheduler";
+import { daemonAlive, rowToSettings, settingsChangeKey } from "../src/hadarim/messaging/settings";
 import type { Channel, Inbound, Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
 import { channelContextHe } from "../src/hadarim/messaging/context";
@@ -316,6 +320,193 @@ describe("the console channel and the file store", () => {
   });
 });
 
+describe("the scheduler", () => {
+  const settings = (over: Partial<MonitorSettings> = {}): MonitorSettings => ({ projectId: "P", enabled: true, intervalSeconds: 20, notifyOnQuiet: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null, ...over });
+
+  function build(over: Partial<MonitorSettings> = {}) {
+    let current = settings(over);
+    let work = false;
+    let passOk = true;
+    const probes: MonitorId[] = [];
+    const passes: ProbeResult[][] = [];
+    const ticks: boolean[] = [];
+    const monitor = (id: MonitorId): MonitorDef => ({ id, probe: async () => { probes.push(id); return { monitor: id, work, detailHe: work ? "יש" : "אין" }; } });
+    const s = new Scheduler({
+      projectId: "P",
+      readSettings: async () => current,
+      monitors: [monitor("documents"), monitor("erp")],
+      runPass: async (r) => { passes.push(r); if (!passOk) throw new Error("boom"); return { ok: true }; },
+      recordTick: async (_at, found) => { ticks.push(found); },
+    });
+    return { s, probes, passes, ticks, set: (o: Partial<MonitorSettings>) => (current = settings(o)), setWork: (w: boolean) => (work = w), setPassOk: (v: boolean) => (passOk = v) };
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("disabled: the first tick finds no work to schedule and leaves no timer", async () => {
+    const { s, probes } = build({ enabled: false });
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(probes).toEqual([]);
+    expect(s.state.timerSet).toBe(false);
+    s.stop();
+  });
+
+  it("enabled: probes at start and every interval, records each tick, runs no pass without work", async () => {
+    const { s, probes, passes, ticks } = build();
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(probes).toEqual(["documents", "erp"]);
+    expect(ticks).toEqual([false]);
+    expect(passes).toEqual([]);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(s.state.nextAt! - Date.now()).toBe(20_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(probes).toHaveLength(4);
+    expect(ticks).toHaveLength(2);
+    s.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("work: one pass, then the next timer counted from the end of the pass", async () => {
+    const { s, passes, ticks, setWork } = build();
+    setWork(true);
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(passes).toHaveLength(1);
+    expect(passes[0].map((r) => r.monitor)).toEqual(["documents", "erp"]);
+    expect(ticks).toEqual([true]);
+    expect(s.state.failures).toBe(0);
+    expect(s.state.timerSet).toBe(true);
+    s.stop();
+  });
+
+  it("two failed passes: the next tick waits ten intervals", async () => {
+    const { s, setWork, setPassOk } = build();
+    setWork(true);
+    setPassOk(false);
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.state.failures).toBe(1);
+    expect(s.state.nextAt! - Date.now()).toBe(20_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(s.state.failures).toBe(2);
+    expect(s.state.nextAt! - Date.now()).toBe(200_000);
+    s.stop();
+  });
+
+  it("wake re-evaluates at once: off cancels the timer, on restores it, a longer interval reschedules", async () => {
+    const { s, set } = build();
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    set({ enabled: false });
+    s.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+    set({ enabled: true, intervalSeconds: 60 });
+    s.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    // the monitors ran a moment ago, so the next tick is when the new interval elapses
+    expect(s.state.nextAt! - Date.now()).toBe(60_000);
+    s.stop();
+  });
+
+  it("per-monitor intervals: each monitor is probed at its own cadence", async () => {
+    const { s, probes } = build({ intervalSeconds: 60, monitors: { documents: { intervalSeconds: 15 } } });
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(probes).toEqual(["documents", "erp"]);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(probes).toEqual(["documents", "erp", "documents"]);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(probes.filter((p) => p === "erp")).toHaveLength(2);
+    expect(probes.filter((p) => p === "documents")).toHaveLength(5);
+    s.stop();
+  });
+
+  it("the pure pieces: interval floor, due monitors, next delay", () => {
+    const s = settings({ intervalSeconds: 5, monitors: { erp: { intervalSeconds: 40 } } });
+    expect(intervalFor(s, "documents")).toBe(15);
+    expect(intervalFor(s, "erp")).toBe(40);
+    expect(dueMonitors(s, ["documents", "erp"], 1_000_000, {})).toEqual(["documents", "erp"]);
+    expect(dueMonitors(s, ["documents", "erp"], 1_020_000, { documents: 1_000_000, erp: 1_000_000 })).toEqual(["documents"]);
+    expect(nextDelayMs(s, ["documents", "erp"], 1_020_000, { documents: 1_020_000, erp: 1_000_000 })).toBe(15_000);
+    expect(nextDelayMs(s, ["documents", "erp"], 1_000_000, {})).toBe(0);
+  });
+});
+
+describe("the probes and the prompts", () => {
+  const reads = (latest: number, watermark: number | null, pending: number): ProbeReads => ({ latestChangeLogId: async () => latest, lastHeartbeatWatermark: async () => watermark, countPendingDocuments: async () => pending });
+
+  it("the erp probe compares the change log with the last heartbeat's watermark; the first pass covers the seed's rows", async () => {
+    expect(await erpMonitor(reads(11, null, 0)).probe("P")).toMatchObject({ work: true, detailHe: expect.stringContaining("טרם נרשמה") });
+    expect(await erpMonitor(reads(0, null, 0)).probe("P")).toMatchObject({ work: false });
+    expect(await erpMonitor(reads(11, 11, 0)).probe("P")).toMatchObject({ work: false });
+    expect(await erpMonitor(reads(14, 11, 0)).probe("P")).toMatchObject({ work: true, detailHe: expect.stringContaining("3 שינויים") });
+  });
+
+  it("the documents probe counts unprocessed documents", async () => {
+    expect(await documentsMonitor(reads(0, 0, 0)).probe("P")).toMatchObject({ work: false });
+    expect(await documentsMonitor(reads(0, 0, 2)).probe("P")).toMatchObject({ work: true, detailHe: "2 מסמכים ממתינים לעיבוד" });
+  });
+
+  it("the heartbeat prompts name the skill, the people and what the probe found; alone, nobody decides", () => {
+    const p = heartbeatPromptHe([eyal, roi], [{ monitor: "documents", work: true, detailHe: "1 מסמכים ממתינים לעיבוד" }, { monitor: "erp", work: false, detailHe: "אין" }]);
+    expect(p).toContain("/bakara-heartbeat");
+    expect(p).toContain("אייל ורועי");
+    expect(p).toContain("1 מסמכים ממתינים לעיבוד");
+    expect(p).not.toContain("אין;");
+    expect(p).toContain("record_heartbeat");
+    expect(heartbeatAlonePromptHe("HADARIM")).toContain("אין משתמש בצד השני");
+  });
+
+  it("settings rows map to the engine's shape and say whether the daemon is alive", () => {
+    const row = { project_id: "P", enabled: true, interval_seconds: 5, notify_on_quiet: false, monitors: { erp: { intervalSeconds: 60 } }, last_tick_at: "2026-09-14T10:00:00.000Z", last_tick_found_work: true, updated_by: "EYAL", updated_at: "2026-09-14T09:00:00.000Z" };
+    const s = rowToSettings(row);
+    expect(s).toMatchObject({ projectId: "P", enabled: true, intervalSeconds: 15, notifyOnQuiet: false, monitors: { erp: { intervalSeconds: 60 } }, updatedBy: "EYAL" });
+    const at = Date.parse("2026-09-14T10:00:00.000Z");
+    expect(daemonAlive(s, at + 30_000)).toBe(true);
+    expect(daemonAlive(s, at + 120_000)).toBe(false);
+    expect(daemonAlive(null)).toBe(false);
+    expect(daemonAlive({ ...s, lastTickAt: null })).toBe(false);
+    // the daemon's own tick stamp is not a settings change; the switch, the intervals and the quiet flag are
+    expect(settingsChangeKey(s)).toBe(settingsChangeKey({ ...s, lastTickAt: "2026-09-14T10:05:00.000Z", lastTickFoundWork: false, updatedAt: "x" }));
+    expect(settingsChangeKey(s)).not.toBe(settingsChangeKey({ ...s, intervalSeconds: 30 }));
+    expect(settingsChangeKey(s)).not.toBe(settingsChangeKey({ ...s, enabled: false }));
+    expect(settingsChangeKey(null)).toBe("none");
+  });
+});
+
+describe("the relay's system turns (the heartbeat's pass)", () => {
+  function setup(reply: string) {
+    const fc = fakeChannel();
+    const store = new MemoryConversationStore();
+    const relay = new Relay({ projectId: "P", participants: [eyal, roi], channel: fc.channel, store, runTurn: async () => ({ ok: true, sessionId: "s", text: reply, costUsd: null, durationMs: 1, numTurns: 1, authExpired: false, denials: [] }) });
+    relay.start();
+    return { relay, fc, store };
+  }
+
+  it("a pass that asks is delivered to every notified participant and marks the question as waiting", async () => {
+    const { relay, fc } = setup("הבעיה: …\n\nמה לעשות?\n1. לתקן\n2. להשאיר");
+    const r = await relay.enqueueSystem("פעימת לב", { deliverIfQuiet: false });
+    expect(r).toMatchObject({ ok: true, pendingQuestion: true, delivered: true });
+    expect(fc.sent.map((s) => s.to)).toEqual(["P1", "P2"]);
+    expect(await relay.hasPendingQuestion()).toBe(true);
+  });
+
+  it("a quiet pass is kept back when the settings say so, and sent when they do not", async () => {
+    const { relay, fc } = setup("קראתי את המסמך; הכול תואם.");
+    expect(await relay.enqueueSystem("פעימת לב", { deliverIfQuiet: false })).toMatchObject({ ok: true, pendingQuestion: false, delivered: false });
+    expect(fc.sent).toEqual([]);
+    expect(await relay.enqueueSystem("פעימת לב")).toMatchObject({ delivered: true });
+    expect(fc.sent).toHaveLength(2);
+  });
+});
+
 describe("the monitor stays invisible to the application", () => {
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
@@ -326,11 +517,14 @@ describe("the monitor stays invisible to the application", () => {
     return out;
   }
 
-  it("nothing under src/hadarim outside messaging/ imports the messaging folder", () => {
+  it("nothing under src/hadarim outside messaging/ imports the messaging folder, except the presenter strip's switch", () => {
+    const allowed = [join("src", "hadarim", "features", "erp", "MonitorSwitch.tsx")];
     const offenders = walk("src/hadarim")
-      .filter((f) => !f.includes(`${join("src", "hadarim", "messaging")}`))
+      .filter((f) => !f.includes(`${join("src", "hadarim", "messaging")}`) && !allowed.includes(f))
       .filter((f) => /from\s+["'][^"']*messaging\//.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
+    // the switch reads settings only; the engine, the tools, the store and the database client stay ignorant
+    for (const f of ["src/hadarim/app/store.ts", "src/hadarim/db/client.ts", "src/hadarim/db/session.ts", "src/hadarim/tools/index.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/monitor_settings|messaging_contacts|conversations/);
   });
 
   it("the one-shot heartbeat script pre-approves the bakara tools and never waits on a prompt", () => {

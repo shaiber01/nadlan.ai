@@ -1,14 +1,19 @@
 /**
  * The monitor — the heartbeat's scheduler and the chat relay (docs/heartbeat-bot-plan.md). Optional:
- * nothing runs unless this script is started, and nothing in the application depends on it.
+ * nothing runs unless this script is started, and nothing in the application depends on it. Every agent
+ * turn is one `claude -p --agent bakara` under the machine's Claude login; the monitor refuses to start
+ * with ANTHROPIC_API_KEY in its environment (print mode would bill the API with it).
  *
- * Phase 0 (this file): the console channel — a rehearsal conversation with the bakara agent in this
- * terminal, one `claude -p` per turn, resumed by session id, under the machine's Claude login. No API key:
- * the monitor refuses to start with ANTHROPIC_API_KEY in its environment (it would bill the API).
- *
- *   npm run monitor -- --channel console --as EYAL [--project HADARIM]
- *   npm run monitor -- status                         # the stored conversations and the runner's settings
- *   npm run monitor -- forget [--project HADARIM]     # drop the project's conversation (the next turn starts a new one)
+ *   npm run monitor                                   # the daemon: while the project's settings say enabled, a tick every
+ *                                                     #   interval_seconds — a cheap probe, and the agent's pass only when there is work;
+ *                                                     #   with no channel the pass runs alone (decides nothing) and its summary goes to the log
+ *   npm run monitor -- --channel console --as EYAL    # the same, plus a rehearsal conversation in this terminal: the pass presents
+ *                                                     #   its cards here, and every typed line is a turn of the same conversation
+ *   npm run monitor -- once [--force]                 # one tick, then exit (for cron); --force ignores a disabled setting
+ *   npm run monitor -- settings [--on|--off] [--interval 60] [--quiet on|off] [--by EYAL]
+ *   npm run monitor -- status                         # settings, last tick, conversations, the runner's settings
+ *   npm run monitor -- forget                         # drop the project's conversation (the next turn starts a new one)
+ *   Global: --project HADARIM
  *
  * Settings come from the environment (`.env` in the repository root is loaded when present; see .env.example):
  * CLAUDE_BIN, MONITOR_MODEL, MONITOR_MAX_BUDGET_USD, MONITOR_TURN_TIMEOUT_MS.
@@ -18,12 +23,14 @@ import { parseArgs } from "node:util";
 import { DEFAULT_PROJECT_ID } from "../src/hadarim/db/config";
 import type { Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
-import { FileConversationStore } from "../src/hadarim/messaging/conversations";
+import { DbConversationStore } from "../src/hadarim/messaging/conversations-db";
 import { loadPeople } from "../src/hadarim/messaging/people";
+import { allMonitors } from "../src/hadarim/messaging/probe";
+import { heartbeatAlonePromptHe, heartbeatPromptHe } from "../src/hadarim/messaging/prompts";
 import { Relay } from "../src/hadarim/messaging/relay";
+import { Scheduler, type MonitorSettings, type PassOutcome, type ProbeResult } from "../src/hadarim/messaging/scheduler";
 import { assertNoApiKey, runTurn, runnerOptionsFromEnv } from "../src/hadarim/messaging/session-runner";
-
-const STATE_PATH = "out/monitor/conversations.json";
+import { daemonAlive, readMonitorSettings, recordMonitorTick, settingsChangeKey, subscribeMonitorSettings, writeMonitorSettings } from "../src/hadarim/messaging/settings";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 
@@ -34,6 +41,12 @@ const { values: opts, positionals } = parseArgs({
     channel: { type: "string" },
     as: { type: "string" },
     project: { type: "string" },
+    on: { type: "boolean" },
+    off: { type: "boolean" },
+    interval: { type: "string" },
+    quiet: { type: "string" },
+    by: { type: "string" },
+    force: { type: "boolean" },
   },
 });
 
@@ -47,16 +60,35 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function settingsLineHe(s: MonitorSettings | null): string {
+  if (!s) return "פעימת לב: לא הוגדרה (כבויה)";
+  const alive = daemonAlive(s);
+  return `פעימת לב: ${s.enabled ? `פועלת כל ${s.intervalSeconds} שניות` : "כבויה"}${s.notifyOnQuiet ? "" : " · בלי סיכום כשאין מה להחליט"} · המנטר ${alive ? "פועל" : "לא פועל"}${s.lastTickAt ? ` · בדיקה אחרונה ${new Date(s.lastTickAt).toLocaleTimeString("he-IL")}${s.lastTickFoundWork ? " (נמצאה עבודה)" : ""}` : ""}`;
+}
+
 async function main() {
-  const store = new FileConversationStore(STATE_PATH);
+  const store = new DbConversationStore();
+  const runnerOptions = runnerOptionsFromEnv();
 
   if (command === "status") {
-    const runner = runnerOptionsFromEnv();
-    console.log(`runner: ${runner.bin} · agent ${runner.agent} · model ${runner.model ?? "(agent default)"} · budget ${runner.maxBudgetUsd == null ? "none" : `$${runner.maxBudgetUsd}`} · timeout ${runner.timeoutMs} ms`);
+    const s = await readMonitorSettings(projectId);
+    console.log(`project ${projectId} · ${settingsLineHe(s)}`);
+    console.log(`runner: ${runnerOptions.bin} · agent ${runnerOptions.agent} · model ${runnerOptions.model ?? "(agent default)"} · budget ${runnerOptions.maxBudgetUsd == null ? "none" : `$${runnerOptions.maxBudgetUsd}`} · timeout ${runnerOptions.timeoutMs} ms`);
     console.log(`api key in environment: ${process.env.ANTHROPIC_API_KEY ? "YES — the monitor will refuse to run" : "no (the machine's Claude login is used)"}`);
     const rows = await store.list();
     if (!rows.length) console.log("conversations: none");
     for (const c of rows) console.log(`conversation ${c.projectId}/${c.scope}${c.address ? `/${c.address}` : ""}: session ${c.sessionId} · started ${c.startedAt} · ${c.turns} turns · last ${c.lastTurnAt ?? "—"}${c.pendingQuestion ? " · a question is waiting" : ""}`);
+    return;
+  }
+
+  if (command === "settings") {
+    const patch: Parameters<typeof writeMonitorSettings>[1] = {};
+    if (opts.on) patch.enabled = true;
+    if (opts.off) patch.enabled = false;
+    if (opts.interval) patch.intervalSeconds = Number(opts.interval);
+    if (opts.quiet === "on" || opts.quiet === "off") patch.notifyOnQuiet = opts.quiet === "on";
+    const s = Object.keys(patch).length ? await writeMonitorSettings(projectId, patch, (opts.by as string | undefined) ?? null) : await readMonitorSettings(projectId);
+    console.log(`${Object.keys(patch).length ? "✓ " : ""}project ${projectId} · ${settingsLineHe(s)}`);
     return;
   }
 
@@ -66,7 +98,7 @@ async function main() {
     return;
   }
 
-  if (command !== "run") fail("commands: run (default) · status · forget");
+  if (command !== "run" && command !== "once") fail("commands: run (default) · once · settings · status · forget");
 
   try {
     assertNoApiKey();
@@ -74,37 +106,93 @@ async function main() {
     fail(e instanceof Error ? e.message : String(e));
   }
 
-  const channelId = (opts.channel as string | undefined) ?? "console";
-  if (channelId !== "console") fail(`channel ${channelId} is not built yet (phase 2); use --channel console`);
-  const as = opts.as as string | undefined;
-  if (!as) fail("--as <personId> is required for the console channel (see list_people / the ERP's people)");
+  // the channel: a rehearsal conversation in this terminal, or none (the pass runs alone)
+  const channelId = (opts.channel as string | undefined) ?? (opts.as ? "console" : "none");
+  if (channelId !== "console" && channelId !== "none") fail(`channel ${channelId} is not built yet (phase 2); use --channel console or no channel`);
+  let relay: Relay | null = null;
+  let participants: Participant[] = [];
+  if (channelId === "console") {
+    const as = opts.as as string | undefined;
+    if (!as) fail("--as <personId> is required for the console channel (see list_people / the ERP's people)");
+    const people = await loadPeople(projectId);
+    const person = people.find((p) => p.id === as);
+    if (!person) fail(`person ${as} is not in project ${projectId}; people: ${people.map((p) => p.id).join(", ")}`);
+    const channel = createConsoleChannel({ as: person.id, promptHe: person.nameHe });
+    participants = [{ address: channel.address, personId: person.id, nameHe: person.nameHe, roleHe: person.roleHe, notify: true }];
+    relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), log });
+  }
 
-  const people = await loadPeople(projectId);
-  const person = people.find((p) => p.id === as);
-  if (!person) fail(`person ${as} is not in project ${projectId}; people: ${people.map((p) => p.id).join(", ")}`);
+  const runPass = async (results: ProbeResult[]): Promise<PassOutcome> => {
+    if (relay) {
+      if (await relay.hasPendingQuestion()) return { ok: true, deferred: true };
+      const s = await readMonitorSettings(projectId);
+      const r = await relay.enqueueSystem(heartbeatPromptHe(participants, results), { deliverIfQuiet: s?.notifyOnQuiet ?? true });
+      return { ok: r.ok, error: r.error };
+    }
+    const r = await runTurn({ sessionId: null, text: heartbeatAlonePromptHe(projectId) }, runnerOptions);
+    if (r.ok) log(`pass alone ok · ${r.durationMs} ms · ${r.numTurns ?? "?"} agent turns · ≈ $${(r.costUsd ?? 0).toFixed(3)}\n${r.text}`);
+    else log(`pass alone failed: ${r.error}${r.authExpired ? " (the login expired — run claude and log in again)" : ""}`);
+    return { ok: r.ok, error: r.error };
+  };
 
-  const channel = createConsoleChannel({ as: person.id, promptHe: person.nameHe });
-  const participants: Participant[] = [{ address: channel.address, personId: person.id, nameHe: person.nameHe, roleHe: person.roleHe, notify: true }];
-  const runnerOptions = runnerOptionsFromEnv();
-  const relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), log });
+  const forced = command === "once" && !!opts.force;
+  const scheduler = new Scheduler({
+    projectId,
+    readSettings: async () => {
+      const s = await readMonitorSettings(projectId);
+      return forced ? { ...(s ?? { projectId, enabled: false, intervalSeconds: 300, notifyOnQuiet: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null }), enabled: true } : s;
+    },
+    monitors: allMonitors(),
+    recordTick: (at, found) => recordMonitorTick(projectId, at, found),
+    runPass,
+    log,
+  });
 
-  const existing = await store.get(projectId, "project", null);
-  console.log(`מוניטור · ערוץ מסוף · מדבר בשם ${person.nameHe} (${person.roleHe}) · פרויקט ${projectId}`);
-  console.log(existing ? `ממשיך שיחה קיימת (${existing.turns} תורות עד כה); /חדש מתחיל שיחה חדשה` : "שיחה חדשה תיפתח בהודעה הראשונה");
-  console.log(`כל תור הוא הרצה של ${runnerOptions.bin} תחת ההתחברות של המחשב · פקודות: /חדש · /סטטוס · Ctrl-C ליציאה`);
-  relay.start();
+  if (command === "once") {
+    const outcome = await scheduler.tick();
+    console.log(outcome.skipped ? `tick skipped: ${outcome.skipped}` : outcome.work ? `tick: work found · pass ${outcome.pass?.deferred ? "deferred" : outcome.pass?.ok ? "ok" : `failed: ${outcome.pass?.error}`}` : "tick: nothing new");
+    return;
+  }
+
+  const initial = await readMonitorSettings(projectId);
+  console.log(`מוניטור · פרויקט ${projectId} · ${settingsLineHe(initial)}`);
+  if (!initial?.enabled) console.log("להפעלה: המתג במסך המציג של מערכת המידע, או: npm run monitor -- settings --on --interval 60");
+  if (relay) {
+    const p = participants[0];
+    const existing = await store.get(projectId, "project", null);
+    console.log(`ערוץ מסוף · מדבר בשם ${p.nameHe} (${p.roleHe}) · ${existing ? `ממשיך שיחה קיימת (${existing.turns} תורות עד כה)` : "שיחה חדשה תיפתח בהודעה הראשונה"} · פקודות: /חדש · /סטטוס`);
+    relay.start();
+  } else {
+    console.log("ללא ערוץ: פעימת לב שנמצא בה מה לעשות מוצגת כאן בלבד ולא מחליטה דבר (--channel console --as <id> לשיחה)");
+  }
+  console.log("Ctrl-C ליציאה");
+
+  scheduler.start();
+  // the daemon's own tick stamp also arrives here; only a change of the switch, the intervals or the quiet flag wakes it
+  let seen = settingsChangeKey(initial);
+  const unsubscribe = subscribeMonitorSettings(projectId, (s) => {
+    const key = settingsChangeKey(s);
+    if (key === seen) return;
+    seen = key;
+    log(`settings changed: ${s ? `${s.enabled ? "on" : "off"} · every ${s.intervalSeconds} s` : "no row"}`);
+    scheduler.wake();
+  });
 
   const shutdown = () => {
-    relay.stop();
+    scheduler.stop();
+    unsubscribe();
+    relay?.stop();
     console.log("\nלהתראות.");
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-  // piped input (a rehearsal script, a test): finish the queued turns, then leave
-  process.stdin.on("end", () => {
-    void relay.idle().then(shutdown);
-  });
+  // piped console input (a rehearsal script): finish the queued turns, then leave
+  if (relay) {
+    process.stdin.on("end", () => {
+      void relay.idle().then(shutdown);
+    });
+  }
 }
 
 main().catch((e) => fail(e instanceof Error ? e.message : String(e)));

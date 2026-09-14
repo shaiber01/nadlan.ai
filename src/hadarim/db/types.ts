@@ -394,6 +394,42 @@ export type Database = {
           },
         ]
       }
+      conversations: {
+        Row: {
+          address: string | null
+          id: number
+          last_turn_at: string | null
+          pending_question: boolean
+          project_id: string
+          scope: string
+          session_id: string
+          started_at: string
+          turns: number
+        }
+        Insert: {
+          address?: string | null
+          id?: never
+          last_turn_at?: string | null
+          pending_question?: boolean
+          project_id: string
+          scope: string
+          session_id: string
+          started_at?: string
+          turns?: number
+        }
+        Update: {
+          address?: string | null
+          id?: never
+          last_turn_at?: string | null
+          pending_question?: boolean
+          project_id?: string
+          scope?: string
+          session_id?: string
+          started_at?: string
+          turns?: number
+        }
+        Relationships: []
+      }
       data_corrections: {
         Row: {
           after_he: string
@@ -1016,6 +1052,129 @@ export type Database = {
             referencedColumns: ["project_id", "id"]
           },
         ]
+      }
+      messages: {
+        Row: {
+          address: string
+          at: string
+          channel: string
+          direction: string
+          handled_at: string | null
+          id: number
+          media: Json | null
+          person_id: string | null
+          project_id: string | null
+          provider: string | null
+          provider_message_id: string | null
+          raw: Json | null
+          session_id: string | null
+          status: string
+          text: string | null
+        }
+        Insert: {
+          address: string
+          at?: string
+          channel: string
+          direction: string
+          handled_at?: string | null
+          id?: never
+          media?: Json | null
+          person_id?: string | null
+          project_id?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          raw?: Json | null
+          session_id?: string | null
+          status?: string
+          text?: string | null
+        }
+        Update: {
+          address?: string
+          at?: string
+          channel?: string
+          direction?: string
+          handled_at?: string | null
+          id?: never
+          media?: Json | null
+          person_id?: string | null
+          project_id?: string | null
+          provider?: string | null
+          provider_message_id?: string | null
+          raw?: Json | null
+          session_id?: string | null
+          status?: string
+          text?: string | null
+        }
+        Relationships: []
+      }
+      messaging_contacts: {
+        Row: {
+          address: string
+          channel: string
+          created_at: string
+          display_name: string | null
+          last_inbound_at: string | null
+          notify: boolean
+          person_id: string
+          project_id: string
+        }
+        Insert: {
+          address: string
+          channel: string
+          created_at?: string
+          display_name?: string | null
+          last_inbound_at?: string | null
+          notify?: boolean
+          person_id: string
+          project_id: string
+        }
+        Update: {
+          address?: string
+          channel?: string
+          created_at?: string
+          display_name?: string | null
+          last_inbound_at?: string | null
+          notify?: boolean
+          person_id?: string
+          project_id?: string
+        }
+        Relationships: []
+      }
+      monitor_settings: {
+        Row: {
+          enabled: boolean
+          interval_seconds: number
+          last_tick_at: string | null
+          last_tick_found_work: boolean | null
+          monitors: Json
+          notify_on_quiet: boolean
+          project_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          interval_seconds?: number
+          last_tick_at?: string | null
+          last_tick_found_work?: boolean | null
+          monitors?: Json
+          notify_on_quiet?: boolean
+          project_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          interval_seconds?: number
+          last_tick_at?: string | null
+          last_tick_found_work?: boolean | null
+          monitors?: Json
+          notify_on_quiet?: boolean
+          project_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       open_issues: {
         Row: {

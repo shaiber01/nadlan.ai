@@ -25,7 +25,16 @@ export interface RelayOptions {
   now?: () => Date;
 }
 
-type QueueItem = { kind: "person"; m: Inbound; p: Participant } | { kind: "system"; text: string };
+export interface SystemTurnOutcome {
+  ok: boolean;
+  error?: string;
+  /** The reply waits for an answer (a card was presented). */
+  pendingQuestion: boolean;
+  /** The reply was sent to the participants (a quiet reply may be kept back). */
+  delivered: boolean;
+}
+
+type QueueItem = { kind: "person"; m: Inbound; p: Participant } | { kind: "system"; text: string; deliverIfQuiet: boolean; resolve: (r: SystemTurnOutcome) => void };
 
 export const RELAY_TEXT_HE = {
   newConversation: "התחלתי שיחה חדשה.",
@@ -90,10 +99,21 @@ export class Relay {
     void this.drain();
   }
 
-  /** A turn not sent by a person (the heartbeat's prompt); its reply goes to every notified participant. */
-  enqueueSystem(text: string): void {
-    this.queue.push({ kind: "system", text });
-    void this.drain();
+  /**
+   * A turn not sent by a person (the heartbeat's prompt); its reply goes to every notified participant.
+   * With `deliverIfQuiet: false` a reply that asks nothing is kept back (logged, not sent). Resolves when
+   * the turn ran.
+   */
+  enqueueSystem(text: string, opts: { deliverIfQuiet?: boolean } = {}): Promise<SystemTurnOutcome> {
+    return new Promise((resolve) => {
+      this.queue.push({ kind: "system", text, deliverIfQuiet: opts.deliverIfQuiet ?? true, resolve });
+      void this.drain();
+    });
+  }
+
+  /** Is a card waiting for an answer in the project's conversation? */
+  async hasPendingQuestion(): Promise<boolean> {
+    return (await this.conversation())?.pendingQuestion ?? false;
   }
 
   private async command(text: string, p: Participant): Promise<void> {
@@ -140,9 +160,14 @@ export class Relay {
   }
 
   private async runBatch(batch: QueueItem[]): Promise<void> {
+    const systemItems = batch.filter((i): i is Extract<QueueItem, { kind: "system" }> => i.kind === "system");
+    const settle = (r: SystemTurnOutcome) => {
+      for (const item of systemItems) item.resolve(r);
+    };
     const recipients = this.recipients(batch);
     if (this.authExpired) {
       await this.deliver(recipients, RELAY_TEXT_HE.notConnected);
+      settle({ ok: false, error: "auth expired", pendingQuestion: false, delivered: false });
       return;
     }
     const text = batch.map((item) => (item.kind === "person" ? `${item.p.nameHe}: ${item.m.text.trim()}` : item.text)).join("\n");
@@ -162,14 +187,20 @@ export class Relay {
       } else {
         await this.deliver(recipients, RELAY_TEXT_HE.failed);
       }
+      settle({ ok: false, error: this.lastError, pendingQuestion: false, delivered: true });
       return;
     }
     this.lastError = null;
     if (r.denials.length) this.log(`denied tools: ${r.denials.join(", ")}`);
     const reply = shapeForChat(r.text);
-    await this.opts.store.save({ projectId: this.opts.projectId, scope: "project", address: null, sessionId: r.sessionId, startedAt: existing?.startedAt ?? now, lastTurnAt: now, turns: (existing?.turns ?? 0) + 1, pendingQuestion: endsWithQuestion(reply) });
+    const pendingQuestion = endsWithQuestion(reply);
+    await this.opts.store.save({ projectId: this.opts.projectId, scope: "project", address: null, sessionId: r.sessionId, startedAt: existing?.startedAt ?? now, lastTurnAt: now, turns: (existing?.turns ?? 0) + 1, pendingQuestion });
     this.log(`turn ok · ${r.durationMs} ms · ${r.numTurns ?? "?"} agent turns · ≈ $${(r.costUsd ?? 0).toFixed(3)}`);
-    await this.deliver(recipients, reply || "…");
+    // a heartbeat's quiet reply (nothing to decide) is kept back when the settings say so; a person's turn is always answered
+    const quietSystemOnly = systemItems.length === batch.length && !pendingQuestion && systemItems.every((i) => !i.deliverIfQuiet);
+    if (quietSystemOnly) this.log(`quiet pass, not delivered: ${reply.slice(0, 120).replace(/\n/g, " ")}`);
+    else await this.deliver(recipients, reply || "…");
+    settle({ ok: true, pendingQuestion, delivered: !quietSystemOnly });
   }
 
   private async deliver(to: Participant[], text: string): Promise<void> {

@@ -1,0 +1,25 @@
+/* The presenter strip's heartbeat switch (MonitorSwitch.tsx). */
+.h2-presenter-monitor {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-inline-start: 14px;
+  border-inline-start: 1px solid #3b4768;
+}
+.h2-presenter-monitor-interval {
+  width: 6ch;
+  font: inherit;
+  background: #26314f;
+  color: inherit;
+  border: 1px solid #3b4768;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  text-align: center;
+}
+.h2-presenter-monitor-interval:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.h2-presenter-monitor-error {
+  color: #fecaca;
+}

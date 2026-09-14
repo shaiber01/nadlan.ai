@@ -5,6 +5,7 @@ import { store, useUi, useV2State } from "./app/store";
 import { DocumentView } from "./components/DocumentView";
 import { SCRIPT_INVOICE_ID, pkg } from "./engine/commands";
 import { ErpApp } from "./features/erp/ErpApp";
+import { MonitorSwitch } from "./features/erp/MonitorSwitch";
 
 /**
  * The simulated ERP's page (`hadarim.html`): a presenter strip on top, then "זיו — סביבת הדגמה". Its
@@ -41,6 +42,7 @@ export function HadarimApp() {
               <input type="checkbox" checked={ui.db.status === "offline"} onChange={(e) => store.setOffline(e.target.checked)} data-testid="db-offline" />
               עבודה מקומית
             </label>
+            <MonitorSwitch projectId={pkg.project.id} online={ui.db.status === "online"} operatorId={state.operatorId} />
             <label className="h2-presenter-toggle">
               סצנה 1:
               <select value={state.variant} onChange={(e) => chooseVariant(e.target.value as "A" | "B")} data-testid="scene1-variant">
