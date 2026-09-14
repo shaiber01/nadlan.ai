@@ -37,7 +37,7 @@ export function reportToMarkdown(report: ReportModel, tab: "full" | "ceo" = "ful
     out.push("## השפעות על התחזית לגמר", "", table(["סעיף", "סוג שינוי", "תיאור", "בסיס/מקור", "השפעה ₪"], [...report.ceo.changes.map((c) => [c.sectionHe, c.typeHe, c.descriptionHe, c.basisHe, signed(c.amount)]), ["", "", "סה״כ שינוי מבקרה קודמת", "", signed(report.changes.forecastTotal)]]));
     out.push("## נושאים פתוחים ברמת הנהלה", "", table(["נושא", "אחראי", "יעד", "סטטוס"], report.ceo.issues.map((i) => [i.titleHe, i.ownerHe, i.dueHe, i.statusHe])));
     if (report.ceo.riskLineHe) out.push(`**סיכון עיקרי:** ${report.ceo.riskLineHe}`, "");
-    out.push("_אותם מספרים, אותם מקורות — מקושר לבקרה 09/2026. מסמך הדגמה — נתונים בדויים._", "");
+    out.push(`_אותם מספרים, אותם מקורות — מקושר לדוח המלא (${report.header.controlLabelHe}). מסמך הדגמה — נתונים בדויים._`, "");
     return out.join("\n");
   }
 

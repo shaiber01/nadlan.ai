@@ -13,7 +13,7 @@ function build(id: string, kind: HDocument["kind"], titleHe: string, date: strin
 /** Structured facts a check can read without parsing text (the "extracted" reading of each document). */
 export const documentFacts = {
   quote_pladot_12t: { qtyKg: 12000, qtyTon: 12, pricePerTon: 4800, amount: 57600, supplierId: "SUP-PLADOT" },
-  appendix_A2_steel_price_2026_07_15: { pricePerTon: 4800, validFrom: "2026-07-15", contractId: "03-F" },
+  appendix_A2_steel_price_2026_08_15: { pricePerTon: 4800, validFrom: "2026-08-15", contractId: "03-F" },
   appendix_A_steel_price_2025_11: { pricePerTon: 4000, validFrom: "2025-11-01", contractId: "03-F" },
   quote_ycohen_drainage: { qty: 80, unit: "מ׳", unitPrice: 1500, amount: 120000, validUntil: "2026-09-19", supplierId: "SUP-YCOHEN", boqLineId: "57.03.040" },
   contract_07_01_excerpt: { contractId: "07-01", exclusionClause: "3.4" },
@@ -49,10 +49,10 @@ export const hadarimDocuments: HDocument[] = [
     { kind: "paragraph", text: "אספקה לאתר תוך 5 ימי עבודה מאישור ההזמנה · הובלה כלולה · תשלום שוטף + 60 · תוקף ההצעה 14 יום" },
     { kind: "signature", text: "מחלקת מכירות, פלדות הצפון · אושר להזמנה: אייל, 22.8.2026 · הזמנת רכש 2291" },
   ]),
-  build("appendix_A2_steel_price_2026_07_15", "appendix", "נספח א׳-2 להסכם מסגרת ⁨03-F⁩ — מחירון ברזל זיון", "2026-07-15", "SUP-PLADOT", "appendix_A2_steel_price_2026-07-15.pdf", [
+  build("appendix_A2_steel_price_2026_08_15", "appendix", "נספח א׳-2 להסכם מסגרת ⁨03-F⁩ — מחירון ברזל זיון", "2026-08-15", "SUP-PLADOT", "appendix_A2_steel_price_2026-08-15.pdf", [
     { kind: "heading", text: "נספח א׳-2 להסכם מסגרת ⁨03-F⁩ מיום 1.11.2025 — עדכון מחירים" },
     { kind: "paragraph", text: "בין: פלדות הצפון בע״מ (הספק) לבין: אופק ביצוע בע״מ (המזמין) · פרויקט הדרים" },
-    { kind: "highlight", text: "מחיר בסיס לברזל זיון מצולע: 4,800 ₪ לטון לפני מע״מ · בתוקף מיום 15.7.2026 · מחליף את נספח א׳ (4,000 ₪ לטון)", anchor: "price" },
+    { kind: "highlight", text: "מחיר בסיס לברזל זיון מצולע: 4,800 ₪ לטון לפני מע״מ · בתוקף מיום 15.8.2026 · מחליף את נספח א׳ (4,000 ₪ לטון)", anchor: "price" },
     {
       kind: "table",
       anchor: "table",
@@ -66,8 +66,8 @@ export const hadarimDocuments: HDocument[] = [
         ["20 מ״מ ומעלה", "4,740"],
       ],
     },
-    { kind: "paragraph", text: "הצמדה: המחירים יעודכנו אחת לרבעון לפי מדד תשומות הבנייה, בסיס יולי 2026 · הובלה לאתר כלולה · תוקף: עד הודעה חדשה בכתב" },
-    { kind: "signature", text: "חתימות: הספק — פלדות הצפון · המזמין — אופק ביצוע (רועי, סמנכ״ל ביצוע) · 15.7.2026" },
+    { kind: "paragraph", text: "הצמדה: המחירים יעודכנו אחת לרבעון לפי מדד תשומות הבנייה, בסיס אוגוסט 2026 · הובלה לאתר כלולה · תוקף: עד הודעה חדשה בכתב" },
+    { kind: "signature", text: "חתימות: הספק — פלדות הצפון · המזמין — אופק ביצוע (רועי, סמנכ״ל ביצוע) · 15.8.2026" },
   ]),
   build("appendix_A_steel_price_2025_11", "appendix", "נספח א׳ להסכם מסגרת ⁨03-F⁩ — מחירון ברזל זיון (מקורי)", "2025-11-01", "SUP-PLADOT", "appendix_A_steel_price_2025-11.pdf", [
     { kind: "heading", text: "נספח א׳ להסכם מסגרת ⁨03-F⁩ — מחירון" },

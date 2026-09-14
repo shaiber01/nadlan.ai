@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateHadarimPackage, recordedBySection, CURRENT_CONTROL } from "../src/hadarim/data/generate";
+import { AUGUST_CONTROL, generateHadarimPackage, packageAsOf, priceAppendixAt, recordedBySection, CURRENT_CONTROL } from "../src/hadarim/data/generate";
 import { runChecks } from "../src/hadarim/engine/checks";
 import { lineAmount } from "../src/hadarim/engine/units";
 import { boqLineAmount, boqTotal } from "../src/hadarim/engine/boq";
@@ -90,17 +90,21 @@ describe("Hadarim v2 data package", () => {
     }
   });
 
-  it("forecast 1.8 prices the steel remainder by the appendix in force and carries the development coverage note", () => {
+  it("forecast 1.8 prices the steel remainder by the appendix in force then (א׳, 4,000) and carries the development coverage note", () => {
     const f = pkg.forecasts.find((x) => x.controlDate === "2026-08-01")!;
     expect(f.status).toBe("final");
-    expect(f.totalEac).toBe(48_240_000);
-    const expectedEac: Partial<Record<SectionId, number>> = { "01": 1_950_000, "03": 3_240_000, "04": 2_850_000, "07": 3_200_000, "11": 2_000_000, "17": 1_500_000 };
+    expect(f.totalEac).toBe(48_000_000);
+    const expectedEac: Partial<Record<SectionId, number>> = { "01": 1_950_000, "03": 3_000_000, "04": 2_850_000, "07": 3_200_000, "11": 2_000_000, "17": 1_500_000 };
     for (const [id, value] of Object.entries(expectedEac)) expect(f.sections!.find((s) => s.sectionId === id)!.eac, id).toBe(value);
     const steel = f.sections!.find((s) => s.sectionId === "03")!;
     expect(steel.recorded).toBe(1_560_000);
     const remaining = steel.lines.find((l) => l.basis === "appendix")!;
-    expect(remaining).toMatchObject({ qty: 300, unitPrice: 4800, amount: 1_440_000 });
+    expect(remaining).toMatchObject({ qty: 300, unitPrice: 4000, amount: 1_200_000 });
     expect(steel.lines.find((l) => l.basis === "po")?.amount).toBe(240_000);
+    // appendix א׳-2 took force two weeks after the control
+    const framework = pkg.contracts.find((c) => c.id === "03-F")!;
+    expect(priceAppendixAt(framework, "2026-08-01")!.id).toBe("A");
+    expect(priceAppendixAt(framework, CURRENT_CONTROL)).toMatchObject({ id: "A-2", validFrom: "2026-08-15", pricePerTon: 4800 });
     const dev = f.sections!.find((s) => s.sectionId === "07")!;
     expect(dev.recorded).toBe(2_100_000);
     expect(dev.coverageNoteHe).toContain("מכוסה בחוזה 07-01");
@@ -111,7 +115,7 @@ describe("Hadarim v2 data package", () => {
     expect(pkg.forecasts.filter((x) => x.sections === null).map((x) => x.totalEac)).toEqual([47_900_000, 47_950_000, 48_000_000]);
   });
 
-  it("the 1.9 draft rolls the previous assumptions forward and nets to 48,240,000", () => {
+  it("the 1.9 draft rolls the previous assumptions forward at the appendix now in force (א׳-2, 4,800) and nets to 48,240,000", () => {
     const d = pkg.forecasts.find((x) => x.controlDate === CURRENT_CONTROL)!;
     expect(d.status).toBe("draft");
     expect(d.totalEac).toBe(48_240_000);
@@ -132,17 +136,44 @@ describe("Hadarim v2 data package", () => {
     expect(pkg.documents.find((d) => d.id === "contract_07_01_excerpt")!.anchors.exclusion).toBeGreaterThan(0);
     expect(pkg.documents.find((d) => d.id === "quote_pladot_12t")!.blocks.some((b) => b.text?.includes("12,000 ק״ג (12 טון) × 4,800"))).toBe(true);
   });
-  it("ships one saved report version with the seed: the 09/2026 draft, saved by a person of the project", () => {
+  it("ships one saved report version with the seed: the previous control's final report, behind the live draft", () => {
     const p = generateHadarimPackage();
     expect(reportVersions).toHaveLength(1);
     const [v] = reportVersions;
     const model = v.model as unknown as ReportModel;
-    expect(v.controlDate).toBe(CURRENT_CONTROL);
-    expect(v.label).toBe("בקרה 09/2026");
+    expect(v.controlDate).toBe(AUGUST_CONTROL.controlDate);
+    expect(v.label).toBe("בקרה 08/2026");
     expect(p.people.map((x) => x.id)).toContain(v.createdBy);
     expect(model.header.projectNameHe).toBe(p.project.nameHe);
-    expect(model.header.controlLabelHe).toContain("09/2026");
-    expect(model.finalized).toBe(false);
+    expect(model.header.controlLabelHe).toContain("08/2026");
+    expect(model.header.controlLabelHe).toContain("סופית");
+    expect(model.finalized).toBe(true);
+    // the report the agent builds next shows progress against it: the steel rise and what closed since
+    const previous = p.forecasts.find((f) => f.controlDate === v.controlDate)!;
+    const draft = p.forecasts.find((f) => f.controlDate === CURRENT_CONTROL)!;
+    expect(model.sections.totals.eac).toBe(previous.totalEac);
+    expect(model.sections.rows.find((r) => r.sectionId === "03")).toMatchObject({ eac: 3_000_000, variance: 0, highlighted: false });
+    expect(model.issues.open).toHaveLength(3);
+    expect(draft.totalEac - previous.totalEac).toBe(240_000);
+    expect(model.header.sourcesHe).not.toContain("2026-08-15");
+  });
+
+  it("packageAsOf rebuilds the project as an earlier control saw it", () => {
+    const asOf = packageAsOf(pkg, AUGUST_CONTROL.controlDate, AUGUST_CONTROL.project);
+    expect(asOf.project.currentControlDate).toBe("2026-08-01");
+    expect(asOf.project.controlDates).toEqual(["2026-05-01", "2026-06-01", "2026-07-01"]);
+    expect(asOf.invoices.every((i) => i.dateReceived < "2026-08-01")).toBe(true);
+    expect(asOf.purchaseOrders.some((p) => p.id === 2291)).toBe(false);
+    expect(asOf.purchaseOrders.find((p) => p.id === 2240)!.status).toBe("פתוחה"); // closed 28.8, per the change log
+    expect(asOf.contracts.find((c) => c.id === "03-F")!.priceAppendices!.map((a) => a.id)).toEqual(["A"]);
+    expect(asOf.documents.every((d) => d.date < "2026-08-01")).toBe(true);
+    expect(asOf.boq.filter((l) => l.sectionId === "11").every((l) => l.coverage === "not_contracted")).toBe(true); // 11-01 signed 25.8
+    // the July control gets sections so a report can be built for August against it
+    const july = asOf.forecasts.find((f) => f.controlDate === "2026-07-01")!;
+    expect(july.sections).not.toBeNull();
+    expect(july.totalEac).toBe(48_000_000);
+    expect(july.openIssues.every((o) => o.status === "open")).toBe(true);
+    expect(asOf.forecasts.some((f) => f.controlDate === CURRENT_CONTROL)).toBe(false);
   });
 });
 

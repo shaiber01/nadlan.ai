@@ -308,7 +308,7 @@ function ceoSections(report: ReportModel): { properties: typeof portrait; childr
         h("נושאים פתוחים ברמת הנהלה", 2),
         issuesTable(c.issues, true),
         ...(c.riskLineHe ? [label("סיכון עיקרי", c.riskLineHe)] : []),
-        p(`אותם מספרים, אותם מקורות — מקושר לבקרה 09/2026 (${report.header.controlLabelHe}). אין כאן מספר שלא נמצא בדוח המלא.`, { size: 18, color: "5B6478", before: 160 }),
+        p(`אותם מספרים, אותם מקורות — מקושר לדוח המלא (${report.header.controlLabelHe}). אין כאן מספר שלא נמצא בדוח המלא.`, { size: 18, color: "5B6478", before: 160 }),
       ],
     },
   ];

@@ -196,7 +196,7 @@ export const contracts: HContract[] = [
     retentionPct: 0,
     priceAppendices: [
       { id: "A", titleHe: "נספח א׳ — 4,000 ₪ לטון", validFrom: "2025-11-01", pricePerTon: 4000, documentId: "appendix_A_steel_price_2025_11" },
-      { id: "A-2", titleHe: "נספח א׳-2 — 4,800 ₪ לטון", validFrom: "2026-07-15", pricePerTon: 4800, documentId: "appendix_A2_steel_price_2026_07_15" },
+      { id: "A-2", titleHe: "נספח א׳-2 — 4,800 ₪ לטון", validFrom: "2026-08-15", pricePerTon: 4800, documentId: "appendix_A2_steel_price_2026_08_15" },
     ],
   },
 ];
@@ -690,3 +690,76 @@ export function generateHadarimPackage(): HadarimPackage {
   });
   return { project, people, suppliers, sections, contracts, invoices, purchaseOrders, boq, forecasts, changeLog, documents, budgetChanges: [] };
 }
+
+// ---------------------------------------------------------------------------
+// The project as an earlier control saw it
+// ---------------------------------------------------------------------------
+
+/**
+ * The package as it stood at `controlDate`: the ERP without the records keyed in since (an order closed later is
+ * open again, per the change log), contracts without the price appendices and closings that came later, the folder
+ * without the later documents, the forecasts up to that control — the one dated `controlDate` becomes the working
+ * version — and the previous control's sections rolled so a report can be built for it. `project` patches the
+ * status the site reported then. Used to render the report an earlier control produced (the seed's saved version).
+ */
+export function packageAsOf(base: HadarimPackage, controlDate: string, project: Partial<HProject> = {}): HadarimPackage {
+  const invoices = base.invoices.filter((i) => i.dateReceived < controlDate);
+  const changeLog = base.changeLog.filter((c) => c.at < controlDate);
+  const purchaseOrders = base.purchaseOrders
+    .filter((p) => p.date < controlDate)
+    .map((p) => {
+      const later = base.changeLog.find((c) => c.recordType === "po" && c.recordId === String(p.id) && c.field === "סטטוס" && c.at >= controlDate);
+      return later ? { ...p, status: later.before as HPurchaseOrder["status"] } : p;
+    });
+  const contracts = base.contracts.map((c) => ({
+    ...c,
+    ...(c.closed && c.closed.at >= controlDate ? { closed: undefined } : {}),
+    ...(c.priceAppendices ? { priceAppendices: c.priceAppendices.filter((a) => a.validFrom < controlDate) } : {}),
+  }));
+  // the issue list as it stood then: what closed later is open again; each version carries what was opened by its date
+  const issues = (base.forecasts.find((f) => f.controlDate === controlDate)?.openIssues ?? []).map((o) => (o.closedAt && o.closedAt >= controlDate ? { ...o, status: "open" as const, closedAt: null } : o));
+  const previousDate = base.forecasts
+    .filter((f) => f.controlDate < controlDate)
+    .map((f) => f.controlDate)
+    .sort()
+    .at(-1);
+  const forecasts = base.forecasts
+    .filter((f) => f.controlDate <= controlDate)
+    .map((f) => ({ ...f, openIssues: issues.filter((o) => o.openedInControl <= f.controlDate) }))
+    .map((f) => (f.controlDate === previousDate && !f.sections ? buildForecast(f.controlDate, invoices, purchaseOrders, "final", f.openIssues) : f));
+  // a line covered by a contract signed later was not contracted yet
+  const unsigned = new Set(base.contracts.filter((c) => c.signedAt >= controlDate).map((c) => c.id));
+  const boq = base.boq.map((l) => (l.coveredByContractId && unsigned.has(l.coveredByContractId) ? { ...l, coverage: "not_contracted" as const, coverageRef: null, coveredByContractId: null } : l));
+  return {
+    ...base,
+    project: { ...base.project, ...project, controlDates: base.project.controlDates.filter((d) => d < controlDate), currentControlDate: controlDate },
+    contracts,
+    boq,
+    invoices,
+    purchaseOrders,
+    changeLog,
+    forecasts,
+    documents: base.documents.filter((d) => d.date < controlDate),
+    budgetChanges: base.budgetChanges.filter((c) => c.date < controlDate),
+  };
+}
+
+/**
+ * The 1.8.2026 control — the report that ships with the seed as its saved version (`data/report-versions.json`,
+ * rendered by `scripts/build-seed-report.ts`): the site as it stood then, the review the controller recorded, who
+ * saved the report and when. Its forecast is 48.0M: appendix א׳-2 took force two weeks later, so the steel
+ * remainder was still 4,000 ₪/טון, and the September draft is the first to carry the rise.
+ */
+export const AUGUST_CONTROL = {
+  controlDate: "2026-08-01",
+  savedBy: "EYAL" as PersonId,
+  savedAt: "2026-08-04T08:30:00+03:00",
+  pulledAt: "2026-08-04T08:05",
+  project: {
+    physicalProgressPct: 31,
+    statusHe: "בניין A: קומה 5 מתוך 8 יצוקה · בניין B: קומה 3 · חפירה ודיפון הושלמו · תשתיות ראשיות בפיתוח שלב א׳ בביצוע",
+    boqVersion: { number: 3, date: "2026-05-20" },
+  } satisfies Partial<HProject>,
+  reviewPassHe:
+    "נקראו 10 חוזים מול החשבונות שנרשמו עליהם ביולי 2026, חשבונות ללא חוזה בסעיף 01 (עלויות אתר שוטפות) וחשבון אחד בסעיף 18 (הקצאת הנהלה), וכתב הכמויות הלא-מכוסה (סעיפים 11, 12, 13, 15, 16 — טרם החל ביצוע). נבדקו גם המסמכים הפעילים בתקופה (נספח מחיר ברזל א׳, קטע חוזה 07-01) מול העובדות הרשומות מהם. לא נמצאה אי-התאמה: תיאורי החשבונות תואמים את תכולת החוזים; חשבונות סעיף 03 במחיר 4,000 ₪/טון לפי נספח א׳ בתוקף; הזמנה 2240 (60 טון) פתוחה ומסופקת חלקית. 0 ממצאים חדשים.",
+};

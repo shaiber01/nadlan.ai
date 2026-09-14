@@ -29,7 +29,7 @@ Budget control in contractor firms runs on work packages; the BOQ runs on blue-b
 | :---- | :---- | ----: | ----: | ----: | ----: | ----: |
 | 01 | ארגון אתר, מנוף, שמירה ושירותי אתר | 1,900,000 | 1,250,000 | — (standing POs) | 1,950,000 | 1,950,000 |
 | 02 | שלד — עבודה ובטון (קבלן משנה) | 12,600,000 | 8,400,000 | 12,600,000 | 12,600,000 | 12,600,000 |
-| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,240,000 | 3,240,000 |
+| 03 | אספקת ברזל זיון | 3,000,000 | 1,800,000 | framework \+ PO 2291 | 3,000,000 | 3,240,000 |
 | 04 | עבודות עפר, דיפון וכלונסאות | 2,900,000 | 2,850,000 | 2,850,000 (closed) | 2,850,000 | 2,850,000 |
 | 05 | איטום | 900,000 | 320,000 | 900,000 | 900,000 | 900,000 |
 | 06 | בנייה (בלוקים) וטיח | 2,400,000 | 180,000 | 2,400,000 | 2,400,000 | 2,400,000 |
@@ -45,9 +45,11 @@ Budget control in contractor firms runs on work packages; the BOQ runs on blue-b
 | 16 | מערכות חניון (שערים, אוורור, כיבוי) | 1,200,000 | 0 | — estimate | 1,200,000 | 1,200,000 |
 | 17 | בלתי צפוי | 1,500,000 | 0 | — | 1,500,000 | 1,500,000 |
 | 18 | הנהלה, פיקוח, ביטוח ואגרות | 3,200,000 | 2,100,000 | — | 3,200,000 | 3,200,000 |
-|  | **Total** | **48,000,000** | **20,070,000** |  | **48,240,000** | **48,240,000** |
+|  | **Total** | **48,000,000** | **20,070,000** |  | **48,000,000** | **48,240,000** |
 
-Both forecast columns are the seed's own stored versions. The forecast holds at 48.0M through 1.7 via two small, explainable variances (site organisation \+50K for schedule, earth/piling −50K closed under budget); the steel price appendix א׳-2 takes force on 15.7.2026, so from 1.8 the remainder is carried at 4,800 ₪/טון and the total stands at 48.24M. Trend: 1.5: 47.90 · 1.6: 47.95 · 1.7: 48.00 · 1.8: 48.24 · 1.9: 48.24.
+Both forecast columns are the seed's own stored versions. The forecast holds at 48.0M through 1.8 via two small, explainable variances (site organisation \+50K for schedule, earth/piling −50K closed under budget); the steel price appendix א׳-2 takes force on 15.8.2026 — two weeks after the 1.8 control — so the 1.9 draft is the first to carry the remainder at 4,800 ₪/טון and the total stands at 48.24M: a change from the previous control the report explains (§4a, a price change sourced to the appendix), not a finding. Trend: 1.5: 47.90 · 1.6: 47.95 · 1.7: 48.00 · 1.8: 48.00 · 1.9: 48.24.
+
+The report of the 1.8 control is the saved version that ships with the seed (`src/hadarim/data/report-versions.json`, rendered by `npm run hadarim:seed-report` from the package as that control saw it — `packageAsOf` in `generate.ts`, the site status of the time in `AUGUST_CONTROL`): 48.0M, steel on budget, three open issues, saved by אייל on 4.8.2026 as the final version. A report built on the seed today shows the progress against it: \+240K on steel, aluminium signed, two issues closed.
 
 **Per-building split:** shell, steel, block work, aluminium, tiling, carpentry, paint, HVAC, plumbing, electrical split A/B by floors cast and planned quantities; earthworks, development, parking systems, elevators (2 per building — split), site org and overhead go to "משותף". Invoice 1147 has no building tag → "משותף", which the system says out loud.
 
@@ -67,7 +69,7 @@ Both forecast columns are the seed's own stored versions. The forecast holds at 
 | 06-01 | 06 | גל בנייה קלה | 2,400,000 | 2.6.2026 | Blocks \+ plaster. |
 | 10-01 | 10 | קור-אויר מערכות | 1,500,000 | 14.7.2026 |  |
 | 11-01 | 11 | אלומיניום גלעד | 2,000,000 | 25.8.2026 | This is the "windows order" that closed from the 1.8 open issues. |
-| 03-F | 03 | פלדות הצפון בע״מ | framework, no fixed amount | 1.11.2025 | Price appendix A: 4,000 ₪/t. **Appendix A-2 from 15.7.2026: 4,800 ₪/t.** |
+| 03-F | 03 | פלדות הצפון בע״מ | framework, no fixed amount | 1.11.2025 | Price appendix A: 4,000 ₪/t. **Appendix A-2 from 15.8.2026: 4,800 ₪/t** (after the 1.8 control). |
 
 Company names are invented but *look* Israeli. Before the meeting I recommend a 5-minute check on רשם החברות for collisions, and a discreet footer on each PDF: ״מסמך הדגמה — נתונים בדויים״. Your call — I'll include the footer as a toggle in the generator.
 
@@ -122,7 +124,7 @@ Each BOQ chapter maps to a section and to a contract coverage flag: covered / ex
 
 ## 7\. Forecasts — `forecast_2026-08-01.json`, `forecast_2026-09-01.json` (+ 3 earlier totals-only)
 
-Per section: budget, recorded, committed, remaining-to-complete lines (each line: description, qty, unit, unit\_price, amount, basis \= contract / PO / estimate, source doc). Steel remaining line in 1.8: 300 t × 4,000, basis \= ״נספח א׳ (11/2025)״ — the stale price. Development package in 1.8: coverage \= ״מכוסה בחוזה 07-01״, additional estimate 0\.
+Per section: budget, recorded, committed, remaining-to-complete lines (each line: description, qty, unit, unit\_price, amount, basis \= contract / PO / estimate, source doc). Steel remaining line in 1.8: 300 t × 4,000, basis \= ״נספח א׳ (11/2025)״ — the appendix in force then; in 1.9: 300 t × 4,800, basis \= ״נספח א׳-2 (08/2026)״. Development package in 1.8: coverage \= ״מכוסה בחוזה 07-01״, additional estimate 0\.
 
 Open issues carried from 1.8 (3): שינוי מס׳ 2 בחוזה השלד — closed 18.8 · חתימת חוזה אלומיניום — closed 25.8 · אישור תאגיד/עירייה לחיבור ביוב — open.
 
@@ -136,7 +138,7 @@ Open issues carried from 1.8 (3): שינוי מס׳ 2 בחוזה השלד — cl
 | :---- | :---- | :---- |
 | `inv_1147_ntb_partial7.pdf` | חשבון חלקי מס׳ 7 — חשבון עסקה, נ.ת.ב. תשתיות | Cumulative table (מצטבר קודם / מצטבר נוכחי / חשבון זה), 5% retention, sections of work with quantities, project manager approval box, stamp. |
 | `quote_pladot_12t.pdf` | הצעת מחיר / אישור הזמנה, פלדות הצפון, 20.8.2026 | ״12,000 ק״ג (12 טון) × 4,800 ₪/טון \= 57,600 ₪״, delivery to site, payment terms שוטף+60. |
-| `appendix_A2_steel_price_2026-07-15.pdf` | נספח א׳-2 למסגרת 03-F | Price table by diameter, base 4,800 ₪/t, validity, index clause, signed by both. Replaces appendix A (4,000). |
+| `appendix_A2_steel_price_2026-08-15.pdf` | נספח א׳-2 למסגרת 03-F | Price table by diameter, base 4,800 ₪/t, validity, index clause, signed by both. Replaces appendix A (4,000). |
 | `contract_07-01_excerpt.pdf` | חוזה קבלנות משנה 07-01 — עמ׳ 3–4, סעיף 3 היקף העבודות | §3.3 included works, now including the outdoor drainage line; **§3.4 exclusions** are water-connection fees and public-road paving only. |
 | `quote_ycohen_drainage.pdf` | הצעת מחיר, י. כהן תשתיות, 20.8.2026 | Ø400 SN8, 80 m, 1,500 ₪/m incl. excavation/bedding/backfill up to 2.5 m; excludes municipal connection fee; valid 30 days. |
 | `boq_v4_ch57.pdf` | כתב כמויות גרסה 4 — פרק 57 | One page, the drainage line present and highlighted. |
@@ -154,7 +156,7 @@ Two sets of data conditions the checks are exercised against. What each one prod
 Injected by the demo scenario (`tests/fixtures/scenario.ts`) — none of these is seeded:
 
 - PO 2291 keyed in kilograms against a ton unit (qty 12,000, price 4.80, amount right), with an attached quote that states 12 t × 4,800;
-- the steel remainder in the forecast priced by appendix א׳ (4,000) while א׳-2 (4,800) has been in force since 15.7.2026;
+- the steel remainder in the forecast priced by appendix א׳ (4,000) while א׳-2 (4,800) has been in force since 15.8.2026;
 - `boq_v5_ch57.pdf` in the folder, unprocessed, dropping line 57.03.040 while the BOQ record still shows it covered by 07-01. Nothing surfaces from a document until someone reads it.
 
 Invoice 1147 on section 02 is not injected either — the script moves it there as a live ERP edit.

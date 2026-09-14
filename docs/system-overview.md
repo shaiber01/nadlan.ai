@@ -60,7 +60,7 @@ One Postgres project shared by local development and the hosted pages (URL and p
 
 Access is open through the publishable key: row-level security is on with one permissive policy per table, so restricting access later is a policy change, not a code change. Realtime is enabled on the ERP, session, documents, heartbeats and budget-changes tables; the pages re-read on every change.
 
-Schema changes are migrations in `supabase/migrations/`, applied to the project and followed by `npm run db:types`; `npm run hadarim:seed` loads the generator package (`src/hadarim/data/generate.ts`, deterministic) plus the saved report versions that ship with the seed (`src/hadarim/data/report-versions.json`, exported from the database) and takes the seed snapshot; `npm run hadarim:reset` restores it.
+Schema changes are migrations in `supabase/migrations/`, applied to the project and followed by `npm run db:types`; `npm run hadarim:seed` loads the generator package (`src/hadarim/data/generate.ts`, deterministic) plus the saved report versions that ship with the seed (`src/hadarim/data/report-versions.json` — the previous control's final report, rendered by `npm run hadarim:seed-report` from the package as that control saw it) and takes the seed snapshot; `npm run hadarim:reset` restores it.
 
 ## 5. The ERP mock (`hadarim.html`)
 
