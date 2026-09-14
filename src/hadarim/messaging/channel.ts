@@ -5,10 +5,14 @@
  * this folder: the monitor (`scripts/monitor.ts`) is the only consumer.
  */
 
+/** The adapter that carries the messages. */
 export type ChannelId = "console" | "vonage" | "twilio" | "telegram";
 
+/** The medium an address belongs to (what `messaging_contacts.channel` stores); an adapter serves one or more. */
+export type Medium = "console" | "whatsapp" | "sms" | "telegram";
+
 export interface Address {
-  channel: ChannelId;
+  channel: Medium;
   /** A phone in E.164 without "+", a chat id, or the person id on the console. */
   address: string;
 }

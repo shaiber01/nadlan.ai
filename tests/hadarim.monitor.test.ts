@@ -7,6 +7,10 @@ import { documentsMonitor, erpMonitor, type ProbeReads } from "../src/hadarim/me
 import { heartbeatAlonePromptHe, heartbeatPromptHe } from "../src/hadarim/messaging/prompts";
 import { Scheduler, dueMonitors, intervalFor, nextDelayMs, type MonitorDef, type MonitorId, type MonitorSettings, type ProbeResult } from "../src/hadarim/messaging/scheduler";
 import { daemonAlive, rowToSettings, settingsChangeKey } from "../src/hadarim/messaging/settings";
+import { createPublicKey, generateKeyPairSync, verify as verifySignature } from "node:crypto";
+import { maskAddress, type MessageRow } from "../src/hadarim/messaging/inbox";
+import { applicationJwt, authorizationHeader, createVonageChannel, decideSend, sendWhatsAppText, type FetchLike, type VonageConfig, type VonageInboxAccess } from "../src/hadarim/messaging/vonage";
+import { parseInbound, parseStatus, signWebhook, verifySignedWebhook } from "../supabase/functions/_shared/vonage";
 import type { Channel, Inbound, Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
 import { channelContextHe } from "../src/hadarim/messaging/context";
@@ -504,6 +508,148 @@ describe("the relay's system turns (the heartbeat's pass)", () => {
     expect(fc.sent).toEqual([]);
     expect(await relay.enqueueSystem("פעימת לב")).toMatchObject({ delivered: true });
     expect(fc.sent).toHaveLength(2);
+  });
+});
+
+describe("the Vonage webhook (shared with the Edge Function)", () => {
+  const inboundText = { message_uuid: "aaaaaaaa-bbbb-4ccc-8ddd-000000000001", to: "14157386102", from: "972500000001", timestamp: "2026-09-14T12:00:00.000Z", channel: "whatsapp", message_type: "text", text: "מה חדש", profile: { name: "אייל" } };
+
+  it("parses an inbound text and an inbound image, and tells a status update apart", () => {
+    expect(parseInbound(inboundText)).toEqual({ provider: "vonage", providerMessageId: inboundText.message_uuid, channel: "whatsapp", from: "972500000001", to: "14157386102", text: "מה חדש", media: null, profileName: "אייל", at: "2026-09-14T12:00:00.000Z" });
+    const image = parseInbound({ ...inboundText, message_type: "image", text: undefined, image: { url: "https://x/1.jpg", caption: "חשבונית" } });
+    expect(image).toMatchObject({ text: "חשבונית", media: { kind: "image", url: "https://x/1.jpg", caption: "חשבונית", name: null } });
+    expect(parseInbound({ message_uuid: "m", to: "1", from: "2", timestamp: "t", status: "delivered" })).toBeNull();
+    expect(parseInbound("nope")).toBeNull();
+    expect(parseStatus({ message_uuid: "m", status: "rejected", timestamp: "t", error: { type: "https://x", code: "1000", reason: "throttled" } })).toEqual({ providerMessageId: "m", status: "rejected", at: "t", error: "https://x · 1000 · throttled" });
+    expect(parseStatus(inboundText)).toBeNull();
+  });
+
+  it("verifies a signed webhook and rejects a wrong secret, a tampered body, a stale token and no token", async () => {
+    const raw = JSON.stringify(inboundText);
+    const now = 1_800_000_000;
+    const token = await signWebhook(raw, "s3cret", { api_key: "abc" }, now);
+    expect(await verifySignedWebhook(`Bearer ${token}`, raw, "s3cret", now)).toMatchObject({ ok: true, claims: { api_key: "abc" } });
+    expect(await verifySignedWebhook(`Bearer ${token}`, raw, "other", now)).toMatchObject({ ok: false, reason: "bad signature" });
+    expect(await verifySignedWebhook(`Bearer ${token}`, raw.replace("מה חדש", "x"), "s3cret", now)).toMatchObject({ ok: false, reason: "payload hash mismatch" });
+    expect(await verifySignedWebhook(`Bearer ${token}`, raw, "s3cret", now + 3600)).toMatchObject({ ok: false, reason: "token too old" });
+    expect(await verifySignedWebhook(null, raw, "s3cret", now)).toMatchObject({ ok: false, reason: "no bearer token" });
+    expect(await verifySignedWebhook("Bearer a.b", raw, "s3cret", now)).toMatchObject({ ok: false, reason: "malformed token" });
+  });
+});
+
+describe("the Vonage adapter", () => {
+  const cfg: VonageConfig = { apiKey: "key", apiSecret: "secret", from: "14157386102", endpoint: "https://sandbox.test/v1/messages", monthlyCap: 3, windowHours: 24 };
+  const T0 = Date.parse("2026-09-14T12:00:00.000Z");
+
+  it("decides by the cap first, then by the 24-hour window", () => {
+    expect(decideSend({ nowMs: T0, lastInboundAt: null, sentThisMonth: 3, cap: 3, windowHours: 24 })).toMatchObject({ action: "refuse" });
+    expect(decideSend({ nowMs: T0, lastInboundAt: null, sentThisMonth: 0, cap: 3, windowHours: 24 })).toMatchObject({ action: "hold" });
+    expect(decideSend({ nowMs: T0, lastInboundAt: new Date(T0 - 25 * 3_600_000).toISOString(), sentThisMonth: 0, cap: 3, windowHours: 24 })).toMatchObject({ action: "hold" });
+    expect(decideSend({ nowMs: T0, lastInboundAt: new Date(T0 - 23 * 3_600_000).toISOString(), sentThisMonth: 2, cap: 3, windowHours: 24 })).toEqual({ action: "send" });
+  });
+
+  it("signs an application JWT with RS256 and falls back to basic auth", () => {
+    const { privateKey: pem, publicKey: publicPem } = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+    const token = applicationJwt("app-1", pem, T0, 60);
+    const [h, p, s] = token.split(".");
+    expect(JSON.parse(Buffer.from(h, "base64url").toString())).toEqual({ alg: "RS256", typ: "JWT" });
+    expect(JSON.parse(Buffer.from(p, "base64url").toString())).toMatchObject({ application_id: "app-1", iat: T0 / 1000, exp: T0 / 1000 + 60 });
+    expect(verifySignature("RSA-SHA256", Buffer.from(`${h}.${p}`), createPublicKey(publicPem), Buffer.from(s, "base64url"))).toBe(true);
+    expect(authorizationHeader({ ...cfg, applicationId: "app-1", privateKeyPem: pem }, T0)).toMatch(/^Bearer /);
+    expect(authorizationHeader(cfg)).toBe(`Basic ${Buffer.from("key:secret").toString("base64")}`);
+  });
+
+  it("posts one text message to the endpoint and returns Vonage's id; a rejection throws", async () => {
+    const calls: { url: string; init: Parameters<FetchLike>[1] }[] = [];
+    const ok: FetchLike = async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: "uuid-1" }) };
+    };
+    expect(await sendWhatsAppText(cfg, "972500000001", "שלום", ok, T0)).toEqual({ messageUuid: "uuid-1" });
+    expect(calls[0].url).toBe(cfg.endpoint);
+    expect(JSON.parse(calls[0].init.body)).toEqual({ to: "972500000001", from: "14157386102", channel: "whatsapp", message_type: "text", text: "שלום" });
+    expect(calls[0].init.headers.authorization).toMatch(/^Basic /);
+    const rejected: FetchLike = async () => ({ ok: false, status: 401, text: async () => "Unauthorized" });
+    await expect(sendWhatsAppText(cfg, "972500000001", "שלום", rejected)).rejects.toThrow(/vonage 401/);
+  });
+
+  function fakeInbox() {
+    const rows: MessageRow[] = [];
+    const contacts = new Map<string, string | null>([["972500000001", null]]);
+    let nextId = 1;
+    const sent: string[] = [];
+    const inbox: VonageInboxAccess = {
+      listReceived: async () => rows.filter((r) => r.direction === "in" && r.status === "received"),
+      claimInbound: async (id) => {
+        const r = rows.find((x) => x.id === id);
+        if (!r || r.status !== "received") return false;
+        r.status = "processing";
+        return true;
+      },
+      closeInbound: async (id, status) => {
+        rows.find((x) => x.id === id)!.status = status;
+      },
+      touchContact: async (_c, address, at) => {
+        if (!contacts.has(address)) return false;
+        contacts.set(address, at);
+        return true;
+      },
+      lastInboundAt: async (_c, address) => contacts.get(address) ?? null,
+      countSentThisMonth: async () => rows.filter((r) => r.direction === "out" && r.status === "sent").length,
+      recordOutbound: async (m) => {
+        rows.push({ id: nextId, channel: m.channel, direction: "out", address: m.address, projectId: m.projectId, personId: m.personId, provider: m.provider, providerMessageId: m.providerMessageId, text: m.text, media: null, status: m.status, sessionId: null, at: new Date().toISOString() });
+        return nextId++;
+      },
+      updateOutbound: async (id, patch) => {
+        const r = rows.find((x) => x.id === id)!;
+        if (patch.status) r.status = patch.status;
+        if (patch.providerMessageId !== undefined) r.providerMessageId = patch.providerMessageId;
+      },
+      listHeld: async (_c, address) => rows.filter((r) => r.direction === "out" && r.address === address && r.status === "held_window_closed"),
+      subscribeInbound: () => () => {},
+    };
+    const receive = (address: string, text: string) => {
+      rows.push({ id: nextId, channel: "whatsapp", direction: "in", address, projectId: null, personId: null, provider: "vonage", providerMessageId: `in-${nextId}`, text, media: null, status: "received", sessionId: null, at: new Date().toISOString() });
+      return nextId++;
+    };
+    const fetchImpl: FetchLike = async (_url, init) => {
+      sent.push(JSON.parse(init.body).text);
+      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: `uuid-${sent.length}` }) };
+    };
+    return { inbox, rows, receive, sent, fetchImpl };
+  }
+
+  it("holds a message while the window is closed and releases it when the person writes; hands the message to the relay; ignores strangers", async () => {
+    const { inbox, rows, receive, sent, fetchImpl } = fakeInbox();
+    const got: Inbound[] = [];
+    const channel = createVonageChannel({ cfg, projectId: "P", inbox, isEnrolled: (a) => a === "972500000001", personIdOf: (a) => (a === "972500000001" ? "EYAL" : null), fetchImpl, now: () => T0, pollMs: 60_000 });
+    const r = await channel.send({ channel: "whatsapp", address: "972500000001" }, "כרטיס 1");
+    expect(r.providerMessageId).toMatch(/^held:/);
+    expect(rows.find((x) => x.direction === "out")?.status).toBe("held_window_closed");
+    expect(sent).toEqual([]);
+    receive("972500000001", "היי");
+    receive("972599999999", "מי זה?");
+    const stop = channel.start((m) => got.push(m));
+    await new Promise((res) => setTimeout(res, 20));
+    stop();
+    expect(sent).toEqual(["כרטיס 1"]);
+    expect(rows.find((x) => x.direction === "out")).toMatchObject({ status: "sent", providerMessageId: "uuid-1" });
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ from: { channel: "whatsapp", address: "972500000001" }, text: "היי" });
+    expect(rows.filter((x) => x.direction === "in").map((x) => x.status)).toEqual(["done", "ignored"]);
+    // the window is open now: the next message goes straight out
+    await channel.send({ channel: "whatsapp", address: "972500000001" }, "תשובה");
+    expect(sent).toEqual(["כרטיס 1", "תשובה"]);
+  });
+
+  it("refuses to send past the monthly cap and records the refusal", async () => {
+    const { inbox, rows, fetchImpl } = fakeInbox();
+    const channel = createVonageChannel({ cfg: { ...cfg, monthlyCap: 1 }, projectId: "P", inbox, isEnrolled: () => true, personIdOf: () => "EYAL", fetchImpl, now: () => T0 });
+    await inbox.touchContact("whatsapp", "972500000001", new Date(T0 - 1000).toISOString());
+    await channel.send({ channel: "whatsapp", address: "972500000001" }, "1");
+    await expect(channel.send({ channel: "whatsapp", address: "972500000001" }, "2")).rejects.toThrow(/מכסת/);
+    expect(rows.filter((x) => x.direction === "out").map((x) => x.status)).toEqual(["sent", "failed"]);
+    expect(maskAddress("972500000001")).toBe("…0001");
   });
 });
 
