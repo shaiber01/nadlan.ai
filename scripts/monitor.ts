@@ -10,6 +10,8 @@
  *   npm run monitor -- --channel console --as EYAL    # the same, plus a rehearsal conversation in this terminal: the pass presents
  *                                                     #   its cards here, and every typed line is a turn of the same conversation
  *   npm run monitor -- once [--force]                 # one tick, then exit (for cron); --force ignores a disabled setting
+ *   npm run monitor -- tail [--lines 80]              # follow the trace of the headless turns: the prompt, every tool call and
+ *                                                     #   result, every reply, the totals (out/monitor-trace.log)
  *   npm run monitor -- settings [--on|--off] [--interval 60] [--quiet on|off] [--wake on|off] [--by EYAL]   # --wake: probe at once on an ERP change
  *   npm run monitor -- status                         # settings, last tick, conversations, the runner's settings
  *   npm run monitor -- forget                         # drop the project's conversation (the next turn starts a new one)
@@ -21,9 +23,12 @@
  *   Global: --project HADARIM
  *
  * Settings come from the environment (`.env` in the repository root is loaded when present; see .env.example):
- * CLAUDE_BIN, MONITOR_MODEL, MONITOR_MAX_BUDGET_USD, MONITOR_TURN_TIMEOUT_MS.
+ * CLAUDE_BIN, MONITOR_MODEL (default sonnet), MONITOR_EFFORT (default low), MONITOR_MAX_BUDGET_USD,
+ * MONITOR_TURN_TIMEOUT_MS, MONITOR_TRACE_FILE, MONITOR_TRACE_CHARS.
  */
-import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
+import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_PROJECT_ID } from "../src/hadarim/db/config";
 import type { Participant } from "../src/hadarim/messaging/channel";
@@ -39,6 +44,7 @@ import { Relay } from "../src/hadarim/messaging/relay";
 import { Scheduler, type MonitorSettings, type PassOutcome, type ProbeResult } from "../src/hadarim/messaging/scheduler";
 import { assertNoApiKey, runTurn, runnerOptionsFromEnv } from "../src/hadarim/messaging/session-runner";
 import { daemonAlive, readMonitorSettings, recordMonitorTick, settingsChangeKey, subscribeMonitorSettings, writeMonitorSettings } from "../src/hadarim/messaging/settings";
+import { DEFAULT_TRACE_CHARS, FileTracer } from "../src/hadarim/messaging/trace";
 import { subscribeErpChanges } from "../src/hadarim/messaging/wake";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
@@ -56,6 +62,7 @@ const { values: opts, positionals } = parseArgs({
     quiet: { type: "string" },
     wake: { type: "string" },
     file: { type: "string" },
+    lines: { type: "string" },
     by: { type: "string" },
     force: { type: "boolean" },
     person: { type: "string" },
@@ -91,12 +98,25 @@ function settingsLineHe(s: MonitorSettings | null): string {
 
 async function main() {
   const store = new DbConversationStore();
-  const runnerOptions = runnerOptionsFromEnv();
+  const { traceFile, ...runnerBase } = runnerOptionsFromEnv();
+  const tracer = traceFile ? new FileTracer(traceFile, process.env.MONITOR_TRACE_CHARS ? Number(process.env.MONITOR_TRACE_CHARS) : DEFAULT_TRACE_CHARS) : undefined;
+  const runnerOptions = { ...runnerBase, trace: tracer };
+
+  if (command === "tail") {
+    // follow the trace: what the daemon sent the agent, its tool calls and results, its replies
+    if (!traceFile) fail("no trace file (MONITOR_TRACE_FILE is empty)");
+    mkdirSync(dirname(traceFile), { recursive: true });
+    if (!existsSync(traceFile)) closeSync(openSync(traceFile, "a"));
+    console.log(`following ${traceFile} (Ctrl-C to stop)`);
+    const child = spawn("tail", ["-n", String(Number(opts.lines ?? 80)), "-f", traceFile], { stdio: "inherit" });
+    await new Promise<void>((resolve) => child.on("close", () => resolve()));
+    return;
+  }
 
   if (command === "status") {
     const s = await readMonitorSettings(projectId);
     console.log(`project ${projectId} · ${settingsLineHe(s)}`);
-    console.log(`runner: ${runnerOptions.bin} · agent ${runnerOptions.agent} · model ${runnerOptions.model ?? "(agent default)"} · budget ${runnerOptions.maxBudgetUsd == null ? "none" : `$${runnerOptions.maxBudgetUsd}`} · timeout ${runnerOptions.timeoutMs} ms`);
+    console.log(`runner: ${runnerOptions.bin} · agent ${runnerOptions.agent} · model ${runnerOptions.model ?? "(agent default)"} · effort ${runnerOptions.effort ?? "(settings default)"} · budget ${runnerOptions.maxBudgetUsd == null ? "none" : `$${runnerOptions.maxBudgetUsd}`} · timeout ${runnerOptions.timeoutMs} ms · trace ${traceFile ?? "off"}`);
     console.log(`api key in environment: ${process.env.ANTHROPIC_API_KEY ? "YES — the monitor will refuse to run" : "no (the machine's Claude login is used)"}`);
     const rows = await store.list();
     if (!rows.length) console.log("conversations: none");
@@ -169,7 +189,7 @@ async function main() {
     return;
   }
 
-  if (command !== "run" && command !== "once") fail("commands: run (default) · once · settings · status · forget · contact … · inbox simulate …");
+  if (command !== "run" && command !== "once") fail("commands: run (default) · once · tail · settings · status · forget · contact … · inbox simulate …");
 
   try {
     assertNoApiKey();
@@ -261,6 +281,7 @@ async function main() {
   } else {
     console.log("ללא ערוץ: פעימת לב שנמצא בה מה לעשות מוצגת כאן בלבד ולא מחליטה דבר (--channel console --as <id> לשיחה)");
   }
+  console.log(`מודל ${runnerOptions.model ?? "(של הסוכן)"} · מאמץ ${runnerOptions.effort ?? "(ברירת המחדל)"}${traceFile ? ` · מעקב אחר התורות: npm run monitor -- tail (${traceFile})` : ""}`);
   console.log("Ctrl-C ליציאה");
 
   scheduler.start();

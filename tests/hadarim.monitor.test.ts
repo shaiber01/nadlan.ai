@@ -13,6 +13,7 @@ import { applicationJwt, authorizationHeader, createVonageChannel, decideSend, m
 import { pathToFileURL } from "node:url";
 import { writeFileSync } from "node:fs";
 import { parseInbound, parseStatus, signWebhook, verifySignedWebhook } from "../supabase/functions/_shared/vonage";
+import { FileTracer, formatTraceEvent } from "../src/hadarim/messaging/trace";
 import type { Channel, Inbound, Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
 import { channelContextHe, contextKeyOf } from "../src/hadarim/messaging/context";
@@ -56,7 +57,7 @@ function fakeChannel() {
 describe("session runner: the claude -p command", () => {
   it("pins the flags: print mode, the agent, json, manual permissions with no prompts, the allow and deny lists, never bare", () => {
     const args = runnerArgs({ sessionId: null, text: "שלום", systemContext: "ctx", newSessionId: "sid-1" });
-    expect(args.slice(0, 5)).toEqual(["-p", "--agent", "bakara", "--output-format", "json"]);
+    expect(args.slice(0, 6)).toEqual(["-p", "--agent", "bakara", "--output-format", "stream-json", "--verbose"]);
     expect(args).toContain("--permission-prompts");
     expect(args[args.indexOf("--permission-mode") + 1]).toBe("manual");
     expect(args[args.indexOf("--permission-prompts") + 1]).toBe("none");
@@ -67,26 +68,32 @@ describe("session runner: the claude -p command", () => {
     // a new session: its id is chosen up front and the channel context is appended once
     expect(args[args.indexOf("--session-id") + 1]).toBe("sid-1");
     expect(args[args.indexOf("--append-system-prompt") + 1]).toBe("ctx");
-    expect(args[args.length - 1]).toBe("שלום");
+    expect(args.slice(-2)).toEqual(["--", "שלום"]);
   });
 
-  it("resumes an existing session without touching the system prompt, and keeps a leading dash positional", () => {
-    const args = runnerArgs({ sessionId: "sid-9", text: "-1", systemContext: "ctx" }, { model: "opus", maxBudgetUsd: 2 });
+  it("resumes an existing session without touching the system prompt; a prompt starting with a dash stays a prompt", () => {
+    const args = runnerArgs({ sessionId: "sid-9", text: "-1", systemContext: "ctx" }, { model: "opus", effort: "high", maxBudgetUsd: 2 });
     expect(args[args.indexOf("--resume") + 1]).toBe("sid-9");
     expect(args).not.toContain("--session-id");
     expect(args).not.toContain("--append-system-prompt");
     expect(args[args.indexOf("--model") + 1]).toBe("opus");
+    expect(args[args.indexOf("--effort") + 1]).toBe("high");
+    const plain = runnerArgs({ sessionId: "sid-9", text: "x" });
+    expect(plain).not.toContain("--model");
+    expect(plain).not.toContain("--effort");
     expect(args[args.indexOf("--max-budget-usd") + 1]).toBe("2");
-    expect(args[args.length - 1]).toBe(" -1");
+    expect(args.slice(-2)).toEqual(["--", "-1"]);
   });
 
   it("refuses an API key in the environment unless allowed on purpose; reads its settings from the environment", () => {
     expect(() => assertNoApiKey({ ANTHROPIC_API_KEY: "sk-x" })).toThrow(ApiKeyInEnvironmentError);
     expect(() => assertNoApiKey({ ANTHROPIC_API_KEY: "sk-x", MONITOR_ALLOW_API_KEY: "1" })).not.toThrow();
     expect(() => assertNoApiKey({})).not.toThrow();
-    const o = runnerOptionsFromEnv({ CLAUDE_BIN: "/x/claude", MONITOR_MODEL: "sonnet", MONITOR_MAX_BUDGET_USD: "1.5", MONITOR_TURN_TIMEOUT_MS: "1000" });
-    expect(o).toMatchObject({ bin: "/x/claude", model: "sonnet", maxBudgetUsd: 1.5, timeoutMs: 1000 });
-    expect(runnerOptionsFromEnv({}).maxBudgetUsd).toBe(3);
+    const o = runnerOptionsFromEnv({ CLAUDE_BIN: "/x/claude", MONITOR_MODEL: "opus", MONITOR_EFFORT: "xhigh", MONITOR_MAX_BUDGET_USD: "1.5", MONITOR_TURN_TIMEOUT_MS: "1000", MONITOR_TRACE_FILE: "/t/trace.log" });
+    expect(o).toMatchObject({ bin: "/x/claude", model: "opus", effort: "xhigh", maxBudgetUsd: 1.5, timeoutMs: 1000, traceFile: "/t/trace.log" });
+    // the defaults: a fast model at low effort, the trace under out/; an empty string means none
+    expect(runnerOptionsFromEnv({})).toMatchObject({ model: "sonnet", effort: "low", maxBudgetUsd: 3, traceFile: "out/monitor-trace.log" });
+    expect(runnerOptionsFromEnv({ MONITOR_MODEL: "", MONITOR_EFFORT: "", MONITOR_TRACE_FILE: "" })).toMatchObject({ model: undefined, effort: undefined, traceFile: undefined });
     expect(runnerOptionsFromEnv({ MONITOR_MAX_BUDGET_USD: "0" }).maxBudgetUsd).toBeNull();
   });
 
@@ -95,20 +102,45 @@ describe("session runner: the claude -p command", () => {
     expect(env).toEqual({ PATH: "/bin", CLAUDE_CODE_EXECPATH: "/x", HOME: "/h" });
   });
 
+  it("formats stream events into trace lines: tool calls named on their results, replies, retries, the totals", () => {
+    const names = new Map<string, string>();
+    expect(formatTraceEvent({ type: "system", subtype: "init", session_id: "s1", model: "claude-sonnet-5", mcp_servers: [{ name: "bakara", status: "connected" }] }, names)).toEqual(["● session s1 · model claude-sonnet-5 · mcp bakara:connected"]);
+    expect(formatTraceEvent({ type: "system", subtype: "hook_started" }, names)).toEqual([]);
+    expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "thinking", thinking: "" }, { type: "tool_use", id: "t1", name: "get_forecast", input: { sectionId: "03" } }] } }, names)).toEqual(['→ get_forecast {"sectionId":"03"}']);
+    expect(formatTraceEvent({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "x".repeat(50) }] }] } }, names, 20)).toEqual([`← get_forecast ${"x".repeat(20)}… (50 chars)`]);
+    expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "text", text: "תחזית לגמר\n48,240,000 ₪" }] } }, names)).toEqual(["◆ תחזית לגמר 48,240,000 ₪"]);
+    expect(formatTraceEvent({ type: "system", subtype: "api_error", error: { formatted: "Connection lost while your computer was asleep" } }, names)).toEqual(["⚠ api_error: Connection lost while your computer was asleep"]);
+    expect(formatTraceEvent({ type: "rate_limit_event", rate_limit_info: { status: "allowed" } }, names)).toEqual([]);
+    expect(formatTraceEvent({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } }, names)).toEqual(["⚠ rate limit rejected (five_hour)"]);
+    expect(formatTraceEvent({ type: "result", is_error: true, subtype: "error_during_execution", result: "boom", duration_ms: 9, num_turns: 2, total_cost_usd: 0.5, permission_denials: [{ tool_name: "Bash" }] }, names)).toEqual(["■ ✗ error_during_execution: boom 9 ms · 2 turns · ≈ $0.500 · denied Bash"]);
+  });
+
   it("parses the json result, also when something printed before it", () => {
     expect(parseCliResult('warning\n{"type":"result","result":"x","session_id":"s"}')).toMatchObject({ result: "x", session_id: "s" });
     expect(parseCliResult("")).toBeNull();
     expect(parseCliResult("not json")).toBeNull();
   });
 
-  it("runs a new turn and a resumed turn through the fake CLI", async () => {
+  it("runs a new turn and a resumed turn through the fake CLI, streaming every event to the trace", async () => {
     const log = join(tmp, "args.log");
     const env = { ...cleanEnv, FAKE_CLAUDE_LOG: log };
-    const first = await runTurn({ sessionId: null, text: "מה חדש", systemContext: "ctx", newSessionId: "sid-a" }, { bin: FAKE, env, timeoutMs: 10_000 });
+    const events: string[] = [];
+    const tracePath = join(tmp, "trace.log");
+    const tracer = new FileTracer(tracePath, 80);
+    const first = await runTurn({ sessionId: null, text: "מה חדש", systemContext: "ctx", newSessionId: "sid-a" }, { bin: FAKE, env, timeoutMs: 10_000, model: "sonnet", effort: "low", onEvent: (e) => events.push(`${e.type}${e.subtype ? `/${e.subtype}` : ""}`), trace: tracer });
     expect(first.ok).toBe(true);
     expect(first.sessionId).toBe("sid-a");
     expect(first.text).toBe("echo(new,ctx): מה חדש");
     expect(first.costUsd).toBe(0.01);
+    expect(events).toEqual(["system/init", "assistant", "user", "assistant", "result/success"]);
+    const trace = readFileSync(tracePath, "utf8");
+    expect(trace).toContain("▶ new session · context 3 chars");
+    expect(trace).toContain("▶ מה חדש");
+    expect(trace).toContain("● session sid-a · model claude-sonnet-fake · mcp bakara:connected");
+    expect(trace).toContain('→ get_project {"projectId":"HADARIM"}');
+    expect(trace).toMatch(/← get_project \{"project":\{"id":"HADARIM"/);
+    expect(trace).toContain("◆ echo(new,ctx): מה חדש");
+    expect(trace).toMatch(/■ ✓ 5 ms · 1 turns · ≈ \$0\.010 \(claude-sonnet-fake \$0\.010\)/);
     const second = await runTurn({ sessionId: first.sessionId, text: "1" }, { bin: FAKE, env, timeoutMs: 10_000 });
     expect(second.ok).toBe(true);
     expect(second.sessionId).toBe("sid-a");
