@@ -16,7 +16,8 @@
     "hadarim:seed": "vite-node scripts/seed-supabase.ts",
     "hadarim:reset": "vite-node scripts/reset-supabase.ts",
     "db:types": "supabase gen types typescript --project-id aevdlzncwkdosbzkgpgy --schema public > src/hadarim/db/types.ts",
-    "bakara": "vite-node scripts/bakara.ts"
+    "bakara": "vite-node scripts/bakara.ts",
+    "monitor": "vite-node scripts/monitor.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

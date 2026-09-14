@@ -212,7 +212,7 @@ npm run db:types            # regenerate src/hadarim/db/types.ts after a migrati
 
 ## 14. Known limits and what comes next
 
-- The heartbeat is not scheduled yet; `scripts/heartbeat.sh` plus a crontab line (or a GitHub Actions schedule with an API key) does it.
+- The heartbeat is not scheduled yet; `scripts/heartbeat.sh` plus a crontab line does it for now. The plan for an optional heartbeat monitor and a WhatsApp bot is `heartbeat-bot-plan.md`; its phase 0 exists: `npm run monitor -- --channel console --as EYAL` is a conversation with the agent in the terminal, each line one `claude -p --agent bakara` turn resumed by session id under the machine's login (`src/hadarim/messaging/`, `scripts/monitor.ts`; nothing else imports them).
 - Access is open through the publishable key (prototype); Supabase Auth and real row-level security policies are the next security step.
 - Questions to people (`ask_person`) are recorded only; the operational system would send them over the person's channel. In the prototype the agent asks the user and names who to ask.
 - Images are read by the agent only (no OCR); PDF text extraction is a convenience and Hebrew often comes out scrambled, which is why the agent reads the file itself.

@@ -12,6 +12,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
 - Headless, for cron/launchd: `scripts/heartbeat.sh` runs `/bakara-heartbeat` with `claude -p` (nothing is decided without a user; the summary is what the user reads next).
 - Two pages (`npm run dev`): `hadarim.html` is the simulated ERP, `report.html` the live, read-only view of the agent's report with the saved versions. Neither links to the other; the report's source links open ERP records in a new tab by URL (`hadarim.html?screen=invoices&invoice=1147`). Open the report next to the agent to watch the control take shape.
 - The same tools from a shell: `npm run bakara -- tools`, `npm run bakara -- tool get_forecast '{"sectionId":"03"}'`.
+- **The monitor** (optional; `docs/heartbeat-bot-plan.md`): `npm run monitor -- --channel console --as EYAL` is a chat with the agent in the terminal — every line is a turn of `claude -p --agent bakara`, resumed by session id, under the machine's Claude login (it refuses to start with `ANTHROPIC_API_KEY` set). `npm run monitor -- status` / `forget`. Nothing in the application depends on it; phase 0 of the plan (the heartbeat schedule and WhatsApp are later phases).
 
 ## What is here
 
@@ -25,6 +26,7 @@ This repository is a budget-control prototype for construction projects (Hebrew,
   - `features/report/` — `table.tsx` (the sortable `DataTable` and `Section` primitives), `sections-table.tsx` (the interactive §3 table), `kpis.tsx` (KPI strip, §2א, material cards), `sections.tsx` (the other sections), `ReportView.tsx`.
   - `features/` — React screens: `erp/` (simulated ERP, including תיקיית מסמכים — upload to the Storage bucket `documents`, also from a record's card: upload for the record or replace one of its documents; any document, a seed page included, can be replaced from the folder's list), `report/` (living report, its own page `report.html`). `app/store.ts` bootstraps from the database (offline via `?offline=1`).
   - `export/` — Word (`docx.ts`), Markdown (`markdown.ts`) and Excel (`xlsx.ts`, over the SpreadsheetML writer `workbook.ts`) renderers of the report model.
+  - `messaging/` — the optional monitor's layer (`docs/heartbeat-bot-plan.md`): the channel contract and the console channel, the session runner (`claude -p` per turn), the relay (one conversation per project, sender-prefixed turns, mirrored replies), the chat text shaper, the conversation store. Imported only by `scripts/monitor.ts`; a test asserts nothing else imports it.
   - `components/` — the UI primitives both pages share (`primitives.tsx`: `Button`, `Badge`, `Notice`, `KeyValue`; `Drawer.tsx`: the `Surface` drawer/modal; the document viewer). `styles/` — `tokens.css` (palette, Heebo from `assets/fonts/`), `base.css`, `components.css`, `hadarim.css`; the screens carry their own stylesheets.
 - `mcp/bakara-server.ts` — the registry as an MCP server over stdio (`npx vite-node mcp/bakara-server.ts`; stdout is protocol-only, log to stderr).
 - `scripts/` — `bakara.ts` (CLI: demo commands, `heartbeat`, plus `tool <name> [json]` passthrough), `heartbeat.sh` (the agent's heartbeat headless), `seed-supabase.ts`, `reset-supabase.ts`, `dump-hadarim.ts`.
@@ -53,6 +55,7 @@ npm run test:e2e            # Playwright (offline data; RUN_DB_E2E=1 adds the li
 npm run build               # the pages into dist/; GitHub Pages deploys main
 npm run bakara -- tools     # the tool registry; `tool <name> '{...}'` calls one
 npm run bakara -- heartbeat # the deterministic heartbeat work list (the agent's /bakara-heartbeat does the reading)
+npm run monitor -- --channel console --as EYAL   # chat with the agent in the terminal, one claude -p per turn (the optional monitor)
 npm run hadarim:seed        # load the generator package into Supabase and snapshot it as the seed
 npm run hadarim:reset       # restore the seed
 ```
