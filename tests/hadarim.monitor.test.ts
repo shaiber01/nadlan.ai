@@ -13,7 +13,7 @@ import { applicationJwt, authorizationHeader, createVonageChannel, decideSend, s
 import { parseInbound, parseStatus, signWebhook, verifySignedWebhook } from "../supabase/functions/_shared/vonage";
 import type { Channel, Inbound, Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
-import { channelContextHe } from "../src/hadarim/messaging/context";
+import { channelContextHe, contextKeyOf } from "../src/hadarim/messaging/context";
 import { FileConversationStore, MemoryConversationStore } from "../src/hadarim/messaging/conversations";
 import { RELAY_TEXT_HE, Relay } from "../src/hadarim/messaging/relay";
 import { ApiKeyInEnvironmentError, DEFAULT_ALLOWED_TOOLS, DEFAULT_DISALLOWED_TOOLS, assertNoApiKey, childEnv, parseCliResult, runTurn, runnerArgs, runnerOptionsFromEnv, type TurnInput, type TurnResult } from "../src/hadarim/messaging/session-runner";
@@ -187,6 +187,14 @@ describe("the channel context", () => {
     expect(ctx).toContain("byId");
     expect(ctx).toContain("AskUserQuestion");
     expect(ctx).toContain("רשימה ממוספרת");
+    expect(ctx).not.toContain("הדוח החי");
+    const withReport = channelContextHe([eyal], "vonage", { reportUrl: "https://x/report.html" });
+    expect(withReport).toContain("https://x/report.html");
+    expect(withReport).toContain("Word");
+    // the key follows the text: other people or another link mean another conversation
+    expect(contextKeyOf(ctx)).toBe(contextKeyOf(channelContextHe([eyal, roi], "vonage")));
+    expect(contextKeyOf(ctx)).not.toBe(contextKeyOf(withReport));
+    expect(contextKeyOf(ctx)).not.toBe(contextKeyOf(channelContextHe([eyal], "vonage")));
   });
 });
 
@@ -282,6 +290,36 @@ describe("the relay", () => {
     await relay.idle();
     expect(fc.sent.at(-1)?.text).toBe(RELAY_TEXT_HE.notConnected);
     expect(inputs).toHaveLength(2);
+  });
+
+  it("starts a new conversation when the channel context changed, and resumes when it did not", async () => {
+    const fc = fakeChannel();
+    const store = new MemoryConversationStore();
+    const inputs: TurnInput[] = [];
+    const runTurn = async (i: TurnInput): Promise<TurnResult> => {
+      inputs.push(i);
+      return { ok: true, sessionId: i.sessionId ?? `s${inputs.length}`, text: "ok", costUsd: null, durationMs: 1, numTurns: 1, authExpired: false, denials: [] };
+    };
+    const first = new Relay({ projectId: "P", participants: [eyal], channel: fc.channel, store, runTurn });
+    first.start();
+    fc.push(inbound(eyal, "א"));
+    await first.idle();
+    expect((await store.get("P", "project", null))?.contextKey).toBe(first.contextKey);
+    // the same people and link: the session is resumed
+    const same = new Relay({ projectId: "P", participants: [eyal], channel: fc.channel, store, runTurn });
+    same.start();
+    fc.push(inbound(eyal, "ב"));
+    await same.idle();
+    expect(inputs[1]).toMatchObject({ sessionId: "s1" });
+    // another participant joins: a new session with the new context
+    const changed = new Relay({ projectId: "P", participants: [eyal, roi], channel: fc.channel, store, runTurn, reportUrl: "https://x/report.html" });
+    changed.start();
+    fc.push(inbound(roi, "ג"));
+    await changed.idle();
+    expect(inputs[2].sessionId).toBeNull();
+    expect(inputs[2].systemContext).toContain("רועי");
+    expect(inputs[2].systemContext).toContain("https://x/report.html");
+    expect((await store.get("P", "project", null))).toMatchObject({ sessionId: "s3", turns: 1, contextKey: changed.contextKey });
   });
 
   it("splits a long reply into several messages in order", async () => {

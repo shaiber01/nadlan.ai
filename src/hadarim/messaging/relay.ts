@@ -1,5 +1,5 @@
 import { addressKey, type Channel, type Inbound, type Participant } from "./channel";
-import { channelContextHe } from "./context";
+import { channelContextHe, contextKeyOf } from "./context";
 import type { Conversation, ConversationStore } from "./conversations";
 import type { TurnInput, TurnResult } from "./session-runner";
 import { DEFAULT_MAX_MESSAGE_CHARS, endsWithQuestion, shapeForChat, splitMessage } from "./shape";
@@ -20,6 +20,8 @@ export interface RelayOptions {
   runTurn: (input: TurnInput) => Promise<TurnResult>;
   /** Appended to the system prompt on the conversation's first turn (default: `channelContextHe`). */
   contextHe?: string;
+  /** The live report's link, for the default context. */
+  reportUrl?: string | null;
   log?: (line: string) => void;
   maxMessageChars?: number;
   now?: () => Date;
@@ -55,6 +57,9 @@ export class Relay {
   private stopChannel: (() => void) | null = null;
   private idleWaiters: (() => void)[] = [];
   private byAddress = new Map<string, Participant>();
+  /** The context this relay creates conversations with, and its key. */
+  readonly contextHe: string;
+  readonly contextKey: string;
   authExpired = false;
   lastError: string | null = null;
   turnsRun = 0;
@@ -62,6 +67,8 @@ export class Relay {
 
   constructor(private readonly opts: RelayOptions) {
     for (const p of opts.participants) this.byAddress.set(addressKey(p.address), p);
+    this.contextHe = opts.contextHe ?? channelContextHe(opts.participants, opts.channel.id, { reportUrl: opts.reportUrl });
+    this.contextKey = contextKeyOf(this.contextHe);
   }
 
   start(): void {
@@ -171,8 +178,11 @@ export class Relay {
       return;
     }
     const text = batch.map((item) => (item.kind === "person" ? `${item.p.nameHe}: ${item.m.text.trim()}` : item.text)).join("\n");
-    const existing = await this.conversation();
-    const input: TurnInput = existing ? { sessionId: existing.sessionId, text } : { sessionId: null, text, systemContext: this.opts.contextHe ?? channelContextHe(this.opts.participants, this.opts.channel.id) };
+    const stored = await this.conversation();
+    // a session carries the context it was created with; a different one (other people, another report link) means a new conversation
+    const existing = stored && stored.contextKey === this.contextKey ? stored : null;
+    if (stored && !existing) this.log(`context changed (${stored.contextKey ?? "none"} → ${this.contextKey}): new conversation`);
+    const input: TurnInput = existing ? { sessionId: existing.sessionId, text } : { sessionId: null, text, systemContext: this.contextHe };
     this.log(`turn → ${existing ? `resume ${existing.sessionId}` : "new session"} · ${text.length} chars`);
     const r = await this.opts.runTurn(input);
     this.turnsRun++;
@@ -194,7 +204,7 @@ export class Relay {
     if (r.denials.length) this.log(`denied tools: ${r.denials.join(", ")}`);
     const reply = shapeForChat(r.text);
     const pendingQuestion = endsWithQuestion(reply);
-    await this.opts.store.save({ projectId: this.opts.projectId, scope: "project", address: null, sessionId: r.sessionId, startedAt: existing?.startedAt ?? now, lastTurnAt: now, turns: (existing?.turns ?? 0) + 1, pendingQuestion });
+    await this.opts.store.save({ projectId: this.opts.projectId, scope: "project", address: null, sessionId: r.sessionId, startedAt: existing?.startedAt ?? now, lastTurnAt: now, turns: (existing?.turns ?? 0) + 1, pendingQuestion, contextKey: this.contextKey });
     this.log(`turn ok · ${r.durationMs} ms · ${r.numTurns ?? "?"} agent turns · ≈ $${(r.costUsd ?? 0).toFixed(3)}`);
     // a heartbeat's quiet reply (nothing to decide) is kept back when the settings say so; a person's turn is always answered
     const quietSystemOnly = systemItems.length === batch.length && !pendingQuestion && systemItems.every((i) => !i.deliverIfQuiet);

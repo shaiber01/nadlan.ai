@@ -20,6 +20,8 @@ export interface Conversation {
   turns: number;
   /** The last reply ended with a question: a card is waiting for an answer. */
   pendingQuestion: boolean;
+  /** The channel context the session was created with (`contextKeyOf`); a different one means a new conversation. */
+  contextKey?: string | null;
 }
 
 export interface ConversationStore {

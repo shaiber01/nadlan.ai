@@ -397,6 +397,7 @@ export type Database = {
       conversations: {
         Row: {
           address: string | null
+          context_key: string | null
           id: number
           last_turn_at: string | null
           pending_question: boolean
@@ -408,6 +409,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          context_key?: string | null
           id?: never
           last_turn_at?: string | null
           pending_question?: boolean
@@ -419,6 +421,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          context_key?: string | null
           id?: never
           last_turn_at?: string | null
           pending_question?: boolean

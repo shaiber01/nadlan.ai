@@ -28,6 +28,7 @@ import { parseArgs } from "node:util";
 import { DEFAULT_PROJECT_ID } from "../src/hadarim/db/config";
 import type { Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
+import { DEFAULT_REPORT_URL } from "../src/hadarim/messaging/context";
 import { DbConversationStore } from "../src/hadarim/messaging/conversations-db";
 import { addContact, countSentThisMonth, findContact, listContacts, listHeld, maskAddress, removeContact } from "../src/hadarim/messaging/inbox";
 import { loadPeople } from "../src/hadarim/messaging/people";
@@ -176,6 +177,7 @@ async function main() {
   if (channelId !== "console" && channelId !== "vonage" && channelId !== "none") fail(`channel ${channelId} is not built; use --channel vonage, --channel console --as <id>, or no channel`);
   let relay: Relay | null = null;
   let participants: Participant[] = [];
+  const reportUrl = process.env.MONITOR_REPORT_URL === "" ? null : process.env.MONITOR_REPORT_URL || DEFAULT_REPORT_URL;
   if (channelId === "vonage") {
     const cfg = vonageConfigFromEnv();
     if (!cfg) fail("Vonage is not configured: set VONAGE_WHATSAPP_FROM and either VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY_PATH or VONAGE_API_KEY + VONAGE_API_SECRET (see .env.example)");
@@ -195,7 +197,7 @@ async function main() {
       personIdOf: (address) => byAddress.get(address)?.personId ?? null,
       log,
     });
-    relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), log });
+    relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), reportUrl, log });
   } else if (channelId === "console") {
     const as = opts.as as string | undefined;
     if (!as) fail("--as <personId> is required for the console channel (see list_people / the ERP's people)");
@@ -204,7 +206,7 @@ async function main() {
     if (!person) fail(`person ${as} is not in project ${projectId}; people: ${people.map((p) => p.id).join(", ")}`);
     const channel = createConsoleChannel({ as: person.id, promptHe: person.nameHe });
     participants = [{ address: channel.address, personId: person.id, nameHe: person.nameHe, roleHe: person.roleHe, notify: true }];
-    relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), log });
+    relay = new Relay({ projectId, participants, channel, store, runTurn: (input) => runTurn(input, runnerOptions), reportUrl, log });
   }
 
   const runPass = async (results: ProbeResult[]): Promise<PassOutcome> => {

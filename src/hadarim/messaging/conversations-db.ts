@@ -20,7 +20,7 @@ export class DbConversationStore implements ConversationStore {
   async save(c: Conversation): Promise<void> {
     const { data: existing, error: readError } = await this.query(c.projectId, c.scope, c.address).maybeSingle();
     if (readError) throw new Error(`conversations: ${readError.message}`);
-    const row = { project_id: c.projectId, scope: c.scope, address: c.address, session_id: c.sessionId, started_at: c.startedAt, last_turn_at: c.lastTurnAt, turns: c.turns, pending_question: c.pendingQuestion };
+    const row = { project_id: c.projectId, scope: c.scope, address: c.address, session_id: c.sessionId, started_at: c.startedAt, last_turn_at: c.lastTurnAt, turns: c.turns, pending_question: c.pendingQuestion, context_key: c.contextKey ?? null };
     const { error } = existing ? await this.supabase.from("conversations").update(row).eq("id", existing.id) : await this.supabase.from("conversations").insert(row);
     if (error) throw new Error(`conversations: ${error.message}`);
   }
@@ -39,5 +39,5 @@ export class DbConversationStore implements ConversationStore {
 }
 
 function rowToConversation(r: Tables<"conversations">): Conversation {
-  return { projectId: r.project_id, scope: r.scope as ConversationScope, address: r.address, sessionId: r.session_id, startedAt: r.started_at, lastTurnAt: r.last_turn_at, turns: r.turns, pendingQuestion: r.pending_question };
+  return { projectId: r.project_id, scope: r.scope as ConversationScope, address: r.address, sessionId: r.session_id, startedAt: r.started_at, lastTurnAt: r.last_turn_at, turns: r.turns, pendingQuestion: r.pending_question, contextKey: r.context_key };
 }
