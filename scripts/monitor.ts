@@ -10,14 +10,14 @@
  *   npm run monitor -- --channel console --as EYAL    # the same, plus a rehearsal conversation in this terminal: the pass presents
  *                                                     #   its cards here, and every typed line is a turn of the same conversation
  *   npm run monitor -- once [--force]                 # one tick, then exit (for cron); --force ignores a disabled setting
- *   npm run monitor -- settings [--on|--off] [--interval 60] [--quiet on|off] [--by EYAL]
+ *   npm run monitor -- settings [--on|--off] [--interval 60] [--quiet on|off] [--wake on|off] [--by EYAL]   # --wake: probe at once on an ERP change
  *   npm run monitor -- status                         # settings, last tick, conversations, the runner's settings
  *   npm run monitor -- forget                         # drop the project's conversation (the next turn starts a new one)
  *   npm run monitor -- --channel vonage               # WhatsApp: the enrolled contacts talk to the agent, the pass presents its cards to
  *                                                     #   the notified ones (Vonage credentials in .env; the webhook is the Edge Function)
  *   npm run monitor -- contact add --person EYAL --whatsapp 9725xxxxxxx --notify   # enrol a phone (numbers live only in the database)
  *   npm run monitor -- contact list | contact remove --whatsapp 9725xxxxxxx
- *   npm run monitor -- inbox simulate --from 9725xxxxxxx --text "מה חדש"          # an inbound row as the webhook would insert it
+ *   npm run monitor -- inbox simulate --from 9725xxxxxxx --text "מה חדש" [--file invoice.jpg]   # an inbound row as the webhook would insert it (a photo or PDF as a received file)
  *   Global: --project HADARIM
  *
  * Settings come from the environment (`.env` in the repository root is loaded when present; see .env.example):
@@ -39,6 +39,7 @@ import { Relay } from "../src/hadarim/messaging/relay";
 import { Scheduler, type MonitorSettings, type PassOutcome, type ProbeResult } from "../src/hadarim/messaging/scheduler";
 import { assertNoApiKey, runTurn, runnerOptionsFromEnv } from "../src/hadarim/messaging/session-runner";
 import { daemonAlive, readMonitorSettings, recordMonitorTick, settingsChangeKey, subscribeMonitorSettings, writeMonitorSettings } from "../src/hadarim/messaging/settings";
+import { subscribeErpChanges } from "../src/hadarim/messaging/wake";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 
@@ -53,6 +54,8 @@ const { values: opts, positionals } = parseArgs({
     off: { type: "boolean" },
     interval: { type: "string" },
     quiet: { type: "string" },
+    wake: { type: "string" },
+    file: { type: "string" },
     by: { type: "string" },
     force: { type: "boolean" },
     person: { type: "string" },
@@ -83,7 +86,7 @@ function fail(message: string): never {
 function settingsLineHe(s: MonitorSettings | null): string {
   if (!s) return "פעימת לב: לא הוגדרה (כבויה)";
   const alive = daemonAlive(s);
-  return `פעימת לב: ${s.enabled ? `פועלת כל ${s.intervalSeconds} שניות` : "כבויה"}${s.notifyOnQuiet ? "" : " · בלי סיכום כשאין מה להחליט"} · המנטר ${alive ? "פועל" : "לא פועל"}${s.lastTickAt ? ` · בדיקה אחרונה ${new Date(s.lastTickAt).toLocaleTimeString("he-IL")}${s.lastTickFoundWork ? " (נמצאה עבודה)" : ""}` : ""}`;
+  return `פעימת לב: ${s.enabled ? `פועלת כל ${s.intervalSeconds} שניות${s.wakeOnChange ? " ומיד כשמשהו משתנה" : ""}` : "כבויה"}${s.notifyOnQuiet ? "" : " · בלי סיכום כשאין מה להחליט"} · המנטר ${alive ? "פועל" : "לא פועל"}${s.lastTickAt ? ` · בדיקה אחרונה ${new Date(s.lastTickAt).toLocaleTimeString("he-IL")}${s.lastTickFoundWork ? " (נמצאה עבודה)" : ""}` : ""}`;
 }
 
 async function main() {
@@ -141,9 +144,10 @@ async function main() {
   if (command === "inbox" && positionals[1] === "simulate") {
     const from = opts.from as string | undefined;
     const text = opts.text as string | undefined;
-    if (!from || !text) fail('inbox simulate --from <phone> --text "..."');
-    const id = await simulateInbound(normalizePhone(from), text);
-    console.log(`✓ inbound row ${id} inserted as if the webhook had (a running monitor on the WhatsApp channel picks it up)`);
+    const file = opts.file as string | undefined;
+    if (!from || (!text && !file)) fail('inbox simulate --from <phone> [--text "..."] [--file photo.jpg]');
+    const id = await simulateInbound(normalizePhone(from), text ?? "", file);
+    console.log(`✓ inbound row ${id} inserted as if the webhook had${file ? " (with the file)" : ""} — a running monitor on the WhatsApp channel picks it up`);
     return;
   }
 
@@ -153,6 +157,7 @@ async function main() {
     if (opts.off) patch.enabled = false;
     if (opts.interval) patch.intervalSeconds = Number(opts.interval);
     if (opts.quiet === "on" || opts.quiet === "off") patch.notifyOnQuiet = opts.quiet === "on";
+    if (opts.wake === "on" || opts.wake === "off") patch.wakeOnChange = opts.wake === "on";
     const s = Object.keys(patch).length ? await writeMonitorSettings(projectId, patch, (opts.by as string | undefined) ?? null) : await readMonitorSettings(projectId);
     console.log(`${Object.keys(patch).length ? "✓ " : ""}project ${projectId} · ${settingsLineHe(s)}`);
     return;
@@ -227,7 +232,7 @@ async function main() {
     projectId,
     readSettings: async () => {
       const s = await readMonitorSettings(projectId);
-      return forced ? { ...(s ?? { projectId, enabled: false, intervalSeconds: 300, notifyOnQuiet: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null }), enabled: true } : s;
+      return forced ? { ...(s ?? { projectId, enabled: false, intervalSeconds: 300, notifyOnQuiet: true, wakeOnChange: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null }), enabled: true } : s;
     },
     monitors: allMonitors(),
     recordTick: (at, found) => recordMonitorTick(projectId, at, found),
@@ -259,19 +264,28 @@ async function main() {
   console.log("Ctrl-C ליציאה");
 
   scheduler.start();
-  // the daemon's own tick stamp also arrives here; only a change of the switch, the intervals or the quiet flag wakes it
+  // the daemon's own tick stamp also arrives here; only a change of the switch, the intervals or the flags wakes it
+  let latest = initial;
   let seen = settingsChangeKey(initial);
   const unsubscribe = subscribeMonitorSettings(projectId, (s) => {
+    latest = s;
     const key = settingsChangeKey(s);
     if (key === seen) return;
     seen = key;
-    log(`settings changed: ${s ? `${s.enabled ? "on" : "off"} · every ${s.intervalSeconds} s` : "no row"}`);
+    log(`settings changed: ${s ? `${s.enabled ? "on" : "off"} · every ${s.intervalSeconds} s${s.wakeOnChange ? " · wake on change" : ""}` : "no row"}`);
     scheduler.wake();
+  });
+  // instant reaction: an ERP change or a document wakes the probe at once (the interval stays as the ceiling)
+  const unsubscribeChanges = subscribeErpChanges(projectId, (what) => {
+    if (!latest?.enabled || !latest.wakeOnChange) return;
+    log(`change in ${what}: probing now`);
+    scheduler.wake({ force: true });
   });
 
   const shutdown = () => {
     scheduler.stop();
     unsubscribe();
+    unsubscribeChanges();
     relay?.stop();
     console.log("\nלהתראות.");
     process.exit(0);

@@ -15,6 +15,7 @@ export function rowToSettings(r: Tables<"monitor_settings">): MonitorSettings {
     enabled: r.enabled,
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, r.interval_seconds),
     notifyOnQuiet: r.notify_on_quiet,
+    wakeOnChange: r.wake_on_change,
     monitors: ((r.monitors ?? {}) as MonitorSettings["monitors"]) || {},
     lastTickAt: r.last_tick_at,
     lastTickFoundWork: r.last_tick_found_work,
@@ -29,14 +30,14 @@ export async function readMonitorSettings(projectId: string, supabase: Db = db()
   return data ? rowToSettings(data) : null;
 }
 
-export type MonitorSettingsPatch = Partial<Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "monitors">>;
+export type MonitorSettingsPatch = Partial<Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "wakeOnChange" | "monitors">>;
 
 /** Create or update the row; a missing row starts from the standard defaults. */
 export async function writeMonitorSettings(projectId: string, patch: MonitorSettingsPatch, updatedBy: string | null, supabase: Db = db()): Promise<MonitorSettings> {
   const current = await readMonitorSettings(projectId, supabase);
-  const next = { ...STANDARD_MONITOR_SETTINGS, ...(current ? { enabled: current.enabled, intervalSeconds: current.intervalSeconds, notifyOnQuiet: current.notifyOnQuiet, monitors: current.monitors } : {}), ...patch };
+  const next = { ...STANDARD_MONITOR_SETTINGS, ...(current ? { enabled: current.enabled, intervalSeconds: current.intervalSeconds, notifyOnQuiet: current.notifyOnQuiet, wakeOnChange: current.wakeOnChange, monitors: current.monitors } : {}), ...patch };
   if (!Number.isFinite(next.intervalSeconds) || next.intervalSeconds < MIN_INTERVAL_SECONDS) throw new Error(`המרווח חייב להיות לפחות ${MIN_INTERVAL_SECONDS} שניות`);
-  const row = { project_id: projectId, enabled: next.enabled, interval_seconds: Math.round(next.intervalSeconds), notify_on_quiet: next.notifyOnQuiet, monitors: next.monitors as Json, updated_by: updatedBy, updated_at: new Date().toISOString() };
+  const row = { project_id: projectId, enabled: next.enabled, interval_seconds: Math.round(next.intervalSeconds), notify_on_quiet: next.notifyOnQuiet, wake_on_change: next.wakeOnChange, monitors: next.monitors as Json, updated_by: updatedBy, updated_at: new Date().toISOString() };
   const { data, error } = await supabase.from("monitor_settings").upsert(row, { onConflict: "project_id" }).select("*").single();
   if (error) throw new Error(`monitor_settings: ${error.message}`);
   return rowToSettings(data);
@@ -65,7 +66,7 @@ export function subscribeMonitorSettings(projectId: string, onChange: (s: Monito
  * stamp the daemon writes itself, which also arrives through Realtime and must not wake it.
  */
 export function settingsChangeKey(s: MonitorSettings | null): string {
-  return s ? JSON.stringify([s.enabled, s.intervalSeconds, s.notifyOnQuiet, s.monitors ?? {}]) : "none";
+  return s ? JSON.stringify([s.enabled, s.intervalSeconds, s.notifyOnQuiet, s.wakeOnChange, s.monitors ?? {}]) : "none";
 }
 
 /** The daemon ticked recently enough (three intervals, plus slack) to count as running. */

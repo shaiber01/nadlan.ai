@@ -9,7 +9,9 @@ import { Scheduler, dueMonitors, intervalFor, nextDelayMs, type MonitorDef, type
 import { daemonAlive, rowToSettings, settingsChangeKey } from "../src/hadarim/messaging/settings";
 import { createPublicKey, generateKeyPairSync, verify as verifySignature } from "node:crypto";
 import { maskAddress, type MessageRow } from "../src/hadarim/messaging/inbox";
-import { applicationJwt, authorizationHeader, createVonageChannel, decideSend, sendWhatsAppText, type FetchLike, type VonageConfig, type VonageInboxAccess } from "../src/hadarim/messaging/vonage";
+import { applicationJwt, authorizationHeader, createVonageChannel, decideSend, mediaFileName, sendWhatsAppText, type FetchLike, type VonageConfig, type VonageInboxAccess } from "../src/hadarim/messaging/vonage";
+import { pathToFileURL } from "node:url";
+import { writeFileSync } from "node:fs";
 import { parseInbound, parseStatus, signWebhook, verifySignedWebhook } from "../supabase/functions/_shared/vonage";
 import type { Channel, Inbound, Participant } from "../src/hadarim/messaging/channel";
 import { createConsoleChannel } from "../src/hadarim/messaging/console";
@@ -191,6 +193,8 @@ describe("the channel context", () => {
     const withReport = channelContextHe([eyal], "vonage", { reportUrl: "https://x/report.html" });
     expect(withReport).toContain("https://x/report.html");
     expect(withReport).toContain("Word");
+    expect(ctx).toContain("[קובץ התקבל:");
+    expect(ctx).toContain("add_document");
     // the key follows the text: other people or another link mean another conversation
     expect(contextKeyOf(ctx)).toBe(contextKeyOf(channelContextHe([eyal, roi], "vonage")));
     expect(contextKeyOf(ctx)).not.toBe(contextKeyOf(withReport));
@@ -363,7 +367,7 @@ describe("the console channel and the file store", () => {
 });
 
 describe("the scheduler", () => {
-  const settings = (over: Partial<MonitorSettings> = {}): MonitorSettings => ({ projectId: "P", enabled: true, intervalSeconds: 20, notifyOnQuiet: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null, ...over });
+  const settings = (over: Partial<MonitorSettings> = {}): MonitorSettings => ({ projectId: "P", enabled: true, intervalSeconds: 20, notifyOnQuiet: true, wakeOnChange: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null, ...over });
 
   function build(over: Partial<MonitorSettings> = {}) {
     let current = settings(over);
@@ -457,6 +461,25 @@ describe("the scheduler", () => {
     s.stop();
   });
 
+  it("a forced wake (an ERP change) probes every monitor at once, before its interval elapsed", async () => {
+    const { s, probes, passes, setWork } = build({ intervalSeconds: 300 });
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(probes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    s.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(probes).toHaveLength(2); // a plain wake: nothing is due yet
+    setWork(true);
+    s.wake({ force: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(probes).toHaveLength(4);
+    expect(passes).toHaveLength(1);
+    // the forced probe reset the cadence: the next timer is a full interval away
+    expect(s.state.nextAt! - Date.now()).toBe(300_000);
+    s.stop();
+  });
+
   it("per-monitor intervals: each monitor is probed at its own cadence", async () => {
     const { s, probes } = build({ intervalSeconds: 60, monitors: { documents: { intervalSeconds: 15 } } });
     s.start();
@@ -507,9 +530,10 @@ describe("the probes and the prompts", () => {
   });
 
   it("settings rows map to the engine's shape and say whether the daemon is alive", () => {
-    const row = { project_id: "P", enabled: true, interval_seconds: 5, notify_on_quiet: false, monitors: { erp: { intervalSeconds: 60 } }, last_tick_at: "2026-09-14T10:00:00.000Z", last_tick_found_work: true, updated_by: "EYAL", updated_at: "2026-09-14T09:00:00.000Z" };
+    const row = { project_id: "P", enabled: true, interval_seconds: 5, notify_on_quiet: false, wake_on_change: false, monitors: { erp: { intervalSeconds: 60 } }, last_tick_at: "2026-09-14T10:00:00.000Z", last_tick_found_work: true, updated_by: "EYAL", updated_at: "2026-09-14T09:00:00.000Z" };
     const s = rowToSettings(row);
-    expect(s).toMatchObject({ projectId: "P", enabled: true, intervalSeconds: 15, notifyOnQuiet: false, monitors: { erp: { intervalSeconds: 60 } }, updatedBy: "EYAL" });
+    expect(s).toMatchObject({ projectId: "P", enabled: true, intervalSeconds: 15, notifyOnQuiet: false, wakeOnChange: false, monitors: { erp: { intervalSeconds: 60 } }, updatedBy: "EYAL" });
+    expect(settingsChangeKey(s)).not.toBe(settingsChangeKey({ ...s, wakeOnChange: true }));
     const at = Date.parse("2026-09-14T10:00:00.000Z");
     expect(daemonAlive(s, at + 30_000)).toBe(true);
     expect(daemonAlive(s, at + 120_000)).toBe(false);
@@ -601,13 +625,13 @@ describe("the Vonage adapter", () => {
     const calls: { url: string; init: Parameters<FetchLike>[1] }[] = [];
     const ok: FetchLike = async (url, init) => {
       calls.push({ url, init });
-      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: "uuid-1" }) };
+      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: "uuid-1" }), arrayBuffer: async () => new ArrayBuffer(0) };
     };
     expect(await sendWhatsAppText(cfg, "972500000001", "שלום", ok, T0)).toEqual({ messageUuid: "uuid-1" });
     expect(calls[0].url).toBe(cfg.endpoint);
-    expect(JSON.parse(calls[0].init.body)).toEqual({ to: "972500000001", from: "14157386102", channel: "whatsapp", message_type: "text", text: "שלום" });
+    expect(JSON.parse(calls[0].init.body ?? "")).toEqual({ to: "972500000001", from: "14157386102", channel: "whatsapp", message_type: "text", text: "שלום" });
     expect(calls[0].init.headers.authorization).toMatch(/^Basic /);
-    const rejected: FetchLike = async () => ({ ok: false, status: 401, text: async () => "Unauthorized" });
+    const rejected: FetchLike = async () => ({ ok: false, status: 401, text: async () => "Unauthorized", arrayBuffer: async () => new ArrayBuffer(0) });
     await expect(sendWhatsAppText(cfg, "972500000001", "שלום", rejected)).rejects.toThrow(/vonage 401/);
   });
 
@@ -650,12 +674,43 @@ describe("the Vonage adapter", () => {
       rows.push({ id: nextId, channel: "whatsapp", direction: "in", address, projectId: null, personId: null, provider: "vonage", providerMessageId: `in-${nextId}`, text, media: null, status: "received", sessionId: null, at: new Date().toISOString() });
       return nextId++;
     };
-    const fetchImpl: FetchLike = async (_url, init) => {
-      sent.push(JSON.parse(init.body).text);
-      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: `uuid-${sent.length}` }) };
+    const fetched: string[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      if (init.method === "GET") {
+        fetched.push(`${url} ${init.headers.authorization ?? ""}`);
+        return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new TextEncoder().encode("JPEGDATA").buffer as ArrayBuffer };
+      }
+      sent.push(JSON.parse(init.body ?? "").text);
+      return { ok: true, status: 202, text: async () => JSON.stringify({ message_uuid: `uuid-${sent.length}` }) , arrayBuffer: async () => new ArrayBuffer(0) };
     };
-    return { inbox, rows, receive, sent, fetchImpl };
+    const receiveMedia = (address: string, media: Record<string, unknown>, caption: string | null) => {
+      rows.push({ id: nextId, channel: "whatsapp", direction: "in", address, projectId: null, personId: null, provider: "vonage", providerMessageId: `in-${nextId}`, text: caption, media, status: "received", sessionId: null, at: new Date().toISOString() });
+      return nextId++;
+    };
+    return { inbox, rows, receive, receiveMedia, sent, fetched, fetchImpl };
   }
+
+  it("brings a received file to the document cache — a simulator's file:// copy, or Vonage's media with the send's authorization — and tells the relay where it is", async () => {
+    const { inbox, receiveMedia, fetched, fetchImpl } = fakeInbox();
+    const dir = join(tmp, "inbound");
+    const photo = join(tmp, "invoice.jpg");
+    writeFileSync(photo, "FAKEJPEG");
+    const got: Inbound[] = [];
+    const channel = createVonageChannel({ cfg, projectId: "P", inbox, isEnrolled: () => true, personIdOf: () => "EYAL", fetchImpl, now: () => T0, pollMs: 60_000, downloadDir: dir });
+    const a = receiveMedia("972500000001", { kind: "image", url: pathToFileURL(photo).href, name: "invoice.jpg", caption: "חשבונית ברזל" }, "חשבונית ברזל");
+    const b = receiveMedia("972500000001", { kind: "image", url: "https://api-eu.vonage.com/v3/media/abc", caption: null }, null);
+    const stop = channel.start((m) => got.push(m));
+    await new Promise((res) => setTimeout(res, 30));
+    stop();
+    expect(got).toHaveLength(2);
+    expect(got[0].text).toBe(`[קובץ התקבל: ${join(dir, String(a), "invoice.jpg")}] חשבונית ברזל`);
+    expect(readFileSync(join(dir, String(a), "invoice.jpg"), "utf8")).toBe("FAKEJPEG");
+    expect(got[1].text).toBe(`[קובץ התקבל: ${join(dir, String(b), `image-${b}.jpg`)}]`);
+    expect(readFileSync(join(dir, String(b), `image-${b}.jpg`), "utf8")).toBe("JPEGDATA");
+    expect(fetched[0]).toMatch(/^https:\/\/api-eu\.vonage\.com\/v3\/media\/abc Basic /);
+    expect(mediaFileName({ kind: "file", url: "https://x/y/quote.pdf" }, 7)).toBe("quote.pdf");
+    expect(mediaFileName({ kind: "audio" }, 7)).toBe("audio-7.ogg");
+  });
 
   it("holds a message while the window is closed and releases it when the person writes; hands the message to the relay; ignores strangers", async () => {
     const { inbox, rows, receive, sent, fetchImpl } = fakeInbox();

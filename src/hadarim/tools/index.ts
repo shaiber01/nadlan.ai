@@ -1277,7 +1277,7 @@ async function monitorView(projectId: string, s: MonitorSettings | null) {
   const contacts = await listContacts(projectId);
   const alive = daemonAlive(s);
   const recipients = contacts.map((c) => ({ personId: c.personId, nameHe: personName(c.personId) ?? c.displayName ?? c.personId, channel: c.channel, address: maskAddress(c.address), notify: c.notify, lastInboundAt: c.lastInboundAt }));
-  const stateHe = !s ? "פעימת הלב האוטומטית לא הוגדרה לפרויקט (כבויה)" : s.enabled ? `פעימת הלב האוטומטית פועלת כל ${s.intervalSeconds} שניות${alive ? " · המנטר פועל" : " · אבל המנטר אינו פועל כרגע במחשב, כך שבפועל לא נבדק דבר עד שיופעל"}` : `פעימת הלב האוטומטית כבויה${alive ? " · המנטר פועל וממתין" : ""}`;
+  const stateHe = !s ? "פעימת הלב האוטומטית לא הוגדרה לפרויקט (כבויה)" : s.enabled ? `פעימת הלב האוטומטית פועלת כל ${s.intervalSeconds} שניות${s.wakeOnChange ? " ומיד כשמשהו משתנה במערכת המידע" : ""}${alive ? " · המנטר פועל" : " · אבל המנטר אינו פועל כרגע במחשב, כך שבפועל לא נבדק דבר עד שיופעל"}` : `פעימת הלב האוטומטית כבויה${alive ? " · המנטר פועל וממתין" : ""}`;
   const notified = recipients.filter((r) => r.notify);
   const recipientsHe = notified.length ? `מקבלי ההתראות: ${notified.map((r) => `${r.nameHe} (${CHANNEL_HE_BY_MEDIUM[r.channel] ?? r.channel} ${r.address})`).join(", ")}` : "לא רשומים מקבלי התראות";
   return {
@@ -1285,6 +1285,7 @@ async function monitorView(projectId: string, s: MonitorSettings | null) {
     enabled: s?.enabled ?? false,
     intervalSeconds: s?.intervalSeconds ?? STANDARD_MONITOR_SETTINGS.intervalSeconds,
     notifyOnQuiet: s?.notifyOnQuiet ?? STANDARD_MONITOR_SETTINGS.notifyOnQuiet,
+    wakeOnChange: s?.wakeOnChange ?? STANDARD_MONITOR_SETTINGS.wakeOnChange,
     monitors: s?.monitors ?? {},
     lastTickAt: s?.lastTickAt ?? null,
     lastTickFoundWork: s?.lastTickFoundWork ?? null,
@@ -1312,13 +1313,13 @@ define({
 define({
   name: "set_monitor_settings",
   title: "Switch the automatic heartbeat, set its interval",
-  description: "On the user's instruction: switch the automatic heartbeat on or off, set how often it checks for changes (intervalSeconds, at least 15), or whether a one-line summary is sent when nothing needs a decision (notifyOnQuiet). The change takes effect at the monitor's next check when the monitor process is running on the computer; when it is not, say so — the setting alone starts nothing.",
+  description: "On the user's instruction: switch the automatic heartbeat on or off, set how often it checks for changes (intervalSeconds, at least 15), whether it also checks at once when something changes in the ERP (wakeOnChange), or whether a one-line summary is sent when nothing needs a decision (notifyOnQuiet). The change takes effect at the monitor's next check when the monitor process is running on the computer; when it is not, say so — the setting alone starts nothing.",
   kind: "write",
-  input: { projectId, enabled: z.boolean().optional(), intervalSeconds: z.number().int().min(15).optional().describe("seconds between checks, at least 15"), notifyOnQuiet: z.boolean().optional(), byId: personId.optional().describe("who instructed (default: the control's operator)") },
+  input: { projectId, enabled: z.boolean().optional(), intervalSeconds: z.number().int().min(15).optional().describe("seconds between checks, at least 15"), wakeOnChange: z.boolean().optional().describe("also check at once when the ERP changes or a document arrives"), notifyOnQuiet: z.boolean().optional(), byId: personId.optional().describe("who instructed (default: the control's operator)") },
   run: async (a) => {
     const state = await loadState(a.projectId);
-    const patch = { ...(a.enabled !== undefined ? { enabled: a.enabled } : {}), ...(a.intervalSeconds !== undefined ? { intervalSeconds: a.intervalSeconds } : {}), ...(a.notifyOnQuiet !== undefined ? { notifyOnQuiet: a.notifyOnQuiet } : {}) };
-    if (!Object.keys(patch).length) throw new Error("nothing to change: pass enabled, intervalSeconds or notifyOnQuiet");
+    const patch = { ...(a.enabled !== undefined ? { enabled: a.enabled } : {}), ...(a.intervalSeconds !== undefined ? { intervalSeconds: a.intervalSeconds } : {}), ...(a.wakeOnChange !== undefined ? { wakeOnChange: a.wakeOnChange } : {}), ...(a.notifyOnQuiet !== undefined ? { notifyOnQuiet: a.notifyOnQuiet } : {}) };
+    if (!Object.keys(patch).length) throw new Error("nothing to change: pass enabled, intervalSeconds, wakeOnChange or notifyOnQuiet");
     const s = await writeMonitorSettings(a.projectId, patch, a.byId ?? state.operatorId);
     const view = await monitorView(a.projectId, s);
     return { ok: true, ...view, messageHe: `ההגדרה נשמרה על ידי ${personName(s.updatedBy ?? "") ?? s.updatedBy ?? "המערכת"}. ${view.sayHe}` };

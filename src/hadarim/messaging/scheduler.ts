@@ -16,6 +16,8 @@ export interface MonitorSettings {
   intervalSeconds: number;
   /** A one-line summary is sent even when the pass found nothing to decide. */
   notifyOnQuiet: boolean;
+  /** Probe as soon as the ERP changes or a document arrives; the interval is then only the ceiling. */
+  wakeOnChange: boolean;
   /** Per-monitor overrides; empty = the default interval for every monitor. */
   monitors: Partial<Record<MonitorId, { intervalSeconds?: number }>>;
   lastTickAt: string | null;
@@ -24,7 +26,7 @@ export interface MonitorSettings {
   updatedAt: string | null;
 }
 
-export const STANDARD_MONITOR_SETTINGS: Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "monitors"> = { enabled: false, intervalSeconds: 300, notifyOnQuiet: true, monitors: {} };
+export const STANDARD_MONITOR_SETTINGS: Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "wakeOnChange" | "monitors"> = { enabled: false, intervalSeconds: 300, notifyOnQuiet: true, wakeOnChange: true, monitors: {} };
 
 export function intervalFor(s: Pick<MonitorSettings, "intervalSeconds" | "monitors">, id: MonitorId): number {
   const seconds = s.monitors?.[id]?.intervalSeconds ?? s.intervalSeconds;
@@ -95,6 +97,7 @@ export class Scheduler {
   private running = false;
   private ticking = false;
   private wakeRequested = false;
+  private forceDue = false;
   private lastRun: LastRun = {};
   failures = 0;
   lastTickAt: number | null = null;
@@ -122,9 +125,13 @@ export class Scheduler {
     this.clear();
   }
 
-  /** The settings changed (Realtime): re-evaluate now rather than at the next tick. */
-  wake(): void {
+  /**
+   * Re-evaluate now rather than at the next tick: the settings changed (Realtime), or — with `force` —
+   * something changed in the ERP, so every monitor is probed at once whether or not its interval elapsed.
+   */
+  wake(opts: { force?: boolean } = {}): void {
     if (!this.running) return;
+    if (opts.force) this.forceDue = true;
     if (this.ticking) {
       this.wakeRequested = true;
       return;
@@ -158,7 +165,8 @@ export class Scheduler {
       }
       const ids = this.opts.monitors.map((m) => m.id);
       const now = this.now();
-      const due = dueMonitors(s, ids, now, this.lastRun);
+      const due = this.forceDue ? [...ids] : dueMonitors(s, ids, now, this.lastRun);
+      this.forceDue = false;
       if (!due.length) {
         this.schedule(nextDelayMs(s, ids, now, this.lastRun));
         return { skipped: "not_due" };

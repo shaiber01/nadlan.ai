@@ -1,5 +1,8 @@
 import { createPrivateKey, randomUUID, sign } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, extname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Channel, Inbound, Medium } from "./channel";
 import { claimInbound, closeInbound, countSentThisMonth, insertInbound, listHeld, listReceived, maskAddress, recordOutbound, subscribeInbound, touchContact, updateOutbound, type MessageRow } from "./inbox";
 
@@ -69,7 +72,48 @@ export function decideSend(input: { nowMs: number; lastInboundAt: string | null;
   return { action: "send" };
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+
+/** Where received files land: the document cache the tools use, under the project's `inbound` folder. */
+export function inboundMediaDir(projectId: string): string {
+  return join(tmpdir(), "bakara-documents", projectId, "inbound");
+}
+
+const EXT_BY_KIND: Record<string, string> = { image: ".jpg", sticker: ".webp", audio: ".ogg", video: ".mp4", file: ".bin" };
+
+/** A file name for a received media: the sender's name, else the URL's, else the kind's extension. */
+export function mediaFileName(media: { kind?: string; url?: string; name?: string }, id: number | string): string {
+  const safe = (s: string) => basename(s).replace(/[^\w.\-֐-׿]+/g, "_");
+  if (media.name) return safe(media.name);
+  try {
+    const fromUrl = basename(new URL(media.url ?? "").pathname);
+    if (fromUrl && extname(fromUrl)) return safe(fromUrl);
+  } catch {
+    /* not a URL */
+  }
+  return `${media.kind ?? "file"}-${id}${EXT_BY_KIND[media.kind ?? ""] ?? ""}`;
+}
+
+/**
+ * Bring a received file to the local document cache so the agent can add and read it: a `file://` URL
+ * (the simulator) is copied; Vonage's media URL is fetched with the same authorization as a send.
+ */
+export async function downloadInboundMedia(cfg: VonageConfig, row: { id: number; media: Record<string, unknown> | null }, dir: string, fetchImpl: FetchLike = fetch as unknown as FetchLike, nowMs = Date.now()): Promise<{ localPath: string; name: string } | null> {
+  const media = row.media as { kind?: string; url?: string; name?: string } | null;
+  if (!media?.url) return null;
+  const name = mediaFileName(media, row.id);
+  const folder = join(dir, String(row.id));
+  mkdirSync(folder, { recursive: true });
+  const localPath = join(folder, name);
+  if (media.url.startsWith("file://")) {
+    copyFileSync(fileURLToPath(media.url), localPath);
+    return { localPath, name };
+  }
+  const res = await fetchImpl(media.url, { method: "GET", headers: { authorization: authorizationHeader(cfg, nowMs), accept: "*/*" } });
+  if (!res.ok) throw new Error(`vonage media ${res.status}`);
+  writeFileSync(localPath, Buffer.from(await res.arrayBuffer()));
+  return { localPath, name };
+}
 
 /** One text message through the Messages API; returns Vonage's message id. */
 export async function sendWhatsAppText(cfg: VonageConfig, to: string, text: string, fetchImpl: FetchLike = fetch as unknown as FetchLike, nowMs = Date.now()): Promise<{ messageUuid: string }> {
@@ -129,6 +173,8 @@ export interface VonageChannelOptions {
   now?: () => number;
   fetchImpl?: FetchLike;
   pollMs?: number;
+  /** Where received files are put (default: the document cache's `inbound` folder for the project). */
+  downloadDir?: string;
 }
 
 const MEDIUM: Medium = "whatsapp";
@@ -175,8 +221,21 @@ export function createVonageChannel(opts: VonageChannelOptions): Channel {
           }
           await opts.inbox.touchContact(MEDIUM, row.address, row.at);
           await releaseHeld(row.address);
-          const media = row.media as { kind?: string; name?: string; caption?: string } | null;
-          const text = row.text ?? (media ? `[${media.kind ?? "קובץ"}${media.name ? ` ${media.name}` : ""}]` : "");
+          let text = row.text ?? "";
+          if (row.media && (row.media as { url?: string }).url) {
+            // a received file: bring it to the document cache and tell the agent where it is
+            try {
+              const file = await downloadInboundMedia(opts.cfg, row, opts.downloadDir ?? inboundMediaDir(opts.projectId), opts.fetchImpl, now());
+              if (file) {
+                text = `[קובץ התקבל: ${file.localPath}]${text ? ` ${text}` : ""}`;
+                log(`received a file from ${maskAddress(row.address)}: ${file.name}`);
+              }
+            } catch (e) {
+              const media = row.media as { kind?: string; name?: string };
+              log(`downloading a file from ${maskAddress(row.address)} failed: ${e instanceof Error ? e.message : String(e)}`);
+              text = `[קובץ התקבל אך ההורדה נכשלה${media.name ? ` (${media.name})` : ""}]${text ? ` ${text}` : ""}`;
+            }
+          }
           await opts.inbox.closeInbound(row.id, "done", { projectId: opts.projectId, personId: opts.personIdOf(row.address) });
           onInbound({ id: String(row.id), from: { channel: MEDIUM, address: row.address }, text, at: row.at });
         }
@@ -226,7 +285,11 @@ export function createVonageChannel(opts: VonageChannelOptions): Channel {
   };
 }
 
-/** The simulator: an inbound row as the webhook would insert it, for rehearsals without Vonage. */
-export function simulateInbound(address: string, text: string): Promise<number> {
-  return insertInbound({ channel: MEDIUM, address, text, provider: "simulator", providerMessageId: `sim-${randomUUID()}` });
+/** The simulator: an inbound row as the webhook would insert it, for rehearsals without Vonage; with a file, as a received photo or PDF. */
+export function simulateInbound(address: string, text: string, file?: string): Promise<number> {
+  if (!file) return insertInbound({ channel: MEDIUM, address, text, provider: "simulator", providerMessageId: `sim-${randomUUID()}` });
+  const abs = resolve(file);
+  const ext = extname(abs).toLowerCase();
+  const kind = [".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext) ? "image" : "file";
+  return insertInbound({ channel: MEDIUM, address, text: text || null, provider: "simulator", providerMessageId: `sim-${randomUUID()}`, media: { kind, url: pathToFileURL(abs).href, name: basename(abs), caption: text || null } });
 }

@@ -1154,6 +1154,7 @@ export type Database = {
           project_id: string
           updated_at: string
           updated_by: string | null
+          wake_on_change: boolean
         }
         Insert: {
           enabled?: boolean
@@ -1165,6 +1166,7 @@ export type Database = {
           project_id: string
           updated_at?: string
           updated_by?: string | null
+          wake_on_change?: boolean
         }
         Update: {
           enabled?: boolean
@@ -1176,6 +1178,7 @@ export type Database = {
           project_id?: string
           updated_at?: string
           updated_by?: string | null
+          wake_on_change?: boolean
         }
         Relationships: []
       }

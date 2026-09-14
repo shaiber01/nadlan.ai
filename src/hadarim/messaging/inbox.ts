@@ -130,10 +130,10 @@ export async function listHeld(channel: Medium, address: string, supabase: Db = 
 }
 
 /** Insert an inbound row as the webhook would — the simulator, and the tests of the consumer. */
-export async function insertInbound(m: { channel: Medium; address: string; text: string; provider?: string; providerMessageId?: string | null; raw?: Json }, supabase: Db = db()): Promise<number> {
+export async function insertInbound(m: { channel: Medium; address: string; text: string | null; provider?: string; providerMessageId?: string | null; media?: Record<string, unknown> | null; raw?: Json }, supabase: Db = db()): Promise<number> {
   const { data, error } = await supabase
     .from("messages")
-    .insert({ channel: m.channel, direction: "in", address: m.address, provider: m.provider ?? "simulator", provider_message_id: m.providerMessageId ?? null, text: m.text, status: "received", raw: m.raw ?? null })
+    .insert({ channel: m.channel, direction: "in", address: m.address, provider: m.provider ?? "simulator", provider_message_id: m.providerMessageId ?? null, text: m.text, media: (m.media ?? null) as Json, status: "received", raw: m.raw ?? null })
     .select("id")
     .single();
   if (error) throw new Error(`messages: ${error.message}`);
