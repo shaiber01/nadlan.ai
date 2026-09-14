@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The monitor as an always-on launchd agent (docs/heartbeat-bot-plan.md §10, phase 4). A template:
+  __REPO__ is this repository's absolute path, __HOME__ the user's home. Install with
+
+    sed "s|__REPO__|$PWD|g; s|__HOME__|$HOME|g" scripts/com.nadlan.monitor.plist > ~/Library/LaunchAgents/com.nadlan.monitor.plist
+    launchctl load ~/Library/LaunchAgents/com.nadlan.monitor.plist        # launchctl unload … to stop it
+
+  Drop "- -channel vonage" from ProgramArguments for a heartbeat-only daemon (no chat channel). The child
+  `claude` needs a login that outlives the interactive one: put CLAUDE_CODE_OAUTH_TOKEN (from `claude
+  setup-token`) in the repository's .env, never in this file. The log is out/monitor.log.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.nadlan.monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd __REPO__ &amp;&amp; exec npm run monitor -- --channel vonage</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>__REPO__/out/monitor.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/out/monitor.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:__HOME__/.volta/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

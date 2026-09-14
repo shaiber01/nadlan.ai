@@ -691,6 +691,20 @@ describe("the Vonage adapter", () => {
   });
 });
 
+describe("the settings tools", () => {
+  it("are in the registry with a floor on the interval and require a change", async () => {
+    const { tools } = await import("../src/hadarim/tools");
+    const get = tools.find((t) => t.name === "get_monitor_settings")!;
+    const set = tools.find((t) => t.name === "set_monitor_settings")!;
+    expect(get.kind).toBe("read");
+    expect(set.kind).toBe("write");
+    const { z } = await import("zod");
+    expect(z.object(set.input).safeParse({ intervalSeconds: 5 }).success).toBe(false);
+    expect(z.object(set.input).safeParse({ intervalSeconds: 60, enabled: true }).success).toBe(true);
+    expect(z.object(set.input).safeParse({ notifyOnQuiet: false }).success).toBe(true);
+  });
+});
+
 describe("the monitor stays invisible to the application", () => {
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
@@ -701,14 +715,27 @@ describe("the monitor stays invisible to the application", () => {
     return out;
   }
 
-  it("nothing under src/hadarim outside messaging/ imports the messaging folder, except the presenter strip's switch", () => {
-    const allowed = [join("src", "hadarim", "features", "erp", "MonitorSwitch.tsx")];
+  it("nothing under src/hadarim outside messaging/ imports the messaging folder, except the presenter strip's switch and the two settings tools", () => {
+    const allowed = [join("src", "hadarim", "features", "erp", "MonitorSwitch.tsx"), join("src", "hadarim", "tools", "index.ts")];
     const offenders = walk("src/hadarim")
       .filter((f) => !f.includes(`${join("src", "hadarim", "messaging")}`) && !allowed.includes(f))
       .filter((f) => /from\s+["'][^"']*messaging\//.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);
-    // the switch reads settings only; the engine, the tools, the store and the database client stay ignorant
-    for (const f of ["src/hadarim/app/store.ts", "src/hadarim/db/client.ts", "src/hadarim/db/session.ts", "src/hadarim/tools/index.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/monitor_settings|messaging_contacts|conversations/);
+    // the switch and the tools touch the settings and the contacts only — never the runner, the relay or the scheduler's timers
+    for (const f of allowed) {
+      const imported = [...readFileSync(f, "utf8").matchAll(/from\s+["'][^"']*messaging\/([a-z-]+)["']/g)].map((m) => m[1]);
+      expect(imported.every((m) => ["settings", "scheduler", "inbox"].includes(m)), `${f} imports ${imported.join(", ")}`).toBe(true);
+    }
+    // the engine, the store and the database client stay ignorant
+    for (const f of ["src/hadarim/app/store.ts", "src/hadarim/db/client.ts", "src/hadarim/db/session.ts", "src/hadarim/engine/heartbeat.ts", "src/hadarim/engine/report.ts"]) expect(readFileSync(f, "utf8")).not.toMatch(/monitor_settings|messaging_contacts|conversations/);
+  });
+
+  it("the agent gets the two settings tools and the skill names the monitor", () => {
+    const agent = readFileSync(".claude/agents/bakara.md", "utf8");
+    expect(agent).toContain("mcp__bakara__get_monitor_settings");
+    expect(agent).toContain("mcp__bakara__set_monitor_settings");
+    expect(readFileSync(".claude/skills/bakara-heartbeat/SKILL.md", "utf8")).toContain("set_monitor_settings");
+    expect(readFileSync("scripts/com.nadlan.monitor.plist", "utf8")).toContain("com.nadlan.monitor");
   });
 
   it("the one-shot heartbeat script pre-approves the bakara tools and never waits on a prompt", () => {

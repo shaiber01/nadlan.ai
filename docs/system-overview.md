@@ -15,7 +15,7 @@ This is the one document to read first. It describes the Hadarim budget-control 
    invoices, orders, contracts, budget,           rules + skills (.claude/)
    change log, documents folder (upload)          │ MCP (stdio)
         │ writes (attributed) / reads              ▼
-        ▼                                       mcp/bakara-server.ts → src/hadarim/tools/index.ts (53 tools)
+        ▼                                       mcp/bakara-server.ts → src/hadarim/tools/index.ts (56 tools)
  ┌────────────────────────────────────┐             │ loads the project, runs the pure engine, writes back
  │  Supabase project aevdlzncwkdosbzkgpgy │◄───────────┘
  │  Postgres tables (project_id keyed)  │
@@ -112,7 +112,7 @@ scripts/heartbeat.sh                  # the heartbeat headless (claude -p), for 
 
 Rules it keeps (the agent file has the exact wording): Hebrew only in what the user reads — no tool names, ids or English fragments, because terminals render mixed Hebrew and Latin text badly; facts from tools only, no arithmetic of its own; writes only after an explicit decision, attributed, verified by re-reading; budget and forecast are different things; say what kind of money a figure is (fact, commitment, estimate); the user decides; the report is produced by the tool, never written; confirm before destructive actions; when sure, recommend the fix and get approval; when unsure, ask the user and name the people connected to the record (never simulate asking others or talk about channels); no report without the checks; the checks are the floor and the agent's reading is the second pass; documents are the agent's to read; the heartbeat keeps up with the ERP.
 
-### Tools (`src/hadarim/tools/index.ts`, 52)
+### Tools (`src/hadarim/tools/index.ts`, 56)
 
 | Group | Tools |
 | --- | --- |
@@ -123,6 +123,7 @@ Rules it keeps (the agent file has the exact wording): Hebrew only in what the u
 | Shaping the control and report | `add_forecast_adjustment`, `remove_forecast_adjustment`, `open_task`, `set_task_status`, `add_control_note`, `remove_control_note`, `set_project_status`, `set_report_config`, `build_report` |
 | Documents | `add_document`, `classify_document`, `set_document_facts` |
 | Heartbeat | `record_heartbeat` |
+| The monitor (the automatic heartbeat) | `get_monitor_settings`, `set_monitor_settings` — the switch, the interval and the quiet summary in `monitor_settings`, whether the monitor process is alive, who receives the cards; the monitor process (`npm run monitor`, `heartbeat-bot-plan.md`) does the running |
 | Not given to the agent | `ask_person`, `answer_question` (questions to people over their channel — kept in the registry for the operational system) |
 | Destructive | `reset_project` |
 

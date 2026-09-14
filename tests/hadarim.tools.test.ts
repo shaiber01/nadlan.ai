@@ -22,7 +22,7 @@ describe("tool registry", () => {
       expect(["read", "check", "decision", "write", "destructive"]).toContain(t.kind);
       if (t.name !== "list_projects") expect(Object.keys(t.input)).toContain("projectId");
     }
-    expect(names).toEqual(expect.arrayContaining(["get_project", "get_forecast", "run_check", "run_control", "decide_finding", "route_finding", "reallocate_invoice", "add_forecast_adjustment", "open_task", "add_control_note", "report_readiness", "build_report", "reset_project"]));
+    expect(names).toEqual(expect.arrayContaining(["get_project", "get_forecast", "run_check", "run_control", "decide_finding", "route_finding", "reallocate_invoice", "add_forecast_adjustment", "open_task", "add_control_note", "report_readiness", "build_report", "reset_project", "get_monitor_settings", "set_monitor_settings"]));
   });
 
   it("read tools accept an empty argument object (defaults fill the project)", () => {
