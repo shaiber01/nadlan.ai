@@ -166,7 +166,7 @@ export function ReportView() {
             {ui.db.status === "online" ? `מסד הנתונים · עודכן ${ui.db.lastSync ? new Date(ui.db.lastSync).toLocaleTimeString("he-IL") : "—"}` : ui.db.status === "loading" ? "מתחבר למסד הנתונים…" : "נתונים מקומיים (ללא מסד נתונים)"}
           </span>
           <span className="muted small h2-report-agent-hint" data-testid="report-agent-hint">
-            הבקרה מתנהלת עם הסוכן ״בקרה״ (<code>claude --agent bakara</code>); הדוח כאן מתעדכן מהחלטותיו.
+            הבקרה מתנהלת עם הסוכן ״שרגא״ (<code>claude --agent shraga</code>); הדוח כאן מתעדכן מהחלטותיו.
           </span>
           {tab === "full" ? (
             <nav className="h2-report-nav" aria-label="ניווט בדוח">

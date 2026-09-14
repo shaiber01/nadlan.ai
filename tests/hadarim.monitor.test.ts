@@ -57,7 +57,7 @@ function fakeChannel() {
 describe("session runner: the claude -p command", () => {
   it("pins the flags: print mode, the agent, json, manual permissions with no prompts, the allow and deny lists, never bare", () => {
     const args = runnerArgs({ sessionId: null, text: "שלום", systemContext: "ctx", newSessionId: "sid-1" });
-    expect(args.slice(0, 6)).toEqual(["-p", "--agent", "bakara", "--output-format", "stream-json", "--verbose"]);
+    expect(args.slice(0, 6)).toEqual(["-p", "--agent", "shraga", "--output-format", "stream-json", "--verbose"]);
     expect(args).toContain("--permission-prompts");
     expect(args[args.indexOf("--permission-mode") + 1]).toBe("manual");
     expect(args[args.indexOf("--permission-prompts") + 1]).toBe("none");
@@ -108,7 +108,9 @@ describe("session runner: the claude -p command", () => {
     expect(formatTraceEvent({ type: "system", subtype: "hook_started" }, names)).toEqual([]);
     expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "thinking", thinking: "" }, { type: "tool_use", id: "t1", name: "get_forecast", input: { sectionId: "03" } }] } }, names)).toEqual(['→ get_forecast {"sectionId":"03"}']);
     expect(formatTraceEvent({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "x".repeat(50) }] }] } }, names, 20)).toEqual([`← get_forecast ${"x".repeat(20)}… (50 chars)`]);
-    expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "text", text: "תחזית לגמר\n48,240,000 ₪" }] } }, names)).toEqual(["◆ תחזית לגמר 48,240,000 ₪"]);
+    // replies are kept as written, line breaks included; thinking summaries appear when the model returns them
+    expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "text", text: "תחזית לגמר\n48,240,000 ₪" }] } }, names)).toEqual(["◆ תחזית לגמר\n48,240,000 ₪"]);
+    expect(formatTraceEvent({ type: "assistant", message: { content: [{ type: "thinking", thinking: "  " }, { type: "thinking", thinking: "בודק את התחזית" }] } }, names)).toEqual(["💭 בודק את התחזית"]);
     expect(formatTraceEvent({ type: "system", subtype: "api_error", error: { formatted: "Connection lost while your computer was asleep" } }, names)).toEqual(["⚠ api_error: Connection lost while your computer was asleep"]);
     expect(formatTraceEvent({ type: "rate_limit_event", rate_limit_info: { status: "allowed" } }, names)).toEqual([]);
     expect(formatTraceEvent({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } }, names)).toEqual(["⚠ rate limit rejected (five_hour)"]);
@@ -134,7 +136,8 @@ describe("session runner: the claude -p command", () => {
     expect(first.costUsd).toBe(0.01);
     expect(events).toEqual(["system/init", "assistant", "user", "assistant", "result/success"]);
     const trace = readFileSync(tracePath, "utf8");
-    expect(trace).toContain("▶ new session · context 3 chars");
+    expect(trace).toContain("▶ new session");
+    expect(trace).toContain("▶ context appended to the system prompt:\n           ctx");
     expect(trace).toContain("▶ מה חדש");
     expect(trace).toContain("● session sid-a · model claude-sonnet-fake · mcp bakara:connected");
     expect(trace).toContain('→ get_project {"projectId":"HADARIM"}');
@@ -386,7 +389,7 @@ describe("the console channel and the file store", () => {
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ from: { channel: "console", address: "P1" }, text: "שלום" });
     await ch.send({ channel: "console", address: "P1" }, "תשובה");
-    expect(printed).toContain("בקרה:\nתשובה");
+    expect(printed).toContain("שרגא:\nתשובה");
     expect(printed).toContain("אייל> ");
     stop();
   });
@@ -822,7 +825,7 @@ describe("the monitor stays invisible to the application", () => {
   });
 
   it("the agent gets the two settings tools and the skill names the monitor", () => {
-    const agent = readFileSync(".claude/agents/bakara.md", "utf8");
+    const agent = readFileSync(".claude/agents/shraga.md", "utf8");
     expect(agent).toContain("mcp__bakara__get_monitor_settings");
     expect(agent).toContain("mcp__bakara__set_monitor_settings");
     expect(readFileSync(".claude/skills/bakara-heartbeat/SKILL.md", "utf8")).toContain("set_monitor_settings");

@@ -119,7 +119,7 @@ test.describe("Hadarim — ERP and the report viewer (offline)", () => {
     await expect(page.getByTestId("report-view")).toHaveAttribute("data-source", "live");
     await expect(page.getByTestId("report-idle-notice")).toContainText("טרם הופעלה");
     await expect(page.getByTestId("report-status")).toContainText("לא הופעלה בקרה");
-    await expect(page.getByTestId("report-agent-hint")).toContainText("claude --agent bakara");
+    await expect(page.getByTestId("report-agent-hint")).toContainText("claude --agent shraga");
     await expect(page.getByTestId("report-headline-eac")).toContainText("48,240,000 ₪");
     await expect(page.getByTestId("report-version")).toContainText("טיוטה");
     await expect(page.getByTestId("report-row-07")).toContainText("2,280,000");

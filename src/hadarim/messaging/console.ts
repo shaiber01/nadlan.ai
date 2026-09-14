@@ -27,7 +27,7 @@ export function createConsoleChannel(opts: ConsoleChannelOptions): Channel & { a
     id: "console",
     address,
     async send(to, text) {
-      const head = to.address === opts.as ? "בקרה" : `בקרה → ${to.address}`;
+      const head = to.address === opts.as ? "שרגא" : `שרגא → ${to.address}`;
       output.write(`\n${head}:\n${text}\n\n`);
       prompt();
       return { providerMessageId: randomUUID() };

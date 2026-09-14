@@ -1,7 +1,7 @@
 /**
  * The monitor — the heartbeat's scheduler and the chat relay (docs/heartbeat-bot-plan.md). Optional:
  * nothing runs unless this script is started, and nothing in the application depends on it. Every agent
- * turn is one `claude -p --agent bakara` under the machine's Claude login; the monitor refuses to start
+ * turn is one `claude -p --agent shraga` under the machine's Claude login; the monitor refuses to start
  * with ANTHROPIC_API_KEY in its environment (print mode would bill the API with it).
  *
  *   npm run monitor                                   # the daemon: while the project's settings say enabled, a tick every

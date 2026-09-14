@@ -28,11 +28,20 @@ export interface TraceEvent {
   [k: string]: unknown;
 }
 
-export const DEFAULT_TRACE_CHARS = 600;
+export const DEFAULT_TRACE_CHARS = 1000;
+/** Replies and the context are shown whole up to this many characters. */
+const WHOLE_TEXT_CHARS = 20_000;
 
+/** One line: whitespace collapsed, cut at `max`. */
 function cut(s: string, max: number): string {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > max ? `${one.slice(0, max)}… (${one.length} chars)` : one;
+}
+
+/** As written: the lines kept, cut only far beyond what a reply or a context reaches. */
+function whole(s: string): string {
+  const t = s.trim();
+  return t.length > WHOLE_TEXT_CHARS ? `${t.slice(0, WHOLE_TEXT_CHARS)}… (${t.length} chars)` : t;
 }
 
 function blockText(content: unknown): string {
@@ -59,15 +68,17 @@ export function formatTraceEvent(e: TraceEvent, names: Map<string, string>, maxC
     const out: string[] = [];
     const content = e.message?.content;
     if (Array.isArray(content)) {
-      for (const block of content as { type?: string; id?: string; name?: string; input?: unknown; text?: string }[]) {
+      for (const block of content as { type?: string; id?: string; name?: string; input?: unknown; text?: string; thinking?: string }[]) {
         if (block.type === "tool_use") {
           if (block.id && block.name) names.set(block.id, block.name);
           out.push(`→ ${block.name ?? "?"} ${cut(JSON.stringify(block.input ?? {}), maxChars)}`);
         } else if (block.type === "text" && block.text?.trim()) {
-          out.push(`◆ ${cut(block.text, maxChars * 4)}`);
+          out.push(`◆ ${whole(block.text)}`);
+        } else if (block.type === "thinking" && block.thinking?.trim()) {
+          out.push(`💭 ${whole(block.thinking)}`);
         }
       }
-    } else if (typeof content === "string" && content.trim()) out.push(`◆ ${cut(content, maxChars * 4)}`);
+    } else if (typeof content === "string" && content.trim()) out.push(`◆ ${whole(content)}`);
     return out;
   }
   if (e.type === "user") {
@@ -107,15 +118,20 @@ export class FileTracer implements TurnTrace {
     mkdirSync(dirname(path), { recursive: true });
   }
 
-  private write(lines: string[]): void {
-    if (!lines.length) return;
-    const stamp = new Date().toISOString().slice(11, 19);
-    appendFileSync(this.path, lines.map((l) => `[${stamp}] ${l}\n`).join(""), "utf8");
+  /** Every entry starts with the time; an entry's further lines are indented under it. */
+  private write(entries: string[]): void {
+    if (!entries.length) return;
+    const stamp = `[${new Date().toISOString().slice(11, 19)}] `;
+    const pad = " ".repeat(stamp.length);
+    appendFileSync(this.path, entries.map((e) => `${stamp}${e.replace(/\n/g, `\n${pad}`)}\n`).join(""), "utf8");
   }
 
   begin(info: { text: string; sessionId: string | null; systemContext?: string }): void {
     this.names = new Map();
-    this.write([`▶ ${info.sessionId ? `resume ${info.sessionId}` : "new session"}${info.systemContext ? ` · context ${info.systemContext.length} chars` : ""}`, `▶ ${cut(info.text, this.maxChars * 2)}`]);
+    const lines = [`▶ ${info.sessionId ? `resume ${info.sessionId}` : "new session"}`];
+    if (info.systemContext) lines.push(`▶ context appended to the system prompt:\n${whole(info.systemContext)}`);
+    lines.push(`▶ ${whole(info.text)}`);
+    this.write(lines);
   }
 
   event(e: TraceEvent): void {

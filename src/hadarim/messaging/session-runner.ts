@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { TraceEvent, TurnTrace } from "./trace";
 
 /**
- * One turn of the bakara agent, headless (docs/heartbeat-bot-plan.md §7.2 and §7.6): `claude -p --agent
- * bakara`, resumed by session id, under the machine's Claude login. The same agent, skills, tools and
+ * One turn of the shraga agent, headless (docs/heartbeat-bot-plan.md §7.2 and §7.6): `claude -p --agent
+ * shraga`, resumed by session id, under the machine's Claude login. The same agent, skills, tools and
  * `.mcp.json` as the terminal; `AskUserQuestion` is removed by `--permission-prompts none`, so the agent
  * asks with numbered options (its own fallback rule); tools are pre-approved by an allow-list and the
  * destructive, shell and SQL tools are denied.
@@ -15,7 +15,7 @@ import type { TraceEvent, TurnTrace } from "./trace";
 
 export const DEFAULT_ALLOWED_TOOLS = ["mcp__bakara__*", "Read", "Skill"];
 export const DEFAULT_DISALLOWED_TOOLS = ["mcp__bakara__reset_project", "mcp__supabase__execute_sql", "mcp__supabase__list_tables", "Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch", "Agent"];
-export const DEFAULT_AGENT = "bakara";
+export const DEFAULT_AGENT = "shraga";
 export const DEFAULT_TURN_TIMEOUT_MS = 5 * 60_000;
 export const DEFAULT_MAX_BUDGET_USD = 3;
 /** Headless turns answer chat and run passes; a fast model at low effort is the default, the agent file's model the fallback. */

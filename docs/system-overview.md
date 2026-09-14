@@ -4,14 +4,14 @@ This is the one document to read first. It describes the Hadarim budget-control 
 
 ## 1. What is in this repository
 
-**The Hadarim prototype** (`src/hadarim/`, `supabase/`, `mcp/`, `.claude/`, `scripts/`): one real construction project (הדרים, 48.0M ₪ budget, 18 sections) in a shared database, a simulated contractor ERP people use in the browser, and a Claude Code agent ("בקרה") that is the budget controller. It is the whole repository: the earlier browser-only sixteen-scenario demo ("v1") was removed on 2026-09-10, and the site root (`index.html`) now redirects to the ERP page.
+**The Hadarim prototype** (`src/hadarim/`, `supabase/`, `mcp/`, `.claude/`, `scripts/`): one real construction project (הדרים, 48.0M ₪ budget, 18 sections) in a shared database, a simulated contractor ERP people use in the browser, and a Claude Code agent ("שרגא") that is the budget controller. It is the whole repository: the earlier browser-only sixteen-scenario demo ("v1") was removed on 2026-09-10, and the site root (`index.html`) now redirects to the ERP page.
 
 ## 2. The prototype in one picture
 
 ```
  people in the company                         the budget controller
  ───────────────────────                       ─────────────────────────────────────
- hadarim.html  (React, "זיו — סביבת הדגמה")     claude --agent bakara   (Claude Code)
+ hadarim.html  (React, "זיו — סביבת הדגמה")     claude --agent shraga   (Claude Code)
    invoices, orders, contracts, budget,           rules + skills (.claude/)
    change log, documents folder (upload)          │ MCP (stdio)
         │ writes (attributed) / reads              ▼
@@ -97,15 +97,15 @@ The budget is the sections' **original** budget (`sections.budget`, the approved
 
 Sections carry the chapters of the Interministerial Specification for building works ("הספר הכחול", `src/hadarim/data/bluebook.ts` lists the chapter names) — the primary first — and BOQ lines carry their chapter. The tools roll the bill of quantities up by chapter (`query_boq`, `get_section`), and the report can add a view by chapter (`set_report_config` `byChapter`): each section counted once under its primary chapter, BOQ lines counted by their own chapter.
 
-## 8. The agent ("בקרה")
+## 8. The agent ("שרגא")
 
-The budget controller is a Claude Code agent defined in the repository: `.claude/agents/bakara.md` (role, rules, which tool for what), seven skills under `.claude/skills/bakara-*` (procedures), and the `bakara` MCP server in `.mcp.json` (the tools). A plain `claude` session in this folder is a development session and must not act as the controller.
+The budget controller is a Claude Code agent defined in the repository: `.claude/agents/shraga.md` (role, rules, which tool for what), seven skills under `.claude/skills/bakara-*` (procedures), and the `bakara` MCP server in `.mcp.json` (the tools). A plain `claude` session in this folder is a development session and must not act as the controller.
 
 Ways to run it:
 
 ```bash
-claude --agent bakara                 # the whole session is the controller (approve the .mcp.json servers on first use)
-# in a normal session: "use the bakara agent to run the control for הדרים"
+claude --agent shraga                 # the whole session is the controller (approve the .mcp.json servers on first use)
+# in a normal session: "use the shraga agent to run the control for הדרים"
 npm run bakara -- tools               # the same registry from a shell; `tool <name> '{json}'` calls one
 scripts/heartbeat.sh                  # the heartbeat headless (claude -p), for cron
 ```
@@ -157,7 +157,7 @@ The heartbeat is one pass over everything new since the previous one, so the rep
 - The agent processes each pending document (read, classify, facts, re-check the linked record), reads each changed record against its contract, presents the findings with their recommended fix and the people involved, and with a user present gets the decisions through the control; with nobody present it presents them in the summary and leaves them open.
 - `record_heartbeat` closes the pass with the watermark, the counts, the finding ids presented (repeated next time only if their record changes again) and a Hebrew summary: what was processed, what was found, what awaits the user.
 
-Where it runs: `/bakara-report` runs it before building, then `report_readiness` says whether the report can go out (`build_report` returns the same `attentionHe` on the build itself); `npm run bakara -- heartbeat` prints the deterministic work list; `scripts/heartbeat.sh` runs the agent headless once (cron); and the optional **monitor** (`npm run monitor`, `docs/heartbeat-bot-plan.md`) runs it on a schedule: while a project's `monitor_settings` row says enabled, a tick every `interval_seconds` — and, with `wake_on_change`, at once when the ERP changes or a document arrives — probes the change log against the last heartbeat's watermark and counts unprocessed documents (no model), and only when there is work runs one pass as a turn of `claude -p --agent bakara` under the machine's Claude login — alone (nothing decided, the summary in the log) or, with a channel (`-- --channel console --as EYAL` in a terminal; `-- --channel vonage` over WhatsApp through the Vonage Messages API, the inbound webhook being the Edge Function `messaging-inbound` that fills the `messages` inbox), inside the project's conversation shared by the enrolled phones, where it presents one card with numbered options and the person's reply is the next turn. The switch and the interval are on the ERP's presenter strip and in `npm run monitor -- settings`; with the daemon stopped, or the row disabled, nothing runs. `list_heartbeats` shows the history and how many changes happened since the last one.
+Where it runs: `/bakara-report` runs it before building, then `report_readiness` says whether the report can go out (`build_report` returns the same `attentionHe` on the build itself); `npm run bakara -- heartbeat` prints the deterministic work list; `scripts/heartbeat.sh` runs the agent headless once (cron); and the optional **monitor** (`npm run monitor`, `docs/heartbeat-bot-plan.md`) runs it on a schedule: while a project's `monitor_settings` row says enabled, a tick every `interval_seconds` — and, with `wake_on_change`, at once when the ERP changes or a document arrives — probes the change log against the last heartbeat's watermark and counts unprocessed documents (no model), and only when there is work runs one pass as a turn of `claude -p --agent shraga` under the machine's Claude login — alone (nothing decided, the summary in the log) or, with a channel (`-- --channel console --as EYAL` in a terminal; `-- --channel vonage` over WhatsApp through the Vonage Messages API, the inbound webhook being the Edge Function `messaging-inbound` that fills the `messages` inbox), inside the project's conversation shared by the enrolled phones, where it presents one card with numbered options and the person's reply is the next turn. The switch and the interval are on the ERP's presenter strip and in `npm run monitor -- settings`; with the daemon stopped, or the row disabled, nothing runs. `list_heartbeats` shows the history and how many changes happened since the last one.
 
 ## 10. The report (`report.html`)
 
@@ -213,7 +213,7 @@ npm run db:types            # regenerate src/hadarim/db/types.ts after a migrati
 
 ## 14. Known limits and what comes next
 
-- The heartbeat is not scheduled yet; `scripts/heartbeat.sh` plus a crontab line does it for now. The plan for an optional heartbeat monitor and a WhatsApp bot is `heartbeat-bot-plan.md`; its phase 0 exists: `npm run monitor -- --channel console --as EYAL` is a conversation with the agent in the terminal, each line one `claude -p --agent bakara` turn resumed by session id under the machine's login (`src/hadarim/messaging/`, `scripts/monitor.ts`; nothing else imports them).
+- The heartbeat is not scheduled yet; `scripts/heartbeat.sh` plus a crontab line does it for now. The plan for an optional heartbeat monitor and a WhatsApp bot is `heartbeat-bot-plan.md`; its phase 0 exists: `npm run monitor -- --channel console --as EYAL` is a conversation with the agent in the terminal, each line one `claude -p --agent shraga` turn resumed by session id under the machine's login (`src/hadarim/messaging/`, `scripts/monitor.ts`; nothing else imports them).
 - Access is open through the publishable key (prototype); Supabase Auth and real row-level security policies are the next security step.
 - Questions to people (`ask_person`) are recorded only; the operational system would send them over the person's channel. In the prototype the agent asks the user and names who to ask.
 - Images are read by the agent only (no OCR); PDF text extraction is a convenience and Hebrew often comes out scrambled, which is why the agent reads the file itself.

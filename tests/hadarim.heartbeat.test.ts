@@ -92,7 +92,7 @@ describe("the document and heartbeat tools", () => {
 
   it("the agent gets the new tools and the heartbeat skill exists", async () => {
     const { readFileSync, existsSync } = await import("node:fs");
-    const agent = readFileSync(".claude/agents/bakara.md", "utf8");
+    const agent = readFileSync(".claude/agents/shraga.md", "utf8");
     for (const t of ["add_document", "classify_document", "get_heartbeat_work", "record_heartbeat", "list_heartbeats"]) expect(agent).toContain(`mcp__bakara__${t}`);
     expect(agent).not.toContain("mcp__bakara__ask_person");
     // decisions are asked with clickable options; the control skill routes every card through it
