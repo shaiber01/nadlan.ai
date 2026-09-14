@@ -239,7 +239,7 @@ describe("the relay", () => {
     expect((await store.get("P", "project", null))?.turns).toBe(2);
   });
 
-  it("ignores unknown senders and answers its own commands without a turn", async () => {
+  it("ignores unknown senders and answers its own commands and the sandbox's pairing phrase without a turn", async () => {
     const { relay, fc, inputs, logs, store } = setup();
     fc.push({ id: "x", from: { channel: "console", address: "STRANGER" }, text: "היי", at: "" });
     fc.push(inbound(eyal, "/סטטוס"));
@@ -248,6 +248,10 @@ describe("the relay", () => {
     expect(inputs).toHaveLength(0);
     expect(logs.some((l) => l.includes("unknown address"))).toBe(true);
     expect(fc.sent.at(-1)?.text).toContain("אין שיחה פתוחה");
+    fc.push(inbound(eyal, "Join rerun hut"));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(inputs).toHaveLength(0);
+    expect(fc.sent.at(-1)).toEqual({ to: "P1", text: RELAY_TEXT_HE.paired });
     fc.push(inbound(eyal, "שלום"));
     await relay.idle();
     expect(await store.get("P", "project", null)).not.toBeNull();

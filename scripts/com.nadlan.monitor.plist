@@ -9,7 +9,9 @@
 
   Drop "- -channel vonage" from ProgramArguments for a heartbeat-only daemon (no chat channel). The child
   `claude` needs a login that outlives the interactive one: put CLAUDE_CODE_OAUTH_TOKEN (from `claude
-  setup-token`) in the repository's .env, never in this file. The log is out/monitor.log.
+  setup-token`) in the repository's .env, never in this file. The log is out/monitor.log. `caffeinate -i`
+  keeps the Mac from idle-sleeping while the daemon runs: a sleeping laptop suspends the agent's turn
+  mid-answer and the person gets "לא הצלחתי לסיים" after the timeout.
 -->
 <plist version="1.0">
 <dict>
@@ -19,7 +21,7 @@
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>cd __REPO__ &amp;&amp; exec npm run monitor -- --channel vonage</string>
+    <string>cd __REPO__ &amp;&amp; exec caffeinate -i npm run monitor -- --channel vonage</string>
   </array>
   <key>WorkingDirectory</key>
   <string>__REPO__</string>

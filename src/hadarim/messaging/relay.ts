@@ -40,6 +40,7 @@ type QueueItem = { kind: "person"; m: Inbound; p: Participant } | { kind: "syste
 
 export const RELAY_TEXT_HE = {
   newConversation: "התחלתי שיחה חדשה.",
+  paired: "החיבור הצליח. אפשר לכתוב לי שאלה על הפרויקט (למשל: מה התחזית לגמר?), לשלוח צילום של חשבונית או הצעת מחיר, או לחכות להתראות שלי.",
   failed: "לא הצלחתי לסיים את הפעולה. נסה שוב בעוד רגע.",
   authExpired: "ההתחברות של המערכת פגה. צריך להתחבר מחדש במחשב, ואז לנסות שוב.",
   notConnected: "המערכת לא מחוברת כרגע. צריך להתחבר מחדש במחשב.",
@@ -50,6 +51,9 @@ const COMMANDS = {
   new: /^\/(חדש|new)\s*$/i,
   status: /^\/(סטטוס|status)\s*$/i,
 };
+
+/** The sandbox's pairing phrase ("Join two words"), which Vonage forwards like any message: answered here, never by the agent. */
+export const PAIRING_PHRASE = /^join(\s+[a-z]+){1,3}\s*$/i;
 
 export class Relay {
   private queue: QueueItem[] = [];
@@ -100,6 +104,11 @@ export class Relay {
     if (!text) return;
     if (text.startsWith("/")) {
       void this.command(text, p);
+      return;
+    }
+    if (PAIRING_PHRASE.test(text)) {
+      this.log(`pairing phrase from ${p.nameHe}: greeted, no turn`);
+      void this.deliver([p], RELAY_TEXT_HE.paired);
       return;
     }
     this.queue.push({ kind: "person", m, p });
