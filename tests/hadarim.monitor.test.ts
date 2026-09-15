@@ -633,12 +633,14 @@ describe("the relay's system turns (the heartbeat's pass)", () => {
     expect(await relay.hasPendingQuestion()).toBe(true);
   });
 
-  it("a quiet pass is kept back when the settings say so, and sent when they do not", async () => {
+  it("a quiet pass is kept back (the default) and sent only when the settings ask for the one-liner", async () => {
     const { relay, fc } = setup("קראתי את המסמך; הכול תואם.");
     expect(await relay.enqueueSystem("פעימת לב", { deliverIfQuiet: false })).toMatchObject({ ok: true, pendingQuestion: false, delivered: false });
     expect(fc.sent).toEqual([]);
-    expect(await relay.enqueueSystem("פעימת לב")).toMatchObject({ delivered: true });
+    expect(await relay.enqueueSystem("פעימת לב", { deliverIfQuiet: true })).toMatchObject({ delivered: true });
     expect(fc.sent).toHaveLength(2);
+    const { STANDARD_MONITOR_SETTINGS } = await import("../src/hadarim/messaging/scheduler");
+    expect(STANDARD_MONITOR_SETTINGS.notifyOnQuiet).toBe(false);
   });
 });
 

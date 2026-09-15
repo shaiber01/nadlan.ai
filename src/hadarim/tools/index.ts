@@ -1301,7 +1301,7 @@ const CHANNEL_HE_BY_MEDIUM: Record<string, string> = { whatsapp: "וואטסאפ
 define({
   name: "get_monitor_settings",
   title: "The automatic heartbeat's settings",
-  description: "The automatic heartbeat (the monitor): is it switched on, how often it checks for changes (intervalSeconds), whether it sends a one-line summary when nothing needs a decision, whether the monitor process is alive on the computer (it stamps every check; the setting alone runs nothing), and who receives its cards (the enrolled phones, masked). Read-only.",
+  description: "The automatic heartbeat (the monitor): is it switched on, how often it checks for changes (intervalSeconds), whether it also sends a one-line summary when nothing needs a decision (notifyOnQuiet; off by default — a quiet pass is only logged), whether the monitor process is alive on the computer (it stamps every check; the setting alone runs nothing), and who receives its cards (the enrolled phones, masked). Read-only.",
   kind: "read",
   input: { projectId },
   run: async (a) => {

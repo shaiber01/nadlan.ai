@@ -217,7 +217,7 @@ export class Relay {
     this.log(`turn ok · ${r.durationMs} ms · ${r.numTurns ?? "?"} agent turns · ≈ $${(r.costUsd ?? 0).toFixed(3)}`);
     // a heartbeat's quiet reply (nothing to decide) is kept back when the settings say so; a person's turn is always answered
     const quietSystemOnly = systemItems.length === batch.length && !pendingQuestion && systemItems.every((i) => !i.deliverIfQuiet);
-    if (quietSystemOnly) this.log(`quiet pass, not delivered: ${reply.slice(0, 120).replace(/\n/g, " ")}`);
+    if (quietSystemOnly) this.log(`quiet pass (nothing to decide), logged only: ${reply.slice(0, 200).replace(/\n/g, " ")}`);
     else await this.deliver(recipients, reply || "…");
     settle({ ok: true, pendingQuestion, delivered: !quietSystemOnly });
   }

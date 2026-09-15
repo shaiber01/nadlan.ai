@@ -93,7 +93,7 @@ function fail(message: string): never {
 function settingsLineHe(s: MonitorSettings | null): string {
   if (!s) return "פעימת לב: לא הוגדרה (כבויה)";
   const alive = daemonAlive(s);
-  return `פעימת לב: ${s.enabled ? `פועלת כל ${s.intervalSeconds} שניות${s.wakeOnChange ? " ומיד כשמשהו משתנה" : ""}` : "כבויה"}${s.notifyOnQuiet ? "" : " · בלי סיכום כשאין מה להחליט"} · המנטר ${alive ? "פועל" : "לא פועל"}${s.lastTickAt ? ` · בדיקה אחרונה ${new Date(s.lastTickAt).toLocaleTimeString("he-IL")}${s.lastTickFoundWork ? " (נמצאה עבודה)" : ""}` : ""}`;
+  return `פעימת לב: ${s.enabled ? `פועלת כל ${s.intervalSeconds} שניות${s.wakeOnChange ? " ומיד כשמשהו משתנה" : ""}` : "כבויה"}${s.notifyOnQuiet ? " · שולחת סיכום גם כשאין מה להחליט" : ""} · המנטר ${alive ? "פועל" : "לא פועל"}${s.lastTickAt ? ` · בדיקה אחרונה ${new Date(s.lastTickAt).toLocaleTimeString("he-IL")}${s.lastTickFoundWork ? " (נמצאה עבודה)" : ""}` : ""}`;
 }
 
 async function main() {
@@ -238,7 +238,8 @@ async function main() {
     if (relay) {
       if (await relay.hasPendingQuestion()) return { ok: true, deferred: true };
       const s = await readMonitorSettings(projectId);
-      const r = await relay.enqueueSystem(heartbeatPromptHe(participants, results), { deliverIfQuiet: s?.notifyOnQuiet ?? true });
+      // a pass that found nothing to decide is logged, not messaged, unless the settings ask for the one-liner
+      const r = await relay.enqueueSystem(heartbeatPromptHe(participants, results), { deliverIfQuiet: s?.notifyOnQuiet ?? false });
       return { ok: r.ok, error: r.error };
     }
     const r = await runTurn({ sessionId: null, text: heartbeatAlonePromptHe(projectId) }, runnerOptions);
@@ -252,7 +253,7 @@ async function main() {
     projectId,
     readSettings: async () => {
       const s = await readMonitorSettings(projectId);
-      return forced ? { ...(s ?? { projectId, enabled: false, intervalSeconds: 300, notifyOnQuiet: true, wakeOnChange: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null }), enabled: true } : s;
+      return forced ? { ...(s ?? { projectId, enabled: false, intervalSeconds: 300, notifyOnQuiet: false, wakeOnChange: true, monitors: {}, lastTickAt: null, lastTickFoundWork: null, updatedBy: null, updatedAt: null }), enabled: true } : s;
     },
     monitors: allMonitors(),
     recordTick: (at, found) => recordMonitorTick(projectId, at, found),

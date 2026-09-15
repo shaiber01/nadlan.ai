@@ -14,7 +14,7 @@ export interface MonitorSettings {
   projectId: string;
   enabled: boolean;
   intervalSeconds: number;
-  /** A one-line summary is sent even when the pass found nothing to decide. */
+  /** A one-line summary is sent even when the pass found nothing to decide (off: the log gets it, the phones do not). */
   notifyOnQuiet: boolean;
   /** Probe as soon as the ERP changes or a document arrives; the interval is then only the ceiling. */
   wakeOnChange: boolean;
@@ -26,7 +26,7 @@ export interface MonitorSettings {
   updatedAt: string | null;
 }
 
-export const STANDARD_MONITOR_SETTINGS: Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "wakeOnChange" | "monitors"> = { enabled: false, intervalSeconds: 300, notifyOnQuiet: true, wakeOnChange: true, monitors: {} };
+export const STANDARD_MONITOR_SETTINGS: Pick<MonitorSettings, "enabled" | "intervalSeconds" | "notifyOnQuiet" | "wakeOnChange" | "monitors"> = { enabled: false, intervalSeconds: 300, notifyOnQuiet: false, wakeOnChange: true, monitors: {} };
 
 export function intervalFor(s: Pick<MonitorSettings, "intervalSeconds" | "monitors">, id: MonitorId): number {
   const seconds = s.monitors?.[id]?.intervalSeconds ?? s.intervalSeconds;
