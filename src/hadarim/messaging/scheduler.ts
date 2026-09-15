@@ -87,10 +87,14 @@ export interface SchedulerOptions {
 }
 
 export interface TickOutcome {
-  skipped?: "disabled" | "ticking" | "not_due";
+  skipped?: "disabled" | "ticking" | "not_due" | "error";
   work?: boolean;
   pass?: PassOutcome;
 }
+
+/** After an unreachable database: retry sooner than the interval, backing off up to a ceiling. */
+export const RETRY_AFTER_ERROR_MS = 15_000;
+export const RETRY_AFTER_ERROR_MAX_MS = 5 * 60_000;
 
 export class Scheduler {
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -157,7 +161,17 @@ export class Scheduler {
     if (this.ticking) return { skipped: "ticking" };
     this.ticking = true;
     try {
-      const s = await this.opts.readSettings();
+      let s: MonitorSettings | null;
+      try {
+        s = await this.opts.readSettings();
+      } catch (e) {
+        // the database was unreachable (the network dropped): keep the chain alive and try again after a while
+        this.failures++;
+        const retryMs = Math.min(RETRY_AFTER_ERROR_MS * this.failures, RETRY_AFTER_ERROR_MAX_MS);
+        this.log(`settings unreadable (${e instanceof Error ? e.message : String(e)}); retrying in ${Math.round(retryMs / 1000)} s`);
+        this.schedule(retryMs);
+        return { skipped: "error" };
+      }
       if (!s?.enabled) {
         this.clear();
         this.log("disabled: no timer");
@@ -186,7 +200,14 @@ export class Scheduler {
       } catch (e) {
         this.log(`recording the tick failed: ${e instanceof Error ? e.message : String(e)}`);
       }
+      if (results.every((r) => r.error)) {
+        // every probe failed (the database unreachable): not a quiet tick — retry soon, count it
+        this.failures++;
+        this.schedule(Math.min(RETRY_AFTER_ERROR_MS * this.failures, RETRY_AFTER_ERROR_MAX_MS));
+        return { skipped: "error" };
+      }
       if (!found) {
+        this.failures = 0;
         this.schedule(nextDelayMs(s, ids, this.now(), this.lastRun));
         return { work: false };
       }

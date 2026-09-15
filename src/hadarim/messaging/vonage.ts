@@ -72,7 +72,11 @@ export function decideSend(input: { nowMs: number; lastInboundAt: string | null;
   return { action: "send" };
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+
+/** A request to Vonage that never returns must not hold the daemon: every call carries a deadline. */
+export const SEND_TIMEOUT_MS = 30_000;
+export const MEDIA_TIMEOUT_MS = 60_000;
 
 /** Where received files land: the document cache the tools use, under the project's `inbound` folder. */
 export function inboundMediaDir(projectId: string): string {
@@ -109,7 +113,7 @@ export async function downloadInboundMedia(cfg: VonageConfig, row: { id: number;
     copyFileSync(fileURLToPath(media.url), localPath);
     return { localPath, name };
   }
-  const res = await fetchImpl(media.url, { method: "GET", headers: { authorization: authorizationHeader(cfg, nowMs), accept: "*/*" } });
+  const res = await fetchImpl(media.url, { method: "GET", headers: { authorization: authorizationHeader(cfg, nowMs), accept: "*/*" }, signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`vonage media ${res.status}`);
   writeFileSync(localPath, Buffer.from(await res.arrayBuffer()));
   return { localPath, name };
@@ -121,6 +125,7 @@ export async function sendWhatsAppText(cfg: VonageConfig, to: string, text: stri
     method: "POST",
     headers: { authorization: authorizationHeader(cfg, nowMs), "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ to, from: cfg.from, channel: "whatsapp", message_type: "text", text }),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   const bodyText = await res.text();
   if (!res.ok) throw new Error(`vonage ${res.status}: ${bodyText.slice(0, 300)}`);

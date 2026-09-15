@@ -482,6 +482,36 @@ describe("the scheduler", () => {
     s.stop();
   });
 
+  it("an unreachable database does not end the chain: the tick retries with a backoff, and the next good tick clears it", async () => {
+    let current: MonitorSettings | null = settings();
+    let fail = true;
+    const probes: MonitorId[] = [];
+    const s = new Scheduler({
+      projectId: "P",
+      readSettings: async () => {
+        if (fail) throw new Error("fetch failed");
+        return current;
+      },
+      monitors: [{ id: "erp", probe: async () => { probes.push("erp"); return { monitor: "erp", work: false, detailHe: "אין" }; } }],
+      runPass: async () => ({ ok: true }),
+    });
+    s.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(s.state.nextAt! - Date.now()).toBe(15_000);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(s.state.nextAt! - Date.now()).toBe(30_000);
+    expect(s.state.failures).toBe(2);
+    fail = false;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(probes).toEqual(["erp"]);
+    expect(s.state.failures).toBe(0);
+    expect(s.state.nextAt! - Date.now()).toBe(20_000);
+    // probes that all fail count the same way
+    current = settings();
+    s.stop();
+  });
+
   it("wake re-evaluates at once: off cancels the timer, on restores it, a longer interval reschedules", async () => {
     const { s, set } = build();
     s.start();
@@ -670,6 +700,7 @@ describe("the Vonage adapter", () => {
     expect(calls[0].url).toBe(cfg.endpoint);
     expect(JSON.parse(calls[0].init.body ?? "")).toEqual({ to: "972500000001", from: "14157386102", channel: "whatsapp", message_type: "text", text: "שלום" });
     expect(calls[0].init.headers.authorization).toMatch(/^Basic /);
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal); // a send that never returns cannot hold the daemon
     const rejected: FetchLike = async () => ({ ok: false, status: 401, text: async () => "Unauthorized", arrayBuffer: async () => new ArrayBuffer(0) });
     await expect(sendWhatsAppText(cfg, "972500000001", "שלום", rejected)).rejects.toThrow(/vonage 401/);
   });
