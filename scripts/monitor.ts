@@ -303,8 +303,24 @@ async function main() {
     log(`change in ${what}: probing now`);
     scheduler.wake({ force: true });
   });
+  // the safety net for a dropped websocket: re-read the settings once a minute (one row), so a switch-on is
+  // noticed even when Realtime is silent — this is the only timer the daemon holds while the heartbeat is off
+  const settingsPoll = setInterval(() => {
+    void readMonitorSettings(projectId).then(
+      (s) => {
+        latest = s;
+        const key = settingsChangeKey(s);
+        if (key === seen) return;
+        seen = key;
+        log(`settings changed (noticed by the minute poll, Realtime was silent): ${s ? `${s.enabled ? "on" : "off"} · every ${s.intervalSeconds} s` : "no row"}`);
+        scheduler.wake();
+      },
+      (e: unknown) => log(`settings poll: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  }, 60_000);
 
   const shutdown = () => {
+    clearInterval(settingsPoll);
     scheduler.stop();
     unsubscribe();
     unsubscribeChanges();
