@@ -2,32 +2,10 @@
   "permissions": {
     "defaultMode": "auto",
     "allow": [
-      "mcp__bakara__decide_finding",
-      "mcp__bakara__route_finding",
-      "mcp__bakara__confirm_quote",
-      "mcp__bakara__reallocate_invoice",
-      "mcp__bakara__correct_purchase_order",
-      "mcp__bakara__set_invoice_building",
-      "mcp__bakara__create_invoice",
-      "mcp__bakara__set_boq_unit_price",
-      "mcp__bakara__add_forecast_adjustment",
-      "mcp__bakara__remove_forecast_adjustment",
-      "mcp__bakara__open_task",
-      "mcp__bakara__set_task_status",
-      "mcp__bakara__add_control_note",
-      "mcp__bakara__remove_control_note",
-      "mcp__bakara__raise_finding",
-      "mcp__bakara__record_review_pass",
-      "mcp__bakara__set_document_facts",
-      "mcp__bakara__add_document",
-      "mcp__bakara__classify_document",
-      "mcp__bakara__record_heartbeat",
-      "mcp__bakara__set_monitor_settings",
-      "mcp__bakara__add_budget_change",
-      "mcp__bakara__set_project_status",
-      "mcp__bakara__set_report_config",
-      "mcp__bakara__build_report",
-      "mcp__bakara__finalize_control"
+      "mcp__bakara__*"
+    ],
+    "ask": [
+      "mcp__bakara__reset_project"
     ]
   }
 }
